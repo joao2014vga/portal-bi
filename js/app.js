@@ -86,7 +86,7 @@ function telaLogin(msg) {
 
     <section class="login-form-wrap">
       <form class="login-form" id="fLogin" novalidate>
-        <div class="login-marca so-mobile">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></div>
+        <span class="logo login-logo"><img src="assets/logo_brascof.png" alt="${esc(CONFIG.NOME_EMPRESA)}"></span>
         <h2>Entrar</h2>
         <p class="muted">Use o e-mail cadastrado pela equipe de BI.</p>
         ${msg ? `<div class="aviso-inline alerta">${icon("alert")}<span>${esc(msg)}</span></div>` : ""}
@@ -177,7 +177,7 @@ function telaDefinirSenha() {
 // =====================================================================
 // ESTRUTURA (cabeçalho + banner)
 // =====================================================================
-const logo = () => `<span class="logo">${icon("chart")}</span>`;
+const logo = () => `<span class="logo"><img src="assets/logo_brascof.png" alt=""></span>`;
 
 async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}) {
   document.body.className = cheio ? "pg-app pg-cheio" : "pg-app";

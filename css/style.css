@@ -150,14 +150,23 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .busca.sm .ic { width: 16px; height: 16px; }
 
 /* ---------------------------------------------------------------- login */
-.pg-login { background: var(--sup); }
+/* Mesma paleta verde do Informativo (Brascof · Portal Comercial) */
+.pg-login {
+  --brand: #2d4a3e; --brand-escuro: #1e3329; --brand-claro: #e8f0ec;
+  --bg: #f0f4f2; --borda: #c8ddd2; --texto-2: #5a7a69; --texto-3: #8aab97;
+  background: var(--sup);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pg-login { --brand: #7ecf9a; --brand-escuro: #a6dfba; --brand-claro: #1a2e24; --bg: #0f1613; --borda: #2a3d33; --texto-2: #a3bdb0; --texto-3: #6f8a7c; }
+}
+:root[data-theme="dark"] .pg-login { --brand: #7ecf9a; --brand-escuro: #a6dfba; --brand-claro: #1a2e24; --bg: #0f1613; --borda: #2a3d33; --texto-2: #a3bdb0; --texto-3: #6f8a7c; }
 .login { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
 .login-arte {
   position: relative; overflow: hidden; color: #fff; padding: 48px;
   display: flex; flex-direction: column; justify-content: space-between;
-  background: radial-gradient(120% 90% at 0% 0%, #2c6fd6 0%, var(--brand) 40%, #0a2c66 100%);
+  background: radial-gradient(120% 90% at 0% 0%, #4a7362 0%, var(--brand) 40%, #1a2e25 100%);
 }
-:root[data-theme="dark"] .login-arte, .login-arte { --brand: #1554b8; }
+:root[data-theme="dark"] .login-arte, .login-arte { --brand: #2d4a3e; }
 .login-marca { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; }
 .login-frase { max-width: 460px; position: relative; z-index: 1; }
 .login-frase h1 { font-size: 34px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 14px; }
@@ -165,7 +174,9 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .login-graf { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 34%; opacity: .14; }
 .login-graf rect { fill: #fff; }
 .login-graf path { fill: none; stroke: #fff; stroke-width: 3; }
-.login-arte .logo { background: rgba(255,255,255,.16); color: #fff; }
+.login-marca .logo { width: 52px; height: 52px; }
+.logo.login-logo { width: 96px; height: 96px; border-width: 1.5px; align-self: center; margin-bottom: 4px; }
+.login-arte .logo { border-color: transparent; }
 .login-form-wrap { display: flex; align-items: center; justify-content: center; padding: 32px 20px; background: var(--sup); }
 .login-form { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 16px; }
 .login-form h2 { font-size: 26px; font-weight: 700; }
@@ -178,8 +189,9 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .demo-box { margin-top: 8px; padding: 12px 14px; border: 1px dashed var(--borda); border-radius: 8px; background: var(--sup-2); font-size: 13px; }
 .demo-box p { margin-top: 4px; color: var(--texto-2); line-height: 1.8; }
 
-.logo { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--brand); color: #fff; }
-.logo .ic { width: 18px; height: 18px; }
+/* Logo da Brascof num círculo branco (igual ao Informativo) */
+.logo { display: inline-grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; background: #fff; border: 1px solid var(--borda); overflow: hidden; }
+.logo img { width: 90%; height: 90%; object-fit: contain; }
 
 .aviso-inline { display: flex; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
 .aviso-inline.alerta { background: var(--alerta-bg); color: var(--alerta); }
@@ -345,7 +357,6 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
   .login { grid-template-columns: 1fr; }
   .login-arte { display: none; }
   .so-mobile { display: flex; margin-bottom: 8px; }
-  .so-mobile .logo { background: var(--brand); }
   .topo { padding: 0 16px; gap: 12px; }
   .topo-nav a span, .topo-nome, .topo-marca > span:not(.logo) { display: none; }
   .topo-nav { justify-content: flex-start; }
