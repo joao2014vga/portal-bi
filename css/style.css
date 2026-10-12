@@ -1,19 +1,25 @@
 /* =====================================================================
    PORTAL BI — estilos
+   Paleta verde da Brascof, a mesma do Informativo (Portal Comercial).
    Para mudar a cor da marca, altere --brand e --brand-escuro.
    ===================================================================== */
 :root {
-  --brand: #1554b8;
-  --brand-escuro: #0d3a85;
-  --brand-claro: #e8f0fc;
+  --brand: #2d4a3e;
+  --brand-escuro: #1e3329;
+  --brand-claro: #e8f0ec;
 
-  --bg: #f4f6f9;
+  /* barra do topo (igual à do Informativo) */
+  --topo-bg: #2d4a3e;
+  --topo-txt: #e8f0ec;
+  --topo-txt-2: #8aab97;
+
+  --bg: #f0f4f2;
   --sup: #ffffff;
-  --sup-2: #f8f9fb;
-  --borda: #e2e6ec;
-  --texto: #18202e;
-  --texto-2: #566173;
-  --texto-3: #8a94a5;
+  --sup-2: #f6f9f7;
+  --borda: #dde8e2;
+  --texto: #1b2e22;
+  --texto-2: #5a7a69;
+  --texto-3: #8aab97;
 
   --ok: #18794e;        --ok-bg: #e7f6ee;
   --alerta: #a35a00;    --alerta-bg: #fff4e0;
@@ -21,26 +27,28 @@
   --info: var(--brand); --info-bg: var(--brand-claro);
 
   --raio: 10px;
-  --sombra: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
-  --sombra-2: 0 8px 24px rgba(16, 24, 40, .10);
+  --sombra: 0 1px 2px rgba(27, 46, 34, .05), 0 1px 3px rgba(27, 46, 34, .06);
+  --sombra-2: 0 8px 24px rgba(45, 74, 62, .10);
   --fonte: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --brand: #5b93ef; --brand-escuro: #8db5f5; --brand-claro: #17294a;
-    --bg: #0f131a; --sup: #171c25; --sup-2: #1c222d; --borda: #2a3241;
-    --texto: #e7ebf2; --texto-2: #a3adbe; --texto-3: #6f7a8d;
+    --brand: #46936b; --brand-escuro: #5fae86; --brand-claro: #1a2e24;
+    --topo-bg: #1e3329; --topo-txt: #e8f0ec; --topo-txt-2: #8aab97;
+    --bg: #0f1613; --sup: #16201b; --sup-2: #1b2621; --borda: #2a3d33;
+    --texto: #e8f0ec; --texto-2: #a3bdb0; --texto-3: #6f8a7c;
     --ok: #4cc38a; --ok-bg: #12301f; --alerta: #f0a945; --alerta-bg: #33250c; --critico: #f2766b; --critico-bg: #3a1714;
     --sombra: 0 1px 2px rgba(0,0,0,.4); --sombra-2: 0 8px 24px rgba(0,0,0,.5);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --brand: #5b93ef; --brand-escuro: #8db5f5; --brand-claro: #17294a;
-  --bg: #0f131a; --sup: #171c25; --sup-2: #1c222d; --borda: #2a3241;
-  --texto: #e7ebf2; --texto-2: #a3adbe; --texto-3: #6f7a8d;
+  --brand: #46936b; --brand-escuro: #5fae86; --brand-claro: #1a2e24;
+  --topo-bg: #1e3329; --topo-txt: #e8f0ec; --topo-txt-2: #8aab97;
+  --bg: #0f1613; --sup: #16201b; --sup-2: #1b2621; --borda: #2a3d33;
+  --texto: #e8f0ec; --texto-2: #a3bdb0; --texto-3: #6f8a7c;
   --ok: #4cc38a; --ok-bg: #12301f; --alerta: #f0a945; --alerta-bg: #33250c; --critico: #f2766b; --critico-bg: #3a1714;
   color-scheme: dark;
 }
@@ -150,16 +158,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .busca.sm .ic { width: 16px; height: 16px; }
 
 /* ---------------------------------------------------------------- login */
-/* Mesma paleta verde do Informativo (Brascof · Portal Comercial) */
-.pg-login {
-  --brand: #2d4a3e; --brand-escuro: #1e3329; --brand-claro: #e8f0ec;
-  --bg: #f0f4f2; --borda: #c8ddd2; --texto-2: #5a7a69; --texto-3: #8aab97;
-  background: var(--sup);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .pg-login { --brand: #7ecf9a; --brand-escuro: #a6dfba; --brand-claro: #1a2e24; --bg: #0f1613; --borda: #2a3d33; --texto-2: #a3bdb0; --texto-3: #6f8a7c; }
-}
-:root[data-theme="dark"] .pg-login { --brand: #7ecf9a; --brand-escuro: #a6dfba; --brand-claro: #1a2e24; --bg: #0f1613; --borda: #2a3d33; --texto-2: #a3bdb0; --texto-3: #6f8a7c; }
+.pg-login { background: var(--sup); }
 .login { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
 .login-arte {
   position: relative; overflow: hidden; color: #fff; padding: 48px;
@@ -199,15 +198,19 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 /* ---------------------------------------------------------------- topo */
 .topo {
   position: sticky; top: 0; z-index: 20; height: 60px; display: flex; align-items: center; gap: 24px;
-  padding: 0 24px; background: var(--sup); border-bottom: 1px solid var(--borda);
+  padding: 0 24px; background: var(--topo-bg); color: var(--topo-txt); box-shadow: 0 1px 4px rgba(0, 0, 0, .15);
 }
-.topo-marca { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--texto); font-size: 16px; }
+.topo-marca { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--topo-txt); font-size: 16px; }
+.topo .logo { border-color: transparent; }
 .topo-nav { display: flex; gap: 4px; flex: 1; }
-.topo-nav a { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; color: var(--texto-2); font-weight: 500; }
-.topo-nav a:hover { background: var(--sup-2); color: var(--texto); }
-.topo-nav a.on { background: var(--brand-claro); color: var(--brand); }
+.topo-nav a { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; color: var(--topo-txt-2); font-weight: 500; }
+.topo-nav a:hover { background: rgba(255, 255, 255, .08); color: var(--topo-txt); }
+.topo-nav a.on { background: rgba(255, 255, 255, .15); color: #fff; font-weight: 600; }
 .topo-user { display: flex; align-items: center; gap: 10px; }
 .topo-nome { font-weight: 500; }
+.topo .avatar { background: rgba(255, 255, 255, .15); color: #fff; }
+.topo .btn-icon { color: var(--topo-txt-2); }
+.topo .btn-icon:hover { background: rgba(255, 255, 255, .08); color: var(--topo-txt); }
 .avatar { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--brand-claro); color: var(--brand); font-weight: 600; font-size: 13px; flex: none; }
 .avatar.sm { width: 32px; height: 32px; font-size: 12px; }
 

@@ -373,7 +373,7 @@ function demoRelatorio(d) {
     .g{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:16px 20px}
     .k{background:#fff;border-radius:8px;padding:14px;border:1px solid #e3e7ee}.k b{display:block;font-size:24px;margin-top:4px}
     .k span{font-size:12px;color:#5b6577}.c{flex:1;margin:0 20px 20px;background:#fff;border-radius:8px;border:1px solid #e3e7ee;display:flex;align-items:flex-end;gap:2%;padding:20px 20px 30px;position:relative}
-    .c i{flex:1;background:#2463c7;border-radius:3px 3px 0 0}.c p{position:absolute;top:10px;left:20px;margin:0;font-size:13px;color:#5b6577}
+    .c i{flex:1;background:#2d6a4f;border-radius:3px 3px 0 0}.c p{position:absolute;top:10px;left:20px;margin:0;font-size:13px;color:#5b6577}
   </style></head><body><header>${esc(d.titulo)} <small style="color:#8a93a3;font-weight:400">· relatório de demonstração</small></header>
   <div class="g">${["Receita", "Meta", "Realizado", "Variação"].map((k, i) => `<div class="k"><span>${k}</span><b>${["R$ 4,8 mi", "R$ 5,1 mi", "94%", "+6,2%"][i]}</b></div>`).join("")}</div>
   <div class="c"><p>Evolução mensal</p>${barras.map((b) => `<i style="height:${b}%"></i>`).join("")}</div>
