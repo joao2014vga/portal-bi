@@ -6,7 +6,14 @@ import {
 } from "./ui.js";
 
 const app = $("#app");
-const estado = { perfil: null, precisaSenha: ACAO_URL };
+const estado = { perfil: null, precisaSenha: ACAO_URL, sistemas: null };
+
+// Sistema integrado: "painel" cujo link fica no mesmo endereço do portal
+// (ex.: o Informativo). Abre dentro do portal usando o mesmo login e
+// aparece também no menu do topo.
+function ehSistema(d) {
+  try { return new URL(d.link).origin === location.origin; } catch { return false; }
+}
 
 document.title = CONFIG.NOME_PORTAL;
 
@@ -33,6 +40,7 @@ async function rota() {
     return telaLogin();
   }
   if (!estado.perfil) {
+    estado.sistemas = null;
     try { estado.perfil = await api.meuPerfil(); } catch (e) { estado.perfil = null; }
     if (!estado.perfil) { await api.sair(); return telaLogin("Perfil não encontrado. Fale com o administrador."); }
     if (!estado.perfil.ativo) { await api.sair(); return telaLogin("Seu acesso está desativado. Fale com o administrador."); }
@@ -175,11 +183,13 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}
   document.body.className = cheio ? "pg-app pg-cheio" : "pg-app";
   const p = estado.perfil;
   const banners = banner ? await bannersVigentes() : [];
+  estado.sistemas ??= (await api.dashboards()).filter((d) => d.ativo && ehSistema(d));
   app.innerHTML = `
   <header class="topo">
     <a class="topo-marca" href="#/">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></a>
     <nav class="topo-nav">
       <a href="#/" class="${ativo === "inicio" ? "on" : ""}">${icon("home")}<span>Início</span></a>
+      ${estado.sistemas.map((d) => `<a href="#/d/${d.id}" class="${ativo === `d${d.id}` ? "on" : ""}">${icon("grid")}<span>${esc(d.titulo)}</span></a>`).join("")}
       <a href="#/avisos" class="${ativo === "avisos" ? "on" : ""}">${icon("megaphone")}<span>Avisos</span></a>
       ${p.is_admin ? `<a href="#/admin" class="${ativo === "admin" ? "on" : ""}">${icon("settings")}<span>Administração</span></a>` : ""}
     </nav>
@@ -231,7 +241,7 @@ async function telaInicio() {
     .map((c) => ({ ...c, itens: visiveis.filter((d) => (d.categoria_id ?? null) === c.id) }))
     .filter((g) => g.itens.length);
 
-  const atrasados = visiveis.filter((d) => statusAtualizacao(d).cls === "atrasado").length;
+  const atrasados = visiveis.filter((d) => !ehSistema(d) && statusAtualizacao(d).cls === "atrasado").length;
 
   await shell(`
     <section class="ola">
@@ -278,16 +288,17 @@ async function telaInicio() {
 }
 
 function cardDashboard(d) {
-  const st = statusAtualizacao(d);
+  const sistema = ehSistema(d);
+  const st = sistema ? { cls: "neutro", texto: "Sistema integrado" } : statusAtualizacao(d);
   return `
   <a class="card-dash ${d.ativo ? "" : "inativo"}" href="#/d/${d.id}" data-busca="${esc((d.titulo + " " + (d.descricao ?? "")).toLowerCase())}">
     <div class="card-dash-topo">
-      <span class="card-ic">${icon("chart")}</span>
+      <span class="card-ic">${icon(sistema ? "grid" : "chart")}</span>
       ${d.nota ? `<span class="tag tag-${esc(d.nota_tipo)}" title="${esc(d.nota)}">${icon(NIVEL_ICON[d.nota_tipo])}${d.nota_tipo === "info" ? "Novidade" : "Atenção"}</span>` : ""}
     </div>
     <h3>${esc(d.titulo)}</h3>
     <p>${esc(d.descricao ?? "")}</p>
-    <div class="status status-${st.cls}">${icon("clock")}<span>${esc(st.texto)}</span></div>
+    <div class="status status-${st.cls}">${icon(sistema ? "grid" : "clock")}<span>${esc(st.texto)}</span></div>
   </a>`;
 }
 
@@ -325,14 +336,15 @@ async function telaDashboard(id) {
   }
   const st = statusAtualizacao(d);
   const demo = d.link.startsWith("demo:");
+  const sistema = ehSistema(d);
   await shell(`
     <div class="visor">
       <div class="visor-barra">
         <a class="btn-icon" href="#/" title="Voltar" aria-label="Voltar">${icon("back")}</a>
         <div class="visor-titulo">
           <h1>${esc(d.titulo)}</h1>
-          <div class="status status-${st.cls}">${icon("clock")}<span>${esc(st.texto)}</span>
-            ${d.atualizado_em ? `<span class="muted">· ${esc(dataHoraBR(d.atualizado_em))} · ${esc(FREQ_LABEL[d.frequencia])}</span>` : ""}</div>
+          ${sistema ? "" : `<div class="status status-${st.cls}">${icon("clock")}<span>${esc(st.texto)}</span>
+            ${d.atualizado_em ? `<span class="muted">· ${esc(dataHoraBR(d.atualizado_em))} · ${esc(FREQ_LABEL[d.frequencia])}</span>` : ""}</div>`}
         </div>
         <div class="visor-acoes">
           <button class="btn btn-ghost" id="telaCheia">${icon("expand")}<span>Tela cheia</span></button>
@@ -344,7 +356,7 @@ async function telaDashboard(id) {
         <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(d.link)}"`}
           allowfullscreen loading="eager"></iframe>
       </div>
-    </div>`, { banner: false, cheio: true });
+    </div>`, { banner: false, cheio: true, ativo: sistema ? `d${d.id}` : "" });
 
   $("#telaCheia").addEventListener("click", () => {
     const el = $("#frame");
@@ -391,7 +403,7 @@ async function telaAdmin(aba) {
   corpo.bind?.();
 }
 
-const recarregar = () => rota();
+const recarregar = () => { estado.sistemas = null; return rota(); };
 
 // ---------------------------------------------------------------- painéis
 async function adminDashboards() {
@@ -459,7 +471,8 @@ async function formDashboard(d, cats) {
       <label class="campo"><span>Ordem</span><input type="number" name="ordem" value="${esc(d.ordem)}"></label>
       <label class="campo col-2"><span>Link de incorporação do Power BI *</span>
         <input type="url" name="link" required placeholder="https://app.powerbi.com/view?r=…" value="${esc(d.link)}">
-        <small class="dica">No Power BI: Arquivo › Inserir relatório › Site ou portal (ou Publicar na Web).</small></label>
+        <small class="dica">No Power BI: Arquivo › Inserir relatório › Site ou portal (ou Publicar na Web).
+          Um link de ${esc(location.origin)} (ex.: o Informativo) vira sistema integrado: abre com o mesmo login e aparece no menu do topo.</small></label>
       <label class="campo col-2"><span>Descrição</span><textarea name="descricao" rows="2" maxlength="500">${esc(d.descricao ?? "")}</textarea></label>
 
       <fieldset class="col-2 grupo-campos"><legend>${icon("clock")} Status de atualização</legend>
