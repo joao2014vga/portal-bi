@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Brascof · Dashboard TV</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f2;color:#1a1a1a;min-height:100vh;padding:1.5rem 2rem}
+.wrap{max-width:1900px;margin:0 auto}
+.hdr{background:#2d4a3e;border-radius:12px;padding:1rem 1.5rem;display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem}
+.hdr h1{font-size:1.3rem;font-weight:600;color:#e8f0ec}
+.hdr .clock{font-size:1rem;color:#8aab97;font-family:monospace}
+.filtro-periodo{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.filtro-periodo label{font-size:.78rem;color:#8aab97}
+.filtro-periodo input[type=date]{padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font-size:.85rem}
+.filtro-periodo button{padding:5px 10px;border-radius:6px;border:1px solid #4a7a60;background:transparent;color:#8aab97;font-size:.78rem;cursor:pointer}
+.filtro-periodo button:hover{background:#1a2e24}
+.grid2{display:flex;flex-direction:column;gap:1.25rem}
+.card{background:#fff;border:1px solid #dde8e2;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.25rem}
+.card h2{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#4a7a60;margin-bottom:1rem}
+table{width:100%;border-collapse:collapse;font-size:.74rem}
+th{text-align:left;padding:.4rem .5rem;font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:#5a7a68;border-bottom:1px solid #dde8e2;background:#f5f9f6}
+td{padding:.4rem .5rem;border-bottom:1px solid #edf3ef;white-space:nowrap}
+tbody tr:hover{background:#fafcfb}
+.badge{padding:2px 9px;border-radius:20px;font-size:.68rem;font-weight:600;display:inline-block}
+.badge-c{background:#e3eef9;color:#1a4f82}
+.badge-v{background:#e3f4e3;color:#1a5c1a}
+.badge-esp-a{background:#fef3e2;color:#7a4f00}
+.badge-esp-c{background:#f0e8ff;color:#4a1a7a}
+.tot-bar{display:flex;justify-content:flex-end;gap:2rem;margin-top:.75rem;font-size:.85rem;color:#4a7a60}
+.tot-bar b{font-size:1.05rem}
+.empty{color:#8aab97;font-size:.85rem;padding:1rem 0;text-align:center}
+.ptax-tag{font-size:.72rem;color:#8aab97;margin-top:.5rem}
+.err{background:#fdecea;border:1px solid #f3c6c0;color:#922020;padding:.75rem 1rem;border-radius:10px;margin-bottom:1rem;font-size:.85rem}
+th.col-marca,td.col-marca{text-align:center}
+.chk-marca{width:16px;height:16px;cursor:pointer;accent-color:#2d4a3e}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>🫘 Brascof · Commercial Control</h1>
+    <div class="filtro-periodo">
+      <label for="filtroDe">Vencimento/Carga de</label>
+      <input type="date" id="filtroDe">
+      <label for="filtroAte">até</label>
+      <input type="date" id="filtroAte">
+      <button id="btnHoje">Hoje</button>
+      <button id="btnSemana">Esta semana</button>
+      <label style="margin-left:.5rem">Fornecedor:</label>
+      <input type="text" id="buscaFornecedor" placeholder="Buscar..." style="padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font-size:.85rem;width:140px">
+      <label style="display:flex;align-items:center;gap:4px;font-size:.75rem;color:#8aab97;cursor:pointer">
+        <input type="checkbox" id="chkFornecedorTodos">Ver tudo desse fornecedor
+      </label>
+      <label style="margin-left:.5rem">Corretor:</label>
+      <div style="position:relative;display:inline-block">
+        <button id="btnCorretorToggle" type="button" style="padding:5px 10px;border-radius:6px;border:1px solid #4a7a60;background:transparent;color:#8aab97;font-size:.78rem;cursor:pointer;min-width:120px;text-align:left">Todos ▾</button>
+        <div id="corretorDropdown" style="display:none;position:absolute;top:105%;left:0;background:#1a2e24;border:1px solid #4a7a60;border-radius:8px;padding:8px;z-index:50;max-height:260px;overflow-y:auto;min-width:220px;box-shadow:0 8px 20px rgba(0,0,0,.25)">
+          <div style="display:flex;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #2d4a3e">
+            <button id="btnCorretorTodos" type="button" style="font-size:.72rem;color:#8aab97;background:none;border:none;cursor:pointer;text-decoration:underline">Selecionar todos</button>
+            <button id="btnCorretorNenhum" type="button" style="font-size:.72rem;color:#8aab97;background:none;border:none;cursor:pointer;text-decoration:underline">Limpar</button>
+          </div>
+          <div id="corretorLista"></div>
+        </div>
+      </div>
+      <button id="btnSalvarImg" onclick="salvarImagem()">💾 Salvar imagem</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <div style="font-size:.78rem;color:#8aab97">Próxima atualização em <span id="proxAtt" style="font-family:monospace;font-weight:600">--:--</span></div>
+      <div class="clock" id="relogio"></div>
+    </div>
+  </div>
+  <div id="erroBox"></div>
+
+  <!-- Coffee Contracts (Vencimento) + Exportação (Prev Carga) -->
+  <div class="grid2">
+    <div class="card">
+      <h2>📄 Coffee Contracts — vencendo entre <span id="periodoLabel"></span></h2>
+      <div id="contratosTableWrap"><div class="empty">Carregando...</div></div>
+    </div>
+    <div class="card">
+      <h2>🚢 Exportação — previsão de carga entre <span id="periodoLabel2"></span></h2>
+      <div id="exportTableWrap"><div class="empty">Carregando...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────
+const SUPA_URL='https://cfrvnsnwdldnflowxqbs.supabase.co';
+const SUPA_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmcnZuc253ZGxkbmZsb3d4cWJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTUyOTgsImV4cCI6MjA5Mjg5MTI5OH0.E89BcKeiQtJHPFVU-IYTGgKee3ieV-LMZjCOzsWC2YQ'; // anon key do projeto cfrvnsnwdldnflowxqbs (não usada mais aqui, mantida caso volte a precisar)
+const TV_API_BASE='https://brascof-api.vercel.app'; // já publicado e testado
+const REFRESH_MINUTOS=180; // recarrega os dados sozinho a cada N minutos (180 = 3 horas)
+const HORA_REFRESH_EXTRA=18; // além do ciclo de 3 em 3 horas, força uma atualização extra todo dia nesse horário (hora cheia, 0-23)
+
+// ── util ────────────────────────────────────────────────────────────────
+const fmtR$=v=>'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtN=v=>Number(v||0).toLocaleString('pt-BR');
+const normEsp=v=>String(v||'ARABICA').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function hojeIso(){return new Date().toISOString().slice(0,10);}
+function fmtDataBr(iso){if(!iso)return'—';const[a,m,d]=iso.split('-');return `${d}/${m}/${a}`;}
+
+function periodoAtual(){
+  const de=document.getElementById('filtroDe').value||hojeIso();
+  const ate=document.getElementById('filtroAte').value||de;
+  return {de,ate};
+}
+function setarUrlPeriodo(de,ate){
+  const url=new URL(location.href);
+  url.searchParams.set('de',de);
+  url.searchParams.set('ate',ate);
+  history.replaceState(null,'',url);
+}
+function periodoDaUrl(){
+  const p=new URLSearchParams(location.search);
+  const de=p.get('de')||p.get('data')||hojeIso();
+  const ate=p.get('ate')||p.get('data')||de;
+  return {de,ate};
+}
+
+function atualizarRelogio(){
+  document.getElementById('relogio').textContent=new Date().toLocaleString('pt-BR');
+}
+setInterval(atualizarRelogio,1000);atualizarRelogio();
+
+// ── Coffee Contracts + Exportação (via endpoint agregador) ────────
+let contratosGlobais=[]; // guarda tudo que veio da API, pro filtro de corretor não precisar buscar de novo
+
+async function carregarTvDashboard(){
+  segundosRestantes=REFRESH_MINUTOS*60;
+  const {de,ate}=periodoAtual();
+  setarUrlPeriodo(de,ate);
+  const label=de===ate?fmtDataBr(de):`${fmtDataBr(de)} e ${fmtDataBr(ate)}`;
+  document.getElementById('periodoLabel').textContent=label;
+  document.getElementById('periodoLabel2').textContent=label;
+  try{
+    const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}`);
+    const json=await res.json();
+    if(!res.ok)throw new Error(json.error||'Erro ao buscar dados');
+    document.getElementById('erroBox').innerHTML=json.erros?.length
+      ?`<div class="err">Aviso: falha parcial ao consultar o Digisul (${json.erros.join(' · ')}). Os dados abaixo podem estar incompletos.</div>`
+      :'';
+    contratosGlobais=json.contratos;
+    popularFiltroCorretor();
+    aplicarFiltros();
+    renderExportacao(json.exportacoes,json.totais,json.ptax);
+  }catch(e){
+    document.getElementById('erroBox').innerHTML=`<div class="err">Erro ao carregar dados do Digisul: ${e.message}</div>`;
+    document.getElementById('contratosTableWrap').innerHTML='<div class="empty">—</div>';
+    document.getElementById('exportTableWrap').innerHTML='<div class="empty">—</div>';
+  }
+}
+
+function popularFiltroCorretor(){
+  const lista=document.getElementById('corretorLista');
+  const semCorretorQtd=contratosGlobais.filter(r=>!r.corretor).length;
+  const corretores=[...new Set(contratosGlobais.map(r=>r.corretor).filter(Boolean))].sort();
+  // mantém só as seleções que ainda existem na lista nova
+  corretoresSelecionados=new Set([...corretoresSelecionados].filter(c=>c==='__SEM__'||corretores.includes(c)));
+  const opcaoSemCorretor=semCorretorQtd?`
+      <label style="display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:.78rem;color:#8aab97;cursor:pointer;white-space:nowrap;font-style:italic;border-bottom:1px solid #2d4a3e;margin-bottom:4px;padding-bottom:6px">
+        <input type="checkbox" class="chk-corretor" value="__SEM__" ${corretoresSelecionados.has('__SEM__')?'checked':''}>
+        — Sem corretor — (${semCorretorQtd})
+      </label>`:'';
+  lista.innerHTML=opcaoSemCorretor+(corretores.length
+    ?corretores.map(c=>`
+      <label style="display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:.78rem;color:#e8f0ec;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" class="chk-corretor" value="${c}" ${corretoresSelecionados.has(c)?'checked':''}>
+        ${c}
+      </label>`).join('')
+    :(semCorretorQtd?'':'<div style="font-size:.75rem;color:#8aab97;padding:4px 2px">Nenhum corretor nesse período</div>'));
+  lista.querySelectorAll('.chk-corretor').forEach(chk=>{
+    chk.addEventListener('change',()=>{
+      if(chk.checked)corretoresSelecionados.add(chk.value);
+      else corretoresSelecionados.delete(chk.value);
+      atualizarLabelCorretor();
+      aplicarFiltros();
+    });
+  });
+  atualizarLabelCorretor();
+}
+
+// ── Marcações manuais por contrato (Posto / Programado) ──────────────────
+// Guardadas no localStorage do próprio navegador/TV — não vêm do Digisul nem
+// são compartilhadas entre telas diferentes; cada TV/navegador mantém as suas.
+const MARCAS_KEY='brascof_marcas_contratos';
+function carregarMarcas(){
+  try{return JSON.parse(localStorage.getItem(MARCAS_KEY)||'{}');}
+  catch(e){return {};}
+}
+function estaMarcado(contrato,campo){
+  const marcas=carregarMarcas();
+  return !!(marcas[contrato]&&marcas[contrato][campo]);
+}
+function marcarContrato(contrato,campo,valor){
+  try{
+    const marcas=carregarMarcas();
+    if(!marcas[contrato])marcas[contrato]={};
+    marcas[contrato][campo]=valor;
+    localStorage.setItem(MARCAS_KEY,JSON.stringify(marcas));
+  }catch(e){
+    console.warn('Não foi possível salvar a marcação (localStorage indisponível):',e);
+  }
+}
+function ligarCheckboxesMarcas(wrap){
+  wrap.querySelectorAll('.chk-marca').forEach(chk=>{
+    chk.addEventListener('change',()=>{
+      marcarContrato(chk.dataset.contrato,chk.dataset.campo,chk.checked);
+    });
+  });
+}
+
+function atualizarLabelCorretor(){
+  const btn=document.getElementById('btnCorretorToggle');
+  const n=corretoresSelecionados.size;
+  const nome=n===1?([...corretoresSelecionados][0]==='__SEM__'?'Sem corretor':[...corretoresSelecionados][0]):null;
+  btn.textContent=(n===0?'Todos':nome||`${n} selecionados`)+' ▾';
+}
+
+function aplicarFiltros(){
+  // Se "ver tudo desse fornecedor" estiver marcado e tiver texto, busca direto na
+  // API ignorando o período — não dá pra fazer isso só com o que já temos em mãos,
+  // porque contratosGlobais só tem o período atualmente selecionado.
+  if(document.getElementById('chkFornecedorTodos').checked && document.getElementById('buscaFornecedor').value.trim()){
+    buscarFornecedorTodosPeriodos();
+    return;
+  }
+  const busca=document.getElementById('buscaFornecedor').value.trim().toUpperCase();
+  let filtrados=corretoresSelecionados.size
+    ?contratosGlobais.filter(r=>corretoresSelecionados.has(r.corretor||'__SEM__'))
+    :contratosGlobais;
+  if(busca)filtrados=filtrados.filter(r=>(r.fornecedor||'').toUpperCase().includes(busca));
+  const totaisFiltrados={
+    contratosCompra:filtrados.filter(c=>c.tipo==='PURCHASE').reduce((a,c)=>a+(c.total||0),0),
+    contratosVenda:filtrados.filter(c=>c.tipo==='SALE').reduce((a,c)=>a+(c.total||0),0),
+  };
+  document.getElementById('periodoLabel').textContent=fmtDataBr(periodoAtual().de)+' e '+fmtDataBr(periodoAtual().ate);
+  renderContratos(filtrados,totaisFiltrados);
+}
+
+let buscaFornecedorTimeout=null;
+async function buscarFornecedorTodosPeriodos(){
+  clearTimeout(buscaFornecedorTimeout);
+  buscaFornecedorTimeout=setTimeout(async ()=>{
+    const busca=document.getElementById('buscaFornecedor').value.trim();
+    if(!busca)return;
+    const {de,ate}=periodoAtual();
+    document.getElementById('contratosTableWrap').innerHTML='<div class="empty">Buscando todos os contratos de "'+busca+'"...</div>';
+    document.getElementById('periodoLabel').textContent='todos os períodos ("'+busca+'")';
+    try{
+      const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}&fornecedor=${encodeURIComponent(busca)}`);
+      const json=await res.json();
+      if(!res.ok)throw new Error(json.error||'Erro ao buscar dados');
+      const totais={
+        contratosCompra:json.contratos.filter(c=>c.tipo==='PURCHASE').reduce((a,c)=>a+(c.total||0),0),
+        contratosVenda:json.contratos.filter(c=>c.tipo==='SALE').reduce((a,c)=>a+(c.total||0),0),
+      };
+      renderContratos(json.contratos,totais);
+    }catch(e){
+      document.getElementById('contratosTableWrap').innerHTML=`<div class="empty">Erro: ${e.message}</div>`;
+    }
+  },500); // pequena pausa pra não disparar uma busca a cada letra digitada
+}
+document.getElementById('chkFornecedorTodos').addEventListener('change',aplicarFiltros);
+document.getElementById('buscaFornecedor').addEventListener('input',aplicarFiltros);
+
+let corretoresSelecionados=new Set(); // vazio = Todos
+document.getElementById('btnCorretorToggle').addEventListener('click',(e)=>{
+  e.stopPropagation();
+  const dd=document.getElementById('corretorDropdown');
+  dd.style.display=dd.style.display==='none'?'block':'none';
+});
+document.addEventListener('click',(e)=>{
+  const dd=document.getElementById('corretorDropdown');
+  if(!dd.contains(e.target)&&e.target.id!=='btnCorretorToggle')dd.style.display='none';
+});
+document.getElementById('btnCorretorTodos').addEventListener('click',()=>{
+  corretoresSelecionados=new Set(contratosGlobais.map(r=>r.corretor||'__SEM__'));
+  popularFiltroCorretor();
+  aplicarFiltros();
+});
+document.getElementById('btnCorretorNenhum').addEventListener('click',()=>{
+  corretoresSelecionados=new Set();
+  popularFiltroCorretor();
+  aplicarFiltros();
+});
+
+function renderContratos(rows,totais){
+  const wrap=document.getElementById('contratosTableWrap');
+  if(!rows.length){wrap.innerHTML='<div class="empty">Nenhum contrato vencendo nesse período.</div>';return;}
+  wrap.innerHTML=`<table><thead><tr><th>Vencimento</th><th>Contrato</th><th>Filial</th><th>Fornecedor</th><th>Tipo</th><th>Quality</th><th>Espécie</th><th>Sacas</th><th>Valor/Bag</th><th>Total</th><th class="col-marca">Posto</th><th class="col-marca">Programado</th></tr></thead>
+    <tbody>${rows.map(r=>{
+      // só mostra a linha de Pago/Falta quando os dois valores existem de fato
+      // (evita mostrar "R$ 0,00" pra tudo quando o campo não veio no registro)
+      const temPagoEFalta=r.pago!=null&&r.aPagar!=null;
+      return `<tr>
+      <td>${fmtDataBr(r.vencimento)}</td>
+      <td><b>${r.contrato}</b></td>
+      <td>${r.filial||'—'}</td>
+      <td>${r.fornecedor||'—'}</td>
+      <td><span class="badge ${r.tipo==='PURCHASE'?'badge-c':'badge-v'}">${r.tipo}</span></td>
+      <td>${r.quality||'—'}</td>
+      <td><span class="badge ${normEsp(r.especie)==='CONILON'?'badge-esp-c':'badge-esp-a'}">${r.especie||'ARÁBICA'}</span></td>
+      <td>${fmtN(r.sacas)}</td>
+      <td>${fmtR$(r.valorBag)}</td>
+      <td>${fmtR$(r.total)}${temPagoEFalta?`<br><span style="font-size:.68rem;color:#8aab97">Pago: ${fmtR$(r.pago)} · Falta: ${fmtR$(r.aPagar)}</span>`:''}</td>
+      <td class="col-marca"><input type="checkbox" class="chk-marca" data-contrato="${r.contrato}" data-campo="posto" ${estaMarcado(r.contrato,'posto')?'checked':''}></td>
+      <td class="col-marca"><input type="checkbox" class="chk-marca" data-contrato="${r.contrato}" data-campo="programado" ${estaMarcado(r.contrato,'programado')?'checked':''}></td>
+    </tr>`;
+    }).join('')}</tbody></table>
+    <div class="tot-bar">
+      <div>Total compra: <b style="color:#922020">${fmtR$(totais.contratosCompra)}</b></div>
+      <div>Total venda: <b style="color:#1e5c1e">${fmtR$(totais.contratosVenda)}</b></div>
+    </div>`;
+  ligarCheckboxesMarcas(wrap);
+}
+
+function renderExportacao(rows,totais,ptax){
+  const wrap=document.getElementById('exportTableWrap');
+  if(!rows.length){wrap.innerHTML='<div class="empty">Nenhuma exportação prevista nesse período.</div>';return;}
+  wrap.innerHTML=`<table><thead><tr><th>Prev. Carga</th><th>Contrato</th><th>Importador</th><th>Sacas</th><th>BL</th><th>Data BL</th><th>Total (US$)</th><th>Total (R$)</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      <td>${fmtDataBr(r.prevCarga)}</td>
+      <td><b>${r.contrato}</b></td>
+      <td>${r.importador||'—'}</td>
+      <td>${fmtN(r.sacas)}</td>
+      <td>${r.bl||'—'}</td>
+      <td>${fmtDataBr(r.dataBl)}</td>
+      <td>US$ ${fmtN(r.totalDolar.toFixed(2))}</td>
+      <td>${fmtR$(r.totalReais)}</td>
+    </tr>`).join('')}</tbody></table>
+    <div class="tot-bar">
+      <div>Total US$: <b>${fmtN(totais.exportacaoDolar.toFixed(2))}</b></div>
+      <div>Total R$: <b style="color:#1e5c1e">${fmtR$(totais.exportacaoReais)}</b></div>
+    </div>
+    <div class="ptax-tag">PTAX compra D-1 (${ptax.data}): ${ptax.compra}</div>`;
+}
+
+async function salvarImagem(){
+  const btn=document.getElementById('btnSalvarImg');
+  const filtro=document.querySelector('.filtro-periodo');
+  const relogioBox=filtro.nextElementSibling;
+  btn.disabled=true;btn.textContent='Gerando...';
+  // Esconde os controles interativos (não fazem sentido numa imagem estática)
+  filtro.style.visibility='hidden';
+  relogioBox.style.visibility='hidden';
+  try{
+    const {de,ate}=periodoAtual();
+    const canvas=await html2canvas(document.querySelector('.wrap'),{
+      scale:1.3,useCORS:true,backgroundColor:'#f0f4f2',logging:false,windowWidth:1900
+    });
+    const link=document.createElement('a');
+    const sufixo=de===ate?de:`${de}_a_${ate}`;
+    link.download='Brascof_TV_'+sufixo.replace(/-/g,'')+'.png';
+    link.href=canvas.toDataURL('image/png');
+    link.click();
+  }catch(e){
+    alert('Erro ao gerar imagem: '+e.message);
+  }finally{
+    filtro.style.visibility='';
+    relogioBox.style.visibility='';
+    btn.disabled=false;btn.textContent='💾 Salvar imagem';
+  }
+}
+
+// ── boot + auto-refresh ─────────────────────────────────────────────────
+const periodoInicial=periodoDaUrl();
+document.getElementById('filtroDe').value=periodoInicial.de;
+document.getElementById('filtroAte').value=periodoInicial.ate;
+document.getElementById('filtroDe').addEventListener('change',carregarTvDashboard);
+document.getElementById('filtroAte').addEventListener('change',carregarTvDashboard);
+document.getElementById('btnHoje').addEventListener('click',()=>{
+  document.getElementById('filtroDe').value=hojeIso();
+  document.getElementById('filtroAte').value=hojeIso();
+  carregarTvDashboard();
+});
+document.getElementById('btnSemana').addEventListener('click',()=>{
+  const de=new Date();
+  const ate=new Date();ate.setDate(ate.getDate()+6);
+  document.getElementById('filtroDe').value=de.toISOString().slice(0,10);
+  document.getElementById('filtroAte').value=ate.toISOString().slice(0,10);
+  carregarTvDashboard();
+});
+
+async function carregarTudo(){
+  await carregarTvDashboard();
+  segundosRestantes=REFRESH_MINUTOS*60;
+}
+let segundosRestantes=REFRESH_MINUTOS*60;
+function atualizarContador(){
+  const el=document.getElementById('proxAtt');
+  if(!el)return;
+  const h=Math.floor(segundosRestantes/3600),m=Math.floor((segundosRestantes%3600)/60),s=segundosRestantes%60;
+  el.textContent=h>0
+    ?`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+    :`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  segundosRestantes=segundosRestantes>0?segundosRestantes-1:0;
+}
+setInterval(atualizarContador,1000);atualizarContador();
+
+carregarTudo();
+setInterval(carregarTudo,REFRESH_MINUTOS*60*1000);
+
+// ── atualização extra garantida às HORA_REFRESH_EXTRA (ex: 18h) ──────────
+// Independente de onde o ciclo de 3 em 3 horas estiver, essa checagem roda
+// a cada 30s e força um refresh assim que o relógio bater a hora configurada,
+// uma única vez por dia (guarda a data do último disparo pra não repetir).
+let ultimoRefrescoExtra=null;
+function checarRefrescoExtra(){
+  const agora=new Date();
+  if(agora.getHours()===HORA_REFRESH_EXTRA && agora.getMinutes()===0 && ultimoRefrescoExtra!==hojeIso()){
+    ultimoRefrescoExtra=hojeIso();
+    carregarTudo();
+  }
+}
+setInterval(checarRefrescoExtra,30000);
+</script>
+</body>
+</html>
