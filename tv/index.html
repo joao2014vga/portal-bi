@@ -8,7 +8,7 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f2;color:#1a1a1a;min-height:100vh;padding:1.5rem 2rem}
-.wrap{max-width:1900px;margin:0 auto}
+.wrap{width:100%}
 .hdr{background:#2d4a3e;border-radius:12px;padding:1rem 1.5rem;display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem}
 .hdr h1{font-size:1.3rem;font-weight:600;color:#e8f0ec}
 .hdr .clock{font-size:1rem;color:#8aab97;font-family:monospace}
@@ -99,7 +99,9 @@ const HORA_REFRESH_EXTRA=18; // além do ciclo de 3 em 3 horas, força uma atual
 const fmtR$=v=>'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtN=v=>Number(v||0).toLocaleString('pt-BR');
 const normEsp=v=>String(v||'ARABICA').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-function hojeIso(){return new Date().toISOString().slice(0,10);}
+// data local (Brasil); toISOString() usa UTC e virava o dia seguinte depois das 21h
+function isoLocal(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+function hojeIso(){return isoLocal(new Date());}
 function fmtDataBr(iso){if(!iso)return'—';const[a,m,d]=iso.split('-');return `${d}/${m}/${a}`;}
 
 function periodoAtual(){
@@ -379,8 +381,8 @@ document.getElementById('btnHoje').addEventListener('click',()=>{
 document.getElementById('btnSemana').addEventListener('click',()=>{
   const de=new Date();
   const ate=new Date();ate.setDate(ate.getDate()+6);
-  document.getElementById('filtroDe').value=de.toISOString().slice(0,10);
-  document.getElementById('filtroAte').value=ate.toISOString().slice(0,10);
+  document.getElementById('filtroDe').value=isoLocal(de);
+  document.getElementById('filtroAte').value=isoLocal(ate);
   carregarTvDashboard();
 });
 
