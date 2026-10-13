@@ -75,13 +75,11 @@ function telaLogin(msg) {
     <section class="login-arte" aria-hidden="true">
       <div class="login-marca">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></div>
       <div class="login-frase">
-        <h1>Todos os painéis da ${esc(CONFIG.NOME_EMPRESA)} em um só lugar.</h1>
-        <p>Indicadores, avisos e status de atualização para decidir com dados confiáveis.</p>
+        <span class="login-eyebrow">${esc(CONFIG.NOME_EMPRESA)} · Business Intelligence</span>
+        <h1>Corporate Reporting Portal</h1>
+        <p>Centralized access to management reports, key performance indicators and corporate communications.</p>
       </div>
-      <svg class="login-graf" viewBox="0 0 400 160" preserveAspectRatio="none">
-        <path d="M0 140 L50 120 L100 128 L150 90 L200 100 L250 60 L300 72 L350 30 L400 40" />
-        <g>${[30, 55, 45, 75, 65, 95, 85, 120].map((v, i) => `<rect x="${i * 50 + 12}" y="${160 - v}" width="26" height="${v}" rx="3"/>`).join("")}</g>
-      </svg>
+      <p class="login-rodape">© ${new Date().getFullYear()} ${esc(CONFIG.NOME_EMPRESA)}. Restricted access — authorized personnel only.</p>
     </section>
 
     <section class="login-form-wrap">
