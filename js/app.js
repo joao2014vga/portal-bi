@@ -15,6 +15,14 @@ function ehSistema(d) {
   try { return new URL(d.link).origin === location.origin; } catch { return false; }
 }
 
+// Sempre carrega a versão mais recente do sistema integrado (o GitHub Pages
+// guarda a página em cache por alguns minutos e o Ctrl+F5 não alcança o iframe)
+function semCache(link) {
+  const u = new URL(link);
+  u.searchParams.set("v", Date.now());
+  return u.href;
+}
+
 document.title = CONFIG.NOME_PORTAL;
 
 // =====================================================================
@@ -353,7 +361,7 @@ async function telaDashboard(id) {
       </div>
       ${d.nota ? `<div class="nota nota-${esc(d.nota_tipo)}">${icon(NIVEL_ICON[d.nota_tipo])}<span>${esc(d.nota)}</span></div>` : ""}
       <div class="visor-frame" id="frame">
-        <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(d.link)}"`}
+        <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(sistema ? semCache(d.link) : d.link)}"`}
           allowfullscreen loading="eager"></iframe>
       </div>
     </div>`, { banner: false, cheio: true, ativo: sistema ? `d${d.id}` : "" });
