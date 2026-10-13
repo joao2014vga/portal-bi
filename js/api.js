@@ -72,7 +72,8 @@ async function criarApiSupabase() {
     async recuperarSenha(email) {
       check(await sb.auth.resetPasswordForEmail(email, { redirectTo: REDIRECT_URL }));
     },
-    async definirSenha(senha) { check(await sb.auth.updateUser({ password: senha })); },
+    // grava a nova senha e encerra a troca obrigatória (senha provisória)
+    async definirSenha(senha) { check(await sb.auth.updateUser({ password: senha, data: { trocar_senha: false } })); },
     async meuPerfil() {
       const { data: { user } } = await sb.auth.getUser();
       if (!user) return null;
@@ -120,14 +121,14 @@ async function criarApiSupabase() {
       const perfis = check(await sb.from("bi_perfis").select("*").order("nome"));
       let status = {};
       try { status = (await edge("status")).status ?? {}; } catch { /* função não publicada */ }
-      return perfis.map((p) => ({ ...p, ...(status[p.id] ?? { confirmado: null, ultimo_acesso: null }) }));
+      return perfis.map((p) => ({ ...p, ...(status[p.id] ?? { confirmado: null, trocar_senha: null, ultimo_acesso: null }) }));
     },
-    async convidarUsuario(u) { return edge("convidar", u); },
+    async criarUsuario(u) { return edge("criar", u); },
     async salvarUsuario({ id, nome, is_admin, ativo }, dashboards) {
       check(await sb.from("bi_perfis").update({ nome, is_admin, ativo }).eq("id", id));
       if (dashboards) await sincronizar("bi_acessos", "user_id", id, "dashboard_id", dashboards);
     },
-    async reenviarConvite(id) { return edge("reenviar", { user_id: id }); },
+    async redefinirSenha(id, senha) { return edge("redefinir", { user_id: id, senha }); },
     async excluirUsuario(id) { return edge("excluir", { user_id: id }); },
 
     // ----------------------------------------------------------- avisos

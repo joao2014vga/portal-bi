@@ -57,20 +57,23 @@ export function criarDemo() {
     demo: true,
     reset() { db = seed(); salvar(); },
 
-    async sessao() { return db.sessao ? { user: { id: db.sessao } } : null; },
+    async sessao() { return db.sessao ? { user: { id: db.sessao, user_metadata: { trocar_senha: !!eu()?.trocar_senha } } } : null; },
     onAuth(cb) { ouvintes.push(cb); },
     async entrar(email, senha) {
       await espera();
       const u = db.usuarios.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
-      if (!u || u.senha !== senha) throw new Error("E-mail ou senha incorretos.");
-      if (!u.ativo) throw new Error("Usuário inativo. Fale com o administrador.");
-      if (!u.confirmado) throw new Error("Seu convite ainda não foi aceito. Verifique seu e-mail.");
+      if (!u || u.senha !== senha) throw new Error("Incorrect e-mail or password.");
+      if (!u.ativo) throw new Error("Inactive user. Please contact the administrator.");
       db.sessao = u.id; u.ultimo_acesso = new Date().toISOString(); salvar();
       ouvintes.forEach((cb) => cb("SIGNED_IN"));
     },
     async sair() { db.sessao = null; salvar(); ouvintes.forEach((cb) => cb("SIGNED_OUT")); },
     async recuperarSenha() { await espera(); },
-    async definirSenha(senha) { if (senha.length < 8) throw new Error("A senha deve ter pelo menos 8 caracteres."); eu().senha = senha; salvar(); },
+    async definirSenha(senha) {
+      if (senha.length < 8) throw new Error("The password must be at least 8 characters long.");
+      if (senha === eu().senha) throw new Error("The new password must be different from the previous one.");
+      Object.assign(eu(), { senha, trocar_senha: false }); salvar();
+    },
     async meuPerfil() { const u = eu(); return u ? semSenha(u) : null; },
 
     async categorias() { return structuredClone(db.categorias).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome)); },
@@ -118,13 +121,15 @@ export function criarDemo() {
     async contagemAcessos() { return db.acessos.map(([u, d]) => ({ user_id: u, dashboard_id: d })); },
 
     async usuarios() { exigeAdmin(); return db.usuarios.map(semSenha).sort((a, b) => a.nome.localeCompare(b.nome)); },
-    async convidarUsuario({ nome, email, is_admin, dashboards }) {
+    async criarUsuario({ nome, email, senha, is_admin, dashboards }) {
       exigeAdmin(); await espera();
-      if (db.usuarios.some((u) => u.email.toLowerCase() === email.toLowerCase())) throw new Error("Este e-mail já está cadastrado");
+      if (db.usuarios.some((u) => u.email.toLowerCase() === email.toLowerCase())) throw new Error("This e-mail already has access to the portal");
+      if ((senha ?? "").length < 8) throw new Error("The temporary password must be at least 8 characters long");
       const id = "u" + novoId();
-      db.usuarios.push({ id, nome, email, senha: "demo1234", is_admin: !!is_admin, ativo: true, confirmado: false, ultimo_acesso: null, created_at: new Date().toISOString() });
+      db.usuarios.push({ id, nome, email, senha, is_admin: !!is_admin, ativo: true, confirmado: true, trocar_senha: true, ultimo_acesso: null, created_at: new Date().toISOString() });
       db.acessos.push(...(dashboards ?? []).map((d) => [id, d]));
       salvar();
+      return { ok: true, id, ja_tinha_login: false };
     },
     async salvarUsuario({ id, nome, is_admin, ativo }, dashboards) {
       exigeAdmin();
@@ -132,14 +137,15 @@ export function criarDemo() {
       if (dashboards) db.acessos = db.acessos.filter(([u]) => u !== id).concat(dashboards.map((d) => [id, d]));
       salvar();
     },
-    async reenviarConvite(id) {
+    async redefinirSenha(id, senha) {
       exigeAdmin(); await espera();
-      const u = db.usuarios.find((x) => x.id === id);
-      return { ok: true, tipo: u.confirmado ? "senha" : "convite" };
+      if ((senha ?? "").length < 8) throw new Error("The temporary password must be at least 8 characters long");
+      Object.assign(db.usuarios.find((x) => x.id === id), { senha, trocar_senha: true }); salvar();
+      return { ok: true };
     },
     async excluirUsuario(id) {
       exigeAdmin();
-      if (id === db.sessao) throw new Error("Você não pode excluir o próprio usuário");
+      if (id === db.sessao) throw new Error("You cannot delete your own user");
       db.usuarios = db.usuarios.filter((u) => u.id !== id);
       db.acessos = db.acessos.filter(([u]) => u !== id);
       salvar();

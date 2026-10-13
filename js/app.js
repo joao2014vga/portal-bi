@@ -25,7 +25,7 @@ async function iniciar() {
 
   api.onAuth(async (evt) => {
     if (evt === "PASSWORD_RECOVERY") { estado.precisaSenha = "recovery"; rota(); }
-    if (evt === "SIGNED_OUT") { estado.perfil = null; rota(); }
+    if (evt === "SIGNED_OUT") { estado.perfil = null; estado.precisaSenha = null; rota(); }
   });
 
   if (ERRO_URL) toast(ERRO_URL.includes("expired") ? "This link has expired. Please request a new one from the administrator." : ERRO_URL, "erro");
@@ -45,6 +45,8 @@ async function rota() {
     if (!estado.perfil) { await api.sair(); return telaLogin("Profile not found. Please contact the administrator."); }
     if (!estado.perfil.ativo) { await api.sair(); return telaLogin("Your access has been deactivated. Please contact the administrator."); }
   }
+  // senha provisória definida pelo administrador: troca obrigatória antes de usar o portal
+  if (!estado.precisaSenha && sessao.user?.user_metadata?.trocar_senha) estado.precisaSenha = "provisoria";
   if (estado.precisaSenha) return telaDefinirSenha();
 
   const partes = location.hash.slice(2).split("/").filter(Boolean);
@@ -122,16 +124,11 @@ function telaLogin(msg) {
   });
 
   $("#esqueci").addEventListener("click", () => {
+    // sem envio de e-mail: o administrador define uma senha provisória
     modal({
-      titulo: "Reset password",
-      botao: "Send link",
-      corpo: `<p class="muted">We will send you a link to create a new password.</p>
-        <label class="campo"><span>E-mail</span><input type="email" name="email" required value="${esc(f.email.value)}"></label>`,
-      onSubmit: async (m) => {
-        if (!m.email.value) throw new Error("Please enter your e-mail.");
-        await api.recuperarSenha(m.email.value.trim());
-        toast("If this e-mail is registered, you will receive the link shortly.");
-      },
+      titulo: "Forgot your password?",
+      corpo: `<p>Please contact the portal administrator. They will set a temporary password for you,
+        which you will be asked to change at your next sign-in.</p>`,
     });
   });
 }
@@ -139,13 +136,16 @@ function telaLogin(msg) {
 function telaDefinirSenha() {
   document.body.className = "pg-login";
   const convite = estado.precisaSenha === "invite";
+  const provisoria = estado.precisaSenha === "provisoria";
+  const nome = esc(estado.perfil.nome.split(" ")[0]);
   app.innerHTML = `
   <main class="login login-simples">
     <section class="login-form-wrap">
       <form class="login-form" id="fSenha" novalidate>
         <div class="login-marca">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></div>
-        <h2>${convite ? `Welcome, ${esc(estado.perfil.nome.split(" ")[0])}` : "Create a new password"}</h2>
-        <p class="muted">${convite ? "Set your password to access the portal." : "Choose a new password for your account."}</p>
+        <h2>${convite || provisoria ? `Welcome, ${nome}` : "Create a new password"}</h2>
+        <p class="muted">${provisoria ? "For security reasons, please replace your temporary password with a personal one before continuing."
+          : convite ? "Set your password to access the portal." : "Choose a new password for your account."}</p>
         <label class="campo"><span>New password</span>
           <input type="password" name="s1" autocomplete="new-password" minlength="8" required></label>
         <label class="campo"><span>Confirm password</span>
@@ -153,10 +153,12 @@ function telaDefinirSenha() {
         <p class="dica">Minimum of 8 characters.</p>
         <p class="form-erro" aria-live="polite"></p>
         <button class="btn btn-primary btn-bloco" type="submit">Save password</button>
+        ${provisoria ? `<button class="link" type="button" id="sairSenha">Sign out</button>` : ""}
       </form>
     </section>
   </main>`;
   const f = $("#fSenha");
+  $("#sairSenha")?.addEventListener("click", async () => { await api.sair(); estado.perfil = null; estado.precisaSenha = null; location.hash = "#/"; rota(); });
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
     const erro = $(".form-erro", f);
@@ -577,6 +579,7 @@ async function adminUsuarios() {
   const [usuarios, dashs, cats, acessos] = await Promise.all([api.usuarios(), api.dashboards(), api.categorias(), api.contagemAcessos()]);
   const qtd = (uid) => acessos.filter((a) => a.user_id === uid).length;
   const situacao = (u) => !u.ativo ? `<span class="pill">Inactive</span>`
+    : u.trocar_senha ? `<span class="pill pill-alerta">Password change pending</span>`
     : u.confirmado === false ? `<span class="pill pill-alerta">Invitation pending</span>`
     : `<span class="pill pill-ok">Active</span>`;
 
@@ -584,7 +587,7 @@ async function adminUsuarios() {
     html: `
     <div class="barra-acoes">
       <label class="busca">${icon("search")}<input type="search" id="filtro" placeholder="Filter users…"></label>
-      <button class="btn btn-primary" id="novo">${icon("plus")} Invite user</button>
+      <button class="btn btn-primary" id="novo">${icon("plus")} New user</button>
     </div>
     <div class="tabela-wrap"><table class="tabela">
       <thead><tr><th>User</th><th>Role</th><th>Reports</th><th>Last access</th><th>Status</th><th></th></tr></thead>
@@ -596,7 +599,7 @@ async function adminUsuarios() {
           <td>${u.ultimo_acesso ? esc(tempoRelativo(u.ultimo_acesso)) : `<span class="muted">Never</span>`}</td>
           <td>${situacao(u)}</td>
           <td class="acoes">
-            <button class="btn-icon" data-reenviar="${u.id}" title="${u.confirmado === false ? "Resend invitation" : "Send password reset link"}" aria-label="Resend e-mail">${icon("mail")}</button>
+            <button class="btn-icon" data-senha="${u.id}" title="Set temporary password" aria-label="Set temporary password">${icon("key")}</button>
             <button class="btn-icon" data-editar="${u.id}" title="Edit" aria-label="Edit">${icon("edit")}</button>
             ${u.id !== estado.perfil.id ? `<button class="btn-icon perigo" data-excluir="${u.id}" title="Delete" aria-label="Delete">${icon("trash")}</button>` : `<span class="btn-icon-vazio"></span>`}
           </td></tr>`).join("")}
@@ -605,12 +608,24 @@ async function adminUsuarios() {
       filtroTabela();
       $("#novo").addEventListener("click", () => formUsuario(null, dashs, cats));
       $$("[data-editar]").forEach((b) => b.addEventListener("click", () => formUsuario(usuarios.find((u) => u.id === b.dataset.editar), dashs, cats)));
-      $$("[data-reenviar]").forEach((b) => b.addEventListener("click", async () => {
-        b.disabled = true;
-        try {
-          const r = await api.reenviarConvite(b.dataset.reenviar);
-          toast(r?.tipo === "senha" ? "Password reset link sent." : "Invitation resent.");
-        } catch (e) { toast(e.message, "erro"); } finally { b.disabled = false; }
+      $$("[data-senha]").forEach((b) => b.addEventListener("click", () => {
+        const u = usuarios.find((x) => x.id === b.dataset.senha);
+        modal({
+          titulo: "Set temporary password",
+          botao: "Save password",
+          corpo: `<p class="muted">Define a temporary password for <strong>${esc(u.nome || u.email)}</strong>.
+            They will be required to change it at their next sign-in.</p>
+            ${campoSenhaProvisoria()}
+            <p class="dica">${icon("alert")} If this user also signs in to other systems with the same account (e.g. the Daily Report), the new password applies there too.</p>`,
+          onOpen: bindSenhaProvisoria,
+          async onSubmit(f) {
+            const senha = f.senha.value;
+            if (senha.length < 8) throw new Error("The temporary password must be at least 8 characters long.");
+            await api.redefinirSenha(u.id, senha);
+            toast(`Temporary password set for ${u.email}. Share it with the user.`);
+            recarregar();
+          },
+        });
       }));
       $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {
         const u = usuarios.find((x) => x.id === b.dataset.excluir);
@@ -629,8 +644,8 @@ async function formUsuario(u, dashs, cats) {
     dashs.filter((d) => (d.categoria_id ?? null) === c.id).map((d) => ({ v: d.id, t: d.titulo, s: c.nome, on: liberados.includes(d.id) })));
 
   modal({
-    titulo: novo ? "Invite user" : "Edit user",
-    botao: novo ? "Send invitation" : "Save",
+    titulo: novo ? "New user" : "Edit user",
+    botao: novo ? "Create user" : "Save",
     largura: "modal-lg",
     corpo: `
     <div class="form-grid">
@@ -638,7 +653,9 @@ async function formUsuario(u, dashs, cats) {
       <label class="campo"><span>E-mail *</span><input type="email" name="email" required value="${esc(u?.email ?? "")}" ${novo ? "" : "disabled"}></label>
       <label class="switch"><input type="checkbox" name="is_admin" ${u?.is_admin ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Administrator</label>
       ${novo ? "" : `<label class="switch"><input type="checkbox" name="ativo" ${u.ativo ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Access active</label>`}
-      ${novo ? `<p class="dica col-2">${icon("mail")} The user will receive an e-mail to set their own password.</p>` : ""}
+      ${novo ? `<div class="col-2">${campoSenhaProvisoria()}
+        <p class="dica">${icon("key")} No e-mail is sent: share this password with the user. They will be required to change it at first sign-in.
+          If the e-mail already has an account (e.g. the Daily Report), access is granted and they keep their current password.</p></div>` : ""}
       <fieldset class="col-2 grupo-campos" id="gDash"><legend>${icon("chart")} Report access</legend>
         <p class="dica adm-dica">Administrators see all reports.</p>
         ${checklist("dashs", opcoes, "No reports registered.")}
@@ -646,6 +663,7 @@ async function formUsuario(u, dashs, cats) {
     </div>`,
     onOpen(f) {
       bindChecklist(f);
+      if (novo) bindSenhaProvisoria(f);
       const sync = () => $("#gDash", f).classList.toggle("desabilitado", f.is_admin.checked);
       f.is_admin.addEventListener("change", sync); sync();
     },
@@ -656,10 +674,12 @@ async function formUsuario(u, dashs, cats) {
       if (novo) {
         const email = f.email.value.trim().toLowerCase();
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Invalid e-mail address.");
-        const r = await api.convidarUsuario({ nome, email, is_admin: f.is_admin.checked, dashboards });
+        const senha = f.senha.value;
+        if (senha.length < 8) throw new Error("The temporary password must be at least 8 characters long.");
+        const r = await api.criarUsuario({ nome, email, senha, is_admin: f.is_admin.checked, dashboards });
         toast(r?.ja_tinha_login
           ? `${email} already had an account: access granted with their existing password.`
-          : `Invitation sent to ${email}.`);
+          : `User created. Share the temporary password with ${email}.`);
       } else {
         await api.salvarUsuario({ id: u.id, nome, is_admin: eu ? u.is_admin : f.is_admin.checked, ativo: eu ? true : f.ativo.checked }, dashboards);
         toast("User updated.");
@@ -775,6 +795,30 @@ function formAviso(a) {
 }
 
 // ---------------------------------------------------------------- helpers admin
+// Campo de senha provisória (visível, para o admin copiar e repassar)
+function campoSenhaProvisoria() {
+  return `<label class="campo"><span>Temporary password *</span>
+    <div class="input-btn"><input type="text" name="senha" minlength="8" required autocomplete="off" spellcheck="false">
+    <button type="button" class="btn btn-ghost" data-gerar>Generate</button>
+    <button type="button" class="btn btn-ghost" data-copiar>Copy</button></div></label>`;
+}
+
+function bindSenhaProvisoria(root) {
+  const campo = $('input[name="senha"]', root);
+  // sem caracteres ambíguos (0/O, 1/l/I) para facilitar o repasse
+  const gerar = () => {
+    const abc = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    const n = crypto.getRandomValues(new Uint32Array(10));
+    campo.value = Array.from(n, (x) => abc[x % abc.length]).join("");
+  };
+  gerar();
+  $("[data-gerar]", root).addEventListener("click", gerar);
+  $("[data-copiar]", root).addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(campo.value); toast("Password copied."); }
+    catch { campo.select(); }
+  });
+}
+
 function checklist(nome, itens, vazio) {
   if (!itens.length) return `<p class="muted">${vazio}</p>`;
   return `

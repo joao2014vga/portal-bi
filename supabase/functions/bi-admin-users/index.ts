@@ -4,8 +4,8 @@
 // não podem rodar no navegador. Só administradores do portal podem chamar.
 //
 // O projeto Supabase pode ser compartilhado com outros sistemas, então:
-//  - "convidar" um e-mail que JÁ tem login só libera o portal para ele
-//    (ele entra com a senha que já usa);
+//  - "criar" com um e-mail que JÁ tem login só libera o portal para ele
+//    (ele entra com a senha que já usa, sem senha provisória);
 //  - "excluir" remove só o acesso ao portal, nunca o login (auth.users).
 //
 // Deploy:  supabase functions deploy bi-admin-users
@@ -61,9 +61,12 @@ Deno.serve(async (req) => {
   try {
     switch (body.action) {
       // ---------------------------------------------------------------
-      case "convidar": {
+      // Cria o login com uma senha provisória (sem e-mail). No primeiro
+      // acesso o portal obriga a pessoa a trocar a senha (trocar_senha).
+      case "criar": {
         const email = String(body.email ?? "").trim().toLowerCase();
         const nome = String(body.nome ?? "").trim();
+        const senha = String(body.senha ?? "");
         if (!email || !nome) return json({ error: "Name and e-mail are required" }, 400);
 
         let userId: string;
@@ -71,14 +74,16 @@ Deno.serve(async (req) => {
         const existente = await buscarPorEmail(admin, email);
 
         if (existente) {
+          // login compartilhado com outros sistemas: só libera o portal, sem mexer na senha
           const { data: jaNoPortal } = await admin.from("bi_perfis").select("id").eq("id", existente.id).maybeSingle();
           if (jaNoPortal) return json({ error: "This e-mail already has access to the portal" }, 400);
           userId = existente.id;
           jaTinhaLogin = true;
         } else {
-          const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-            data: { nome },
-            redirectTo: body.redirectTo,
+          if (senha.length < 8) return json({ error: "The temporary password must be at least 8 characters long" }, 400);
+          const { data, error } = await admin.auth.admin.createUser({
+            email, password: senha, email_confirm: true,
+            user_metadata: { nome, trocar_senha: true },
           });
           if (error) return json({ error: traduz(error.message) }, 400);
           userId = data.user.id;
@@ -97,19 +102,18 @@ Deno.serve(async (req) => {
       }
 
       // ---------------------------------------------------------------
-      case "reenviar": {
+      // Define uma nova senha provisória; a troca volta a ser obrigatória
+      case "redefinir": {
+        const senha = String(body.senha ?? "");
+        if (senha.length < 8) return json({ error: "The temporary password must be at least 8 characters long" }, 400);
         const { data: u, error } = await admin.auth.admin.getUserById(body.user_id);
-        if (error || !u?.user?.email) return json({ error: "User not found" }, 404);
-
-        if (!u.user.email_confirmed_at) {
-          const { error: e2 } = await admin.auth.admin.inviteUserByEmail(u.user.email, { redirectTo: body.redirectTo });
-          if (e2) return json({ error: traduz(e2.message) }, 400);
-          return json({ ok: true, tipo: "convite" });
-        }
-        const anon = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!);
-        const { error: e3 } = await anon.auth.resetPasswordForEmail(u.user.email, { redirectTo: body.redirectTo });
-        if (e3) return json({ error: traduz(e3.message) }, 400);
-        return json({ ok: true, tipo: "senha" });
+        if (error || !u?.user) return json({ error: "User not found" }, 404);
+        const { error: e2 } = await admin.auth.admin.updateUserById(body.user_id, {
+          password: senha,
+          user_metadata: { ...(u.user.user_metadata ?? {}), trocar_senha: true },
+        });
+        if (e2) return json({ error: traduz(e2.message) }, 400);
+        return json({ ok: true });
       }
 
       // ---------------------------------------------------------------
@@ -123,13 +127,17 @@ Deno.serve(async (req) => {
 
       // ---------------------------------------------------------------
       case "status": {
-        // confirmação de convite e último acesso, só dos usuários do portal
+        // troca de senha pendente e último acesso, só dos usuários do portal
         const { data: perfis } = await admin.from("bi_perfis").select("id");
-        const status: Record<string, { confirmado: boolean; ultimo_acesso: string | null }> = {};
+        const status: Record<string, { confirmado: boolean; trocar_senha: boolean; ultimo_acesso: string | null }> = {};
         await Promise.all((perfis ?? []).map(async ({ id }) => {
           const { data } = await admin.auth.admin.getUserById(id);
           if (data?.user) {
-            status[id] = { confirmado: !!data.user.email_confirmed_at, ultimo_acesso: data.user.last_sign_in_at ?? null };
+            status[id] = {
+              confirmado: !!data.user.email_confirmed_at,
+              trocar_senha: !!data.user.user_metadata?.trocar_senha,
+              ultimo_acesso: data.user.last_sign_in_at ?? null,
+            };
           }
         }));
         return json({ ok: true, status });
@@ -145,6 +153,6 @@ Deno.serve(async (req) => {
 
 function traduz(msg: string) {
   if (/already been registered|already registered/i.test(msg)) return "This e-mail is already registered";
-  if (/rate limit/i.test(msg)) return "E-mail limit reached. Please try again in a few minutes";
+  if (/Password should be at least/i.test(msg)) return "The password does not meet the minimum requirements";
   return msg;
 }
