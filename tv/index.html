@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Brascof · Dashboard TV</title>
+<title>Brascof · TV Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -43,32 +43,32 @@ th.col-marca,td.col-marca{text-align:center}
   <div class="hdr">
     <h1>🫘 Brascof · Commercial Control</h1>
     <div class="filtro-periodo">
-      <label for="filtroDe">Vencimento/Carga de</label>
+      <label for="filtroDe">Due/Loading from</label>
       <input type="date" id="filtroDe">
-      <label for="filtroAte">até</label>
+      <label for="filtroAte">to</label>
       <input type="date" id="filtroAte">
-      <button id="btnHoje">Hoje</button>
-      <button id="btnSemana">Esta semana</button>
-      <label style="margin-left:.5rem">Fornecedor:</label>
-      <input type="text" id="buscaFornecedor" placeholder="Buscar..." style="padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font-size:.85rem;width:140px">
+      <button id="btnHoje">Today</button>
+      <button id="btnSemana">This week</button>
+      <label style="margin-left:.5rem">Supplier:</label>
+      <input type="text" id="buscaFornecedor" placeholder="Search..." style="padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font-size:.85rem;width:140px">
       <label style="display:flex;align-items:center;gap:4px;font-size:.75rem;color:#8aab97;cursor:pointer">
-        <input type="checkbox" id="chkFornecedorTodos">Ver tudo desse fornecedor
+        <input type="checkbox" id="chkFornecedorTodos">Show all for this supplier
       </label>
-      <label style="margin-left:.5rem">Corretor:</label>
+      <label style="margin-left:.5rem">Broker:</label>
       <div style="position:relative;display:inline-block">
-        <button id="btnCorretorToggle" type="button" style="padding:5px 10px;border-radius:6px;border:1px solid #4a7a60;background:transparent;color:#8aab97;font-size:.78rem;cursor:pointer;min-width:120px;text-align:left">Todos ▾</button>
+        <button id="btnCorretorToggle" type="button" style="padding:5px 10px;border-radius:6px;border:1px solid #4a7a60;background:transparent;color:#8aab97;font-size:.78rem;cursor:pointer;min-width:120px;text-align:left">All ▾</button>
         <div id="corretorDropdown" style="display:none;position:absolute;top:105%;left:0;background:#1a2e24;border:1px solid #4a7a60;border-radius:8px;padding:8px;z-index:50;max-height:260px;overflow-y:auto;min-width:220px;box-shadow:0 8px 20px rgba(0,0,0,.25)">
           <div style="display:flex;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #2d4a3e">
-            <button id="btnCorretorTodos" type="button" style="font-size:.72rem;color:#8aab97;background:none;border:none;cursor:pointer;text-decoration:underline">Selecionar todos</button>
-            <button id="btnCorretorNenhum" type="button" style="font-size:.72rem;color:#8aab97;background:none;border:none;cursor:pointer;text-decoration:underline">Limpar</button>
+            <button id="btnCorretorTodos" type="button" style="font-size:.72rem;color:#8aab97;background:none;border:none;cursor:pointer;text-decoration:underline">Select all</button>
+            <button id="btnCorretorNenhum" type="button" style="font-size:.72rem;color:#8aab97;background:none;border:none;cursor:pointer;text-decoration:underline">Clear</button>
           </div>
           <div id="corretorLista"></div>
         </div>
       </div>
-      <button id="btnSalvarImg" onclick="salvarImagem()">💾 Salvar imagem</button>
+      <button id="btnSalvarImg" onclick="salvarImagem()">💾 Save image</button>
     </div>
     <div style="display:flex;align-items:center;gap:1rem">
-      <div style="font-size:.78rem;color:#8aab97">Próxima atualização em <span id="proxAtt" style="font-family:monospace;font-weight:600">--:--</span></div>
+      <div style="font-size:.78rem;color:#8aab97">Next refresh in <span id="proxAtt" style="font-family:monospace;font-weight:600">--:--</span></div>
       <div class="clock" id="relogio"></div>
     </div>
   </div>
@@ -77,12 +77,12 @@ th.col-marca,td.col-marca{text-align:center}
   <!-- Coffee Contracts (Vencimento) + Exportação (Prev Carga) -->
   <div class="grid2">
     <div class="card">
-      <h2>📄 Coffee Contracts — vencendo entre <span id="periodoLabel"></span></h2>
-      <div id="contratosTableWrap"><div class="empty">Carregando...</div></div>
+      <h2>📄 Coffee Contracts — due <span id="periodoLabel"></span></h2>
+      <div id="contratosTableWrap"><div class="empty">Loading...</div></div>
     </div>
     <div class="card">
-      <h2>🚢 Exportação — previsão de carga entre <span id="periodoLabel2"></span></h2>
-      <div id="exportTableWrap"><div class="empty">Carregando...</div></div>
+      <h2>🚢 Exports — estimated loading <span id="periodoLabel2"></span></h2>
+      <div id="exportTableWrap"><div class="empty">Loading...</div></div>
     </div>
   </div>
 </div>
@@ -103,6 +103,7 @@ const normEsp=v=>String(v||'ARABICA').toUpperCase().normalize('NFD').replace(/[\
 function isoLocal(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
 function hojeIso(){return isoLocal(new Date());}
 function fmtDataBr(iso){if(!iso)return'—';const[a,m,d]=iso.split('-');return `${d}/${m}/${a}`;}
+function labelPeriodo(de,ate){return de===ate?`on ${fmtDataBr(de)}`:`between ${fmtDataBr(de)} and ${fmtDataBr(ate)}`;}
 
 function periodoAtual(){
   const de=document.getElementById('filtroDe').value||hojeIso();
@@ -134,22 +135,22 @@ async function carregarTvDashboard(){
   segundosRestantes=REFRESH_MINUTOS*60;
   const {de,ate}=periodoAtual();
   setarUrlPeriodo(de,ate);
-  const label=de===ate?fmtDataBr(de):`${fmtDataBr(de)} e ${fmtDataBr(ate)}`;
+  const label=labelPeriodo(de,ate);
   document.getElementById('periodoLabel').textContent=label;
   document.getElementById('periodoLabel2').textContent=label;
   try{
     const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}`);
     const json=await res.json();
-    if(!res.ok)throw new Error(json.error||'Erro ao buscar dados');
+    if(!res.ok)throw new Error(json.error||'Error fetching data');
     document.getElementById('erroBox').innerHTML=json.erros?.length
-      ?`<div class="err">Aviso: falha parcial ao consultar o Digisul (${json.erros.join(' · ')}). Os dados abaixo podem estar incompletos.</div>`
+      ?`<div class="err">Warning: Digisul query partially failed (${json.erros.join(' · ')}). The data below may be incomplete.</div>`
       :'';
     contratosGlobais=json.contratos;
     popularFiltroCorretor();
     aplicarFiltros();
     renderExportacao(json.exportacoes,json.totais,json.ptax);
   }catch(e){
-    document.getElementById('erroBox').innerHTML=`<div class="err">Erro ao carregar dados do Digisul: ${e.message}</div>`;
+    document.getElementById('erroBox').innerHTML=`<div class="err">Error loading Digisul data: ${e.message}</div>`;
     document.getElementById('contratosTableWrap').innerHTML='<div class="empty">—</div>';
     document.getElementById('exportTableWrap').innerHTML='<div class="empty">—</div>';
   }
@@ -164,7 +165,7 @@ function popularFiltroCorretor(){
   const opcaoSemCorretor=semCorretorQtd?`
       <label style="display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:.78rem;color:#8aab97;cursor:pointer;white-space:nowrap;font-style:italic;border-bottom:1px solid #2d4a3e;margin-bottom:4px;padding-bottom:6px">
         <input type="checkbox" class="chk-corretor" value="__SEM__" ${corretoresSelecionados.has('__SEM__')?'checked':''}>
-        — Sem corretor — (${semCorretorQtd})
+        — No broker — (${semCorretorQtd})
       </label>`:'';
   lista.innerHTML=opcaoSemCorretor+(corretores.length
     ?corretores.map(c=>`
@@ -172,7 +173,7 @@ function popularFiltroCorretor(){
         <input type="checkbox" class="chk-corretor" value="${c}" ${corretoresSelecionados.has(c)?'checked':''}>
         ${c}
       </label>`).join('')
-    :(semCorretorQtd?'':'<div style="font-size:.75rem;color:#8aab97;padding:4px 2px">Nenhum corretor nesse período</div>'));
+    :(semCorretorQtd?'':'<div style="font-size:.75rem;color:#8aab97;padding:4px 2px">No brokers in this period</div>'));
   lista.querySelectorAll('.chk-corretor').forEach(chk=>{
     chk.addEventListener('change',()=>{
       if(chk.checked)corretoresSelecionados.add(chk.value);
@@ -217,8 +218,8 @@ function ligarCheckboxesMarcas(wrap){
 function atualizarLabelCorretor(){
   const btn=document.getElementById('btnCorretorToggle');
   const n=corretoresSelecionados.size;
-  const nome=n===1?([...corretoresSelecionados][0]==='__SEM__'?'Sem corretor':[...corretoresSelecionados][0]):null;
-  btn.textContent=(n===0?'Todos':nome||`${n} selecionados`)+' ▾';
+  const nome=n===1?([...corretoresSelecionados][0]==='__SEM__'?'No broker':[...corretoresSelecionados][0]):null;
+  btn.textContent=(n===0?'All':nome||`${n} selected`)+' ▾';
 }
 
 function aplicarFiltros(){
@@ -238,7 +239,7 @@ function aplicarFiltros(){
     contratosCompra:filtrados.filter(c=>c.tipo==='PURCHASE').reduce((a,c)=>a+(c.total||0),0),
     contratosVenda:filtrados.filter(c=>c.tipo==='SALE').reduce((a,c)=>a+(c.total||0),0),
   };
-  document.getElementById('periodoLabel').textContent=fmtDataBr(periodoAtual().de)+' e '+fmtDataBr(periodoAtual().ate);
+  document.getElementById('periodoLabel').textContent=labelPeriodo(periodoAtual().de,periodoAtual().ate);
   renderContratos(filtrados,totaisFiltrados);
 }
 
@@ -249,19 +250,19 @@ async function buscarFornecedorTodosPeriodos(){
     const busca=document.getElementById('buscaFornecedor').value.trim();
     if(!busca)return;
     const {de,ate}=periodoAtual();
-    document.getElementById('contratosTableWrap').innerHTML='<div class="empty">Buscando todos os contratos de "'+busca+'"...</div>';
-    document.getElementById('periodoLabel').textContent='todos os períodos ("'+busca+'")';
+    document.getElementById('contratosTableWrap').innerHTML='<div class="empty">Searching all contracts for "'+busca+'"...</div>';
+    document.getElementById('periodoLabel').textContent='on any date ("'+busca+'")';
     try{
       const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}&fornecedor=${encodeURIComponent(busca)}`);
       const json=await res.json();
-      if(!res.ok)throw new Error(json.error||'Erro ao buscar dados');
+      if(!res.ok)throw new Error(json.error||'Error fetching data');
       const totais={
         contratosCompra:json.contratos.filter(c=>c.tipo==='PURCHASE').reduce((a,c)=>a+(c.total||0),0),
         contratosVenda:json.contratos.filter(c=>c.tipo==='SALE').reduce((a,c)=>a+(c.total||0),0),
       };
       renderContratos(json.contratos,totais);
     }catch(e){
-      document.getElementById('contratosTableWrap').innerHTML=`<div class="empty">Erro: ${e.message}</div>`;
+      document.getElementById('contratosTableWrap').innerHTML=`<div class="empty">Error: ${e.message}</div>`;
     }
   },500); // pequena pausa pra não disparar uma busca a cada letra digitada
 }
@@ -291,8 +292,8 @@ document.getElementById('btnCorretorNenhum').addEventListener('click',()=>{
 
 function renderContratos(rows,totais){
   const wrap=document.getElementById('contratosTableWrap');
-  if(!rows.length){wrap.innerHTML='<div class="empty">Nenhum contrato vencendo nesse período.</div>';return;}
-  wrap.innerHTML=`<table><thead><tr><th>Vencimento</th><th>Contrato</th><th>Filial</th><th>Fornecedor</th><th>Tipo</th><th>Quality</th><th>Espécie</th><th>Sacas</th><th>Valor/Bag</th><th>Total</th><th class="col-marca">Posto</th><th class="col-marca">Programado</th></tr></thead>
+  if(!rows.length){wrap.innerHTML='<div class="empty">No contracts due in this period.</div>';return;}
+  wrap.innerHTML=`<table><thead><tr><th>Due date</th><th>Contract</th><th>Branch</th><th>Supplier</th><th>Type</th><th>Quality</th><th>Species</th><th>Bags</th><th>Price/Bag</th><th>Total</th><th class="col-marca">Delivered</th><th class="col-marca">Scheduled</th></tr></thead>
     <tbody>${rows.map(r=>{
       // só mostra a linha de Pago/Falta quando os dois valores existem de fato
       // (evita mostrar "R$ 0,00" pra tudo quando o campo não veio no registro)
@@ -307,22 +308,22 @@ function renderContratos(rows,totais){
       <td><span class="badge ${normEsp(r.especie)==='CONILON'?'badge-esp-c':'badge-esp-a'}">${r.especie||'ARÁBICA'}</span></td>
       <td>${fmtN(r.sacas)}</td>
       <td>${fmtR$(r.valorBag)}</td>
-      <td>${fmtR$(r.total)}${temPagoEFalta?`<br><span style="font-size:.68rem;color:#8aab97">Pago: ${fmtR$(r.pago)} · Falta: ${fmtR$(r.aPagar)}</span>`:''}</td>
+      <td>${fmtR$(r.total)}${temPagoEFalta?`<br><span style="font-size:.68rem;color:#8aab97">Paid: ${fmtR$(r.pago)} · Outstanding: ${fmtR$(r.aPagar)}</span>`:''}</td>
       <td class="col-marca"><input type="checkbox" class="chk-marca" data-contrato="${r.contrato}" data-campo="posto" ${estaMarcado(r.contrato,'posto')?'checked':''}></td>
       <td class="col-marca"><input type="checkbox" class="chk-marca" data-contrato="${r.contrato}" data-campo="programado" ${estaMarcado(r.contrato,'programado')?'checked':''}></td>
     </tr>`;
     }).join('')}</tbody></table>
     <div class="tot-bar">
-      <div>Total compra: <b style="color:#922020">${fmtR$(totais.contratosCompra)}</b></div>
-      <div>Total venda: <b style="color:#1e5c1e">${fmtR$(totais.contratosVenda)}</b></div>
+      <div>Total purchases: <b style="color:#922020">${fmtR$(totais.contratosCompra)}</b></div>
+      <div>Total sales: <b style="color:#1e5c1e">${fmtR$(totais.contratosVenda)}</b></div>
     </div>`;
   ligarCheckboxesMarcas(wrap);
 }
 
 function renderExportacao(rows,totais,ptax){
   const wrap=document.getElementById('exportTableWrap');
-  if(!rows.length){wrap.innerHTML='<div class="empty">Nenhuma exportação prevista nesse período.</div>';return;}
-  wrap.innerHTML=`<table><thead><tr><th>Prev. Carga</th><th>Contrato</th><th>Importador</th><th>Sacas</th><th>BL</th><th>Data BL</th><th>Total (US$)</th><th>Total (R$)</th></tr></thead>
+  if(!rows.length){wrap.innerHTML='<div class="empty">No exports scheduled in this period.</div>';return;}
+  wrap.innerHTML=`<table><thead><tr><th>Est. Loading</th><th>Contract</th><th>Importer</th><th>Bags</th><th>BL</th><th>BL Date</th><th>Total (US$)</th><th>Total (R$)</th></tr></thead>
     <tbody>${rows.map(r=>`<tr>
       <td>${fmtDataBr(r.prevCarga)}</td>
       <td><b>${r.contrato}</b></td>
@@ -337,14 +338,14 @@ function renderExportacao(rows,totais,ptax){
       <div>Total US$: <b>${fmtN(totais.exportacaoDolar.toFixed(2))}</b></div>
       <div>Total R$: <b style="color:#1e5c1e">${fmtR$(totais.exportacaoReais)}</b></div>
     </div>
-    <div class="ptax-tag">PTAX compra D-1 (${ptax.data}): ${ptax.compra}</div>`;
+    <div class="ptax-tag">PTAX buy rate D-1 (${ptax.data}): ${ptax.compra}</div>`;
 }
 
 async function salvarImagem(){
   const btn=document.getElementById('btnSalvarImg');
   const filtro=document.querySelector('.filtro-periodo');
   const relogioBox=filtro.nextElementSibling;
-  btn.disabled=true;btn.textContent='Gerando...';
+  btn.disabled=true;btn.textContent='Generating...';
   // Esconde os controles interativos (não fazem sentido numa imagem estática)
   filtro.style.visibility='hidden';
   relogioBox.style.visibility='hidden';
@@ -354,16 +355,16 @@ async function salvarImagem(){
       scale:1.3,useCORS:true,backgroundColor:'#f0f4f2',logging:false,windowWidth:1900
     });
     const link=document.createElement('a');
-    const sufixo=de===ate?de:`${de}_a_${ate}`;
+    const sufixo=de===ate?de:`${de}_to_${ate}`;
     link.download='Brascof_TV_'+sufixo.replace(/-/g,'')+'.png';
     link.href=canvas.toDataURL('image/png');
     link.click();
   }catch(e){
-    alert('Erro ao gerar imagem: '+e.message);
+    alert('Error generating image: '+e.message);
   }finally{
     filtro.style.visibility='';
     relogioBox.style.visibility='';
-    btn.disabled=false;btn.textContent='💾 Salvar imagem';
+    btn.disabled=false;btn.textContent='💾 Save image';
   }
 }
 
