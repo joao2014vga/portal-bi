@@ -143,6 +143,28 @@ async function criarApiSupabase() {
       }
     },
     async excluirAviso(id) { check(await sb.from("bi_avisos").delete().eq("id", id)); },
+
+    // ----------------------------------------------------------- notificações
+    // null = recurso ainda não instalado no banco (schema.sql, seção 5)
+    async notificacoes() {
+      const { data, error } = await sb.from("bi_notificacoes").select("*")
+        .order("created_at", { ascending: false }).limit(30);
+      return error ? null : data;
+    },
+    async marcarNotificacoesVistas() {
+      const { data: { user } } = await sb.auth.getUser();
+      const agora = new Date().toISOString();
+      check(await sb.from("bi_perfis").update({ notif_vistas_em: agora }).eq("id", user.id));
+      return agora;
+    },
+    ouvirNotificacoes(cb) {
+      sb.removeAllChannels();
+      sb.channel("bi-notificacoes")
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "bi_notificacoes" }, (p) => cb(p.new))
+        .subscribe();
+    },
+    pararNotificacoes() { sb.removeAllChannels(); },
+
     async enviarImagem(file) {
       const ext = (file.name.split(".").pop() || "png").toLowerCase();
       const caminho = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;

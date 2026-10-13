@@ -6,7 +6,7 @@ import {
 } from "./ui.js";
 
 const app = $("#app");
-const estado = { perfil: null, precisaSenha: ACAO_URL, sistemas: null };
+const estado = { perfil: null, precisaSenha: ACAO_URL, sistemas: null, notifs: null, notifIniciado: false };
 
 // Sistema integrado: "painel" cujo link fica no mesmo endereço do portal
 // (ex.: o Informativo). Abre dentro do portal usando o mesmo login e
@@ -44,7 +44,18 @@ async function iniciar() {
 
   api.onAuth(async (evt) => {
     if (evt === "PASSWORD_RECOVERY") { estado.precisaSenha = "recovery"; rota(); }
-    if (evt === "SIGNED_OUT") { estado.perfil = null; estado.precisaSenha = null; rota(); }
+    if (evt === "SIGNED_OUT") {
+      estado.perfil = null; estado.precisaSenha = null;
+      api.pararNotificacoes(); estado.notifs = null; estado.notifIniciado = false;
+      rota();
+    }
+  });
+
+  // ao voltar para a aba, busca o que pode ter chegado enquanto o tempo real estava parado
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible" || !estado.perfil || !estado.notifs) return;
+    const lista = await api.notificacoes().catch(() => null);
+    if (lista) { estado.notifs = lista; atualizarSino(); }
   });
 
   if (ERRO_URL) toast(ERRO_URL.includes("expired") ? "This link has expired. Please request a new one from the administrator." : ERRO_URL, "erro");
@@ -67,6 +78,7 @@ async function rota() {
   // senha provisória definida pelo administrador: troca obrigatória antes de usar o portal
   if (!estado.precisaSenha && sessao.user?.user_metadata?.trocar_senha) estado.precisaSenha = "provisoria";
   if (estado.precisaSenha) return telaDefinirSenha();
+  if (!estado.notifIniciado) await iniciarNotificacoes();
 
   const partes = location.hash.slice(2).split("/").filter(Boolean);
   const [secao, sub] = partes;
@@ -213,6 +225,15 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}
       ${p.is_admin ? `<a href="#/admin" class="${ativo === "admin" ? "on" : ""}">${icon("settings")}<span>Administration</span></a>` : ""}
     </nav>
     <div class="topo-user">
+      ${estado.notifs ? `
+      <div class="notif">
+        <button class="btn-icon notif-btn" id="notifBtn" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+          ${icon("bell")}<span class="notif-qtd" id="notifQtd" hidden></span></button>
+        <div class="notif-painel" id="notifPainel" hidden>
+          <div class="notif-h">Notifications</div>
+          <div class="notif-lista" id="notifLista"></div>
+        </div>
+      </div>` : ""}
       <span class="avatar" title="${esc(p.email)}">${esc(iniciais(p.nome))}</span>
       <span class="topo-nome">${esc(p.nome.split(" ")[0] || p.email)}</span>
       <button class="btn-icon" id="sair" title="Sign out" aria-label="Sign out">${icon("logout")}</button>
@@ -236,6 +257,63 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}
     storage.set("portalbi_banners", JSON.stringify([...fechados, id]));
     b.closest(".banner").remove();
   }));
+  bindSino();
+}
+
+// ---------------------------------------------------------------- notificações (sininho)
+async function iniciarNotificacoes() {
+  estado.notifIniciado = true;
+  estado.notifs = await api.notificacoes().catch(() => null);
+  if (!estado.notifs) return; // recurso ainda não instalado no banco
+  api.ouvirNotificacoes((n) => {
+    if (!estado.notifs || estado.notifs.some((x) => x.id === n.id)) return;
+    estado.notifs = [n, ...estado.notifs].slice(0, 30);
+    atualizarSino();
+    if (n.autor !== estado.perfil?.id) toast(n.mensagem ? `${n.titulo} · ${n.mensagem}` : n.titulo, "notif");
+  });
+}
+
+// não conta como nova o que o próprio usuário causou
+const notifNova = (n) => n.autor !== estado.perfil.id
+  && new Date(n.created_at) > new Date(estado.perfil.notif_vistas_em ?? 0);
+
+function atualizarSino({ lista = true } = {}) {
+  const qtd = $("#notifQtd");
+  if (!qtd || !estado.notifs) return;
+  const novas = estado.notifs.filter(notifNova).length;
+  qtd.hidden = !novas;
+  qtd.textContent = novas > 9 ? "9+" : novas;
+  if (!lista) return;
+  $("#notifLista").innerHTML = estado.notifs.length ? estado.notifs.map((n) => `
+    <a class="notif-item ${notifNova(n) ? "nova" : ""}" href="#/d/${n.dashboard_id}">
+      <span class="notif-ic">${icon("chart")}</span>
+      <span class="notif-txt"><strong>${esc(n.titulo)}</strong>${n.mensagem ? `<span>${esc(n.mensagem)}</span>` : ""}
+        <small title="${esc(dataHoraBR(n.created_at))}">${esc(tempoRelativo(n.created_at))}</small></span>
+    </a>`).join("") : `<p class="notif-vazio">No notifications yet.</p>`;
+}
+
+function bindSino() {
+  const btn = $("#notifBtn");
+  if (!btn) return;
+  const painel = $("#notifPainel");
+  atualizarSino();
+  const fechar = () => {
+    painel.hidden = true; btn.setAttribute("aria-expanded", "false");
+    document.removeEventListener("mousedown", fora); document.removeEventListener("keydown", esc_);
+  };
+  const fora = (e) => { if (!e.target.closest(".notif")) fechar(); };
+  const esc_ = (e) => { if (e.key === "Escape") fechar(); };
+  btn.addEventListener("click", async () => {
+    if (!painel.hidden) return fechar();
+    atualizarSino(); // lista com as novas destacadas enquanto o painel estiver aberto
+    painel.hidden = false; btn.setAttribute("aria-expanded", "true");
+    document.addEventListener("mousedown", fora); document.addEventListener("keydown", esc_);
+    if (estado.notifs.some(notifNova)) {
+      try { estado.perfil.notif_vistas_em = await api.marcarNotificacoesVistas(); } catch { /* tenta de novo na próxima */ }
+      atualizarSino({ lista: false });
+    }
+  });
+  painel.addEventListener("click", (e) => { if (e.target.closest(".notif-item")) fechar(); });
 }
 
 async function bannersVigentes() {
@@ -459,7 +537,11 @@ async function adminDashboards() {
       $("#novo").addEventListener("click", () => formDashboard(null, cats));
       $$("[data-editar]").forEach((b) => b.addEventListener("click", () => formDashboard(dashs.find((d) => d.id === Number(b.dataset.editar)), cats)));
       $$("[data-atualizado]").forEach((b) => b.addEventListener("click", async () => {
-        try { await api.marcarAtualizado(Number(b.dataset.atualizado)); toast("Refresh recorded."); recarregar(); }
+        try {
+          await api.marcarAtualizado(Number(b.dataset.atualizado));
+          toast(estado.notifs ? "Refresh recorded. Users have been notified." : "Refresh recorded.");
+          recarregar();
+        }
         catch (e) { toast(e.message, "erro"); }
       }));
       $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {

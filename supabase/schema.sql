@@ -4,7 +4,8 @@
 -- Tudo usa o prefixo "bi_" para conviver com outros sistemas no mesmo
 -- projeto Supabase (ex.: uma tabela "profiles" que já exista).
 -- Este script NÃO altera tabelas, funções ou triggers de outros sistemas
--- e pode ser rodado mais de uma vez com segurança.
+-- (única exceção: um gatilho de notificação em "lancamentos", do Informativo
+-- — ver seção 5) e pode ser rodado mais de uma vez com segurança.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -200,7 +201,111 @@ create policy bi_avisos_img_delete on storage.objects for delete to authenticate
   using (bucket_id = 'bi-avisos' and public.bi_is_admin());
 
 -- ---------------------------------------------------------------------
--- 5. PRIMEIRO ADMINISTRADOR
+-- 5. NOTIFICAÇÕES (sininho no topo do portal)
+-- Geradas automaticamente pelo banco:
+--   - quando a data de atualização de um painel avança (botão ↻ na
+--     Administração ou "Last data refresh" no formulário);
+--   - a cada New Entry no Informativo (tabela lancamentos), para quem tem
+--     acesso ao painel do Informativo (link contendo "informativo-diario").
+-- Cada usuário só vê as notificações dos painéis que ele pode ver.
+-- ---------------------------------------------------------------------
+create table if not exists public.bi_notificacoes (
+  id            bigint generated always as identity primary key,
+  dashboard_id  bigint not null references public.bi_dashboards (id) on delete cascade,
+  titulo        text not null,
+  mensagem      text,
+  autor         uuid default auth.uid(),            -- quem causou (não recebe aviso de si mesmo)
+  created_at    timestamptz not null default now()
+);
+create index if not exists bi_notificacoes_criada_idx on public.bi_notificacoes (created_at desc);
+
+-- Até quando o usuário já viu as notificações (abriu o sininho)
+alter table public.bi_perfis add column if not exists notif_vistas_em timestamptz not null default now();
+
+alter table public.bi_notificacoes enable row level security;
+
+-- A subconsulta em bi_dashboards passa pelo RLS dela: vê a notificação
+-- quem vê o painel
+drop policy if exists bi_notificacoes_select on public.bi_notificacoes;
+create policy bi_notificacoes_select on public.bi_notificacoes for select to authenticated
+  using (exists (select 1 from public.bi_dashboards d where d.id = dashboard_id));
+
+-- Painel atualizado. Ignora datas antigas preenchidas à mão (mais de 1 h atrás).
+create or replace function public.bi_notifica_dashboard()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if new.atualizado_em is not null
+     and new.atualizado_em > coalesce(old.atualizado_em, '-infinity'::timestamptz)
+     and new.atualizado_em > now() - interval '1 hour' then
+    insert into public.bi_notificacoes (dashboard_id, titulo)
+    values (new.id, new.titulo || ' was updated');
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists bi_dashboards_notifica on public.bi_dashboards;
+create trigger bi_dashboards_notifica
+  after update of atualizado_em on public.bi_dashboards
+  for each row execute function public.bi_notifica_dashboard();
+
+-- New Entry no Informativo. Lê os campos via jsonb (não quebra se a tabela
+-- mudar) e nunca impede o lançamento: qualquer erro aqui é ignorado.
+create or replace function public.bi_notifica_lancamento()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  j     jsonb := to_jsonb(new);
+  autor text;
+begin
+  begin
+    select nullif(split_part(p.nome, ' ', 1), '') into autor
+      from public.bi_perfis p where p.id = auth.uid();
+
+    insert into public.bi_notificacoes (dashboard_id, titulo, mensagem)
+    select d.id, d.titulo || ' — new entry',
+           concat_ws(' · ',
+             case j->>'tipo' when 'COMPRA' then 'Purchase' when 'VENDA' then 'Sale' else j->>'tipo' end,
+             case when j->>'sacas' is not null then round((j->>'sacas')::numeric)::text || ' bags' end,
+             nullif(j->>'qual', ''),
+             nullif(j->>'especie', ''),
+             case when autor is not null then 'by ' || autor end)
+      from public.bi_dashboards d
+     where d.link ilike '%informativo-diario%';
+  exception when others then
+    raise warning 'bi_notifica_lancamento: %', sqlerrm;
+  end;
+  return new;
+end;
+$$;
+
+-- Só acrescenta um gatilho AFTER INSERT em lancamentos (tabela do
+-- Informativo); não altera colunas nem dados dela.
+do $$
+begin
+  if to_regclass('public.lancamentos') is not null then
+    execute 'drop trigger if exists bi_lancamentos_notifica on public.lancamentos';
+    execute 'create trigger bi_lancamentos_notifica after insert on public.lancamentos
+             for each row execute function public.bi_notifica_lancamento()';
+  end if;
+end;
+$$;
+
+-- Tempo real: quem está com o portal aberto recebe o aviso na hora
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables
+                 where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'bi_notificacoes') then
+    alter publication supabase_realtime add table public.bi_notificacoes;
+  end if;
+end;
+$$;
+
+-- ---------------------------------------------------------------------
+-- 6. PRIMEIRO ADMINISTRADOR
 -- Use um usuário que já exista em Authentication > Users (pode ser o
 -- mesmo login que você usa nos outros sistemas). Troque o e-mail e rode:
 --

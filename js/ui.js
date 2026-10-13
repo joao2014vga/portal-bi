@@ -33,6 +33,7 @@ const P = {
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   check: '<path d="M20 6L9 17l-5-5"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
 };
 export const icon = (name, cls = "") =>
   `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] ?? ""}</svg>`;
@@ -48,10 +49,11 @@ export function toast(msg, tipo = "ok") {
   const el = document.createElement("div");
   el.className = `toast toast-${tipo}`;
   el.setAttribute("role", "status");
-  el.innerHTML = `${icon(tipo === "erro" ? "alert" : "check")}<span>${esc(msg)}</span>`;
+  el.innerHTML = `${icon({ erro: "alert", notif: "bell" }[tipo] ?? "check")}<span>${esc(msg)}</span>`;
   box.appendChild(el);
-  setTimeout(() => el.classList.add("out"), 3600);
-  setTimeout(() => el.remove(), 4000);
+  const dura = tipo === "notif" ? 8000 : 3600; // notificação fica mais tempo na tela
+  setTimeout(() => el.classList.add("out"), dura);
+  setTimeout(() => el.remove(), dura + 400);
 }
 
 // ---------------------------------------------------------------- modal

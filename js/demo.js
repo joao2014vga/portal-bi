@@ -46,6 +46,7 @@ export function criarDemo() {
   try { db = JSON.parse(storage.get(CHAVE)) ?? seed(); } catch { db = seed(); }
   const salvar = () => storage.set(CHAVE, JSON.stringify(db));
   const ouvintes = [];
+  const ouvintesNotif = [];
   const espera = () => new Promise((r) => setTimeout(r, 150));
   const eu = () => db.usuarios.find((u) => u.id === db.sessao);
   const exigeAdmin = () => { if (!eu()?.is_admin) throw new Error("Acesso negado"); };
@@ -115,7 +116,15 @@ export function criarDemo() {
       db.acessos = db.acessos.filter(([, x]) => x !== id);
       salvar();
     },
-    async marcarAtualizado(id) { exigeAdmin(); db.dashboards.find((x) => x.id === id).atualizado_em = new Date().toISOString(); salvar(); },
+    async marcarAtualizado(id) {
+      exigeAdmin();
+      const d = db.dashboards.find((x) => x.id === id);
+      d.atualizado_em = new Date().toISOString();
+      const n = { id: novoId(), dashboard_id: id, titulo: `${d.titulo} was updated`, mensagem: null, autor: db.sessao, created_at: d.atualizado_em };
+      (db.notificacoes ??= []).unshift(n);
+      salvar();
+      ouvintesNotif.forEach((cb) => cb(structuredClone(n)));
+    },
     async acessosDoDashboard(id) { return db.acessos.filter(([, x]) => x === id).map(([u]) => u); },
     async acessosDoUsuario(uid) { return db.acessos.filter(([u]) => u === uid).map(([, x]) => x); },
     async contagemAcessos() { return db.acessos.map(([u, d]) => ({ user_id: u, dashboard_id: d })); },
@@ -162,6 +171,19 @@ export function criarDemo() {
       salvar();
     },
     async excluirAviso(id) { exigeAdmin(); db.avisos = db.avisos.filter((x) => x.id !== id); salvar(); },
+
+    async notificacoes() {
+      const visiveis = (await this.dashboards()).map((d) => d.id);
+      return structuredClone((db.notificacoes ?? []).filter((n) => visiveis.includes(n.dashboard_id)).slice(0, 30));
+    },
+    async marcarNotificacoesVistas() {
+      const agora = new Date().toISOString();
+      eu().notif_vistas_em = agora; salvar();
+      return agora;
+    },
+    ouvirNotificacoes(cb) { ouvintesNotif.length = 0; ouvintesNotif.push(cb); },
+    pararNotificacoes() { ouvintesNotif.length = 0; },
+
     async enviarImagem(file) {
       return new Promise((res, rej) => {
         const r = new FileReader();
