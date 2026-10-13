@@ -226,7 +226,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .banner-critico { background: var(--critico); color: #fff; }
 
 /* ---------------------------------------------------------------- conteúdo */
-.conteudo { max-width: 1360px; margin: 0 auto; padding: 28px 24px 56px; }
+.conteudo { padding: 28px 24px 56px; } /* largura total: conteúdo à esquerda, busca à direita */
 .ola { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 28px; flex-wrap: wrap; }
 .ola h1 { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
 .ola .busca { width: 320px; max-width: 100%; }
