@@ -28,7 +28,7 @@ async function iniciar() {
     if (evt === "SIGNED_OUT") { estado.perfil = null; rota(); }
   });
 
-  if (ERRO_URL) toast(ERRO_URL.includes("expired") ? "O link expirou. Peça um novo ao administrador." : ERRO_URL, "erro");
+  if (ERRO_URL) toast(ERRO_URL.includes("expired") ? "This link has expired. Please request a new one from the administrator." : ERRO_URL, "erro");
   window.addEventListener("hashchange", rota);
   await rota();
 }
@@ -42,8 +42,8 @@ async function rota() {
   if (!estado.perfil) {
     estado.sistemas = null;
     try { estado.perfil = await api.meuPerfil(); } catch (e) { estado.perfil = null; }
-    if (!estado.perfil) { await api.sair(); return telaLogin("Perfil não encontrado. Fale com o administrador."); }
-    if (!estado.perfil.ativo) { await api.sair(); return telaLogin("Seu acesso está desativado. Fale com o administrador."); }
+    if (!estado.perfil) { await api.sair(); return telaLogin("Profile not found. Please contact the administrator."); }
+    if (!estado.perfil.ativo) { await api.sair(); return telaLogin("Your access has been deactivated. Please contact the administrator."); }
   }
   if (estado.precisaSenha) return telaDefinirSenha();
 
@@ -61,7 +61,7 @@ async function rota() {
     location.hash = "#/";
   } catch (e) {
     console.error(e);
-    shell(`<div class="vazio">${icon("alert")}<h3>Não foi possível carregar</h3><p>${esc(e.message)}</p></div>`);
+    shell(`<div class="vazio">${icon("alert")}<h3>Unable to load this page</h3><p>${esc(e.message)}</p></div>`);
   }
 }
 
@@ -85,20 +85,20 @@ function telaLogin(msg) {
     <section class="login-form-wrap">
       <form class="login-form" id="fLogin" novalidate>
         <span class="logo login-logo"><img src="assets/logo_brascof.png" alt="${esc(CONFIG.NOME_EMPRESA)}"></span>
-        <h2>Entrar</h2>
-        <p class="muted">Use o e-mail cadastrado pela equipe de BI.</p>
+        <h2>Sign in</h2>
+        <p class="muted">Use the e-mail address registered by the BI team.</p>
         ${msg ? `<div class="aviso-inline alerta">${icon("alert")}<span>${esc(msg)}</span></div>` : ""}
         <label class="campo"><span>E-mail</span>
-          <input type="email" name="email" autocomplete="username" required placeholder="nome@empresa.com.br"></label>
-        <label class="campo"><span>Senha</span>
+          <input type="email" name="email" autocomplete="username" required placeholder="name@company.com"></label>
+        <label class="campo"><span>Password</span>
           <input type="password" name="senha" autocomplete="current-password" required placeholder="••••••••"></label>
         <p class="form-erro" aria-live="polite"></p>
-        <button class="btn btn-primary btn-bloco" type="submit">Entrar</button>
-        <button class="link" type="button" id="esqueci">Esqueci minha senha</button>
+        <button class="btn btn-primary btn-bloco" type="submit">Sign in</button>
+        <button class="link" type="button" id="esqueci">Forgot your password?</button>
         ${MODO_DEMO ? `
           <div class="demo-box">
-            <strong>Modo demonstração</strong>
-            <p>ADM: <code>admin@demo.com</code> · Usuário: <code>mariana@demo.com</code><br>Senha: <code>demo1234</code></p>
+            <strong>Demo mode</strong>
+            <p>Admin: <code>admin@demo.com</code> · User: <code>mariana@demo.com</code><br>Password: <code>demo1234</code></p>
           </div>` : ""}
       </form>
     </section>
@@ -110,7 +110,7 @@ function telaLogin(msg) {
     const erro = $(".form-erro", f);
     const btn = $("button[type=submit]", f);
     erro.textContent = "";
-    if (!f.email.value || !f.senha.value) { erro.textContent = "Informe e-mail e senha."; return; }
+    if (!f.email.value || !f.senha.value) { erro.textContent = "Please enter your e-mail and password."; return; }
     btn.disabled = true; btn.classList.add("loading");
     try {
       await api.entrar(f.email.value.trim(), f.senha.value);
@@ -123,14 +123,14 @@ function telaLogin(msg) {
 
   $("#esqueci").addEventListener("click", () => {
     modal({
-      titulo: "Recuperar senha",
-      botao: "Enviar link",
-      corpo: `<p class="muted">Enviaremos um link para você criar uma nova senha.</p>
+      titulo: "Reset password",
+      botao: "Send link",
+      corpo: `<p class="muted">We will send you a link to create a new password.</p>
         <label class="campo"><span>E-mail</span><input type="email" name="email" required value="${esc(f.email.value)}"></label>`,
       onSubmit: async (m) => {
-        if (!m.email.value) throw new Error("Informe o e-mail.");
+        if (!m.email.value) throw new Error("Please enter your e-mail.");
         await api.recuperarSenha(m.email.value.trim());
-        toast("Se o e-mail estiver cadastrado, você receberá o link em instantes.");
+        toast("If this e-mail is registered, you will receive the link shortly.");
       },
     });
   });
@@ -144,15 +144,15 @@ function telaDefinirSenha() {
     <section class="login-form-wrap">
       <form class="login-form" id="fSenha" novalidate>
         <div class="login-marca">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></div>
-        <h2>${convite ? `Bem-vindo(a), ${esc(estado.perfil.nome.split(" ")[0])}!` : "Criar nova senha"}</h2>
-        <p class="muted">${convite ? "Defina sua senha para acessar o portal." : "Escolha uma nova senha para sua conta."}</p>
-        <label class="campo"><span>Nova senha</span>
+        <h2>${convite ? `Welcome, ${esc(estado.perfil.nome.split(" ")[0])}` : "Create a new password"}</h2>
+        <p class="muted">${convite ? "Set your password to access the portal." : "Choose a new password for your account."}</p>
+        <label class="campo"><span>New password</span>
           <input type="password" name="s1" autocomplete="new-password" minlength="8" required></label>
-        <label class="campo"><span>Confirmar senha</span>
+        <label class="campo"><span>Confirm password</span>
           <input type="password" name="s2" autocomplete="new-password" minlength="8" required></label>
-        <p class="dica">Mínimo de 8 caracteres.</p>
+        <p class="dica">Minimum of 8 characters.</p>
         <p class="form-erro" aria-live="polite"></p>
-        <button class="btn btn-primary btn-bloco" type="submit">Salvar senha</button>
+        <button class="btn btn-primary btn-bloco" type="submit">Save password</button>
       </form>
     </section>
   </main>`;
@@ -161,12 +161,12 @@ function telaDefinirSenha() {
     e.preventDefault();
     const erro = $(".form-erro", f);
     erro.textContent = "";
-    if (f.s1.value.length < 8) return (erro.textContent = "A senha deve ter pelo menos 8 caracteres.");
-    if (f.s1.value !== f.s2.value) return (erro.textContent = "As senhas não conferem.");
+    if (f.s1.value.length < 8) return (erro.textContent = "The password must be at least 8 characters long.");
+    if (f.s1.value !== f.s2.value) return (erro.textContent = "The passwords do not match.");
     try {
       await api.definirSenha(f.s1.value);
       estado.precisaSenha = null;
-      toast("Senha definida com sucesso!");
+      toast("Password set successfully.");
       location.hash = "#/"; rota();
     } catch (err) { erro.textContent = err.message; }
   });
@@ -186,24 +186,24 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}
   <header class="topo">
     <a class="topo-marca" href="#/">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></a>
     <nav class="topo-nav">
-      <a href="#/" class="${ativo === "inicio" ? "on" : ""}">${icon("home")}<span>Início</span></a>
+      <a href="#/" class="${ativo === "inicio" ? "on" : ""}">${icon("home")}<span>Home</span></a>
       ${estado.sistemas.map((d) => `<a href="#/d/${d.id}" class="${ativo === `d${d.id}` ? "on" : ""}">${icon("grid")}<span>${esc(d.titulo)}</span></a>`).join("")}
-      <a href="#/avisos" class="${ativo === "avisos" ? "on" : ""}">${icon("megaphone")}<span>Avisos</span></a>
-      ${p.is_admin ? `<a href="#/admin" class="${ativo === "admin" ? "on" : ""}">${icon("settings")}<span>Administração</span></a>` : ""}
+      <a href="#/avisos" class="${ativo === "avisos" ? "on" : ""}">${icon("megaphone")}<span>Announcements</span></a>
+      ${p.is_admin ? `<a href="#/admin" class="${ativo === "admin" ? "on" : ""}">${icon("settings")}<span>Administration</span></a>` : ""}
     </nav>
     <div class="topo-user">
       <span class="avatar" title="${esc(p.email)}">${esc(iniciais(p.nome))}</span>
       <span class="topo-nome">${esc(p.nome.split(" ")[0] || p.email)}</span>
-      <button class="btn-icon" id="sair" title="Sair" aria-label="Sair">${icon("logout")}</button>
+      <button class="btn-icon" id="sair" title="Sign out" aria-label="Sign out">${icon("logout")}</button>
     </div>
   </header>
-  ${MODO_DEMO ? `<div class="faixa-demo">Modo demonstração — dados fictícios salvos só neste navegador. <button class="link" id="resetDemo">Restaurar dados</button></div>` : ""}
+  ${MODO_DEMO ? `<div class="faixa-demo">Demo mode — sample data stored in this browser only. <button class="link" id="resetDemo">Reset data</button></div>` : ""}
   ${banners.map((b) => `
     <div class="banner banner-${esc(b.nivel)}" data-banner="${b.id}">
       ${icon(NIVEL_ICON[b.nivel])}
       <div><strong>${esc(b.titulo)}</strong>${b.conteudo ? ` <span>${esc(b.conteudo)}</span>` : ""}
-      ${b.link ? ` <a href="${esc(b.link)}" target="_blank" rel="noopener">Saiba mais</a>` : ""}</div>
-      <button class="btn-icon" data-fecha-banner="${b.id}" aria-label="Fechar aviso">${icon("x")}</button>
+      ${b.link ? ` <a href="${esc(b.link)}" target="_blank" rel="noopener">Learn more</a>` : ""}</div>
+      <button class="btn-icon" data-fecha-banner="${b.id}" aria-label="Dismiss announcement">${icon("x")}</button>
     </div>`).join("")}
   <main class="conteudo">${conteudo}</main>`;
 
@@ -235,7 +235,7 @@ async function telaInicio() {
   const visiveis = dashs.filter((d) => d.ativo);
   const p = estado.perfil;
 
-  const grupos = [...cats, { id: null, nome: "Outros" }]
+  const grupos = [...cats, { id: null, nome: "Other" }]
     .map((c) => ({ ...c, itens: visiveis.filter((d) => (d.categoria_id ?? null) === c.id) }))
     .filter((g) => g.itens.length);
 
@@ -245,14 +245,14 @@ async function telaInicio() {
     <section class="ola">
       <div>
         <h1>${saudacao()}, ${esc(p.nome.split(" ")[0])}</h1>
-        <p class="muted">${visiveis.length} ${visiveis.length === 1 ? "painel disponível" : "painéis disponíveis"} para você${atrasados ? ` · <span class="txt-alerta">${atrasados} com atualização atrasada</span>` : ""}</p>
+        <p class="muted">${visiveis.length} ${visiveis.length === 1 ? "report" : "reports"} available to you${atrasados ? ` · <span class="txt-alerta">${atrasados} overdue for refresh</span>` : ""}</p>
       </div>
-      <label class="busca">${icon("search")}<input type="search" id="busca" placeholder="Buscar painel…" aria-label="Buscar painel"></label>
+      <label class="busca">${icon("search")}<input type="search" id="busca" placeholder="Search reports…" aria-label="Search reports"></label>
     </section>
 
     ${mural.length ? `
     <section class="secao">
-      <div class="secao-h"><h2>${icon("megaphone")} Mural de avisos</h2><a href="#/avisos" class="link">Ver todos</a></div>
+      <div class="secao-h"><h2>${icon("megaphone")} Announcements</h2><a href="#/avisos" class="link">View all</a></div>
       <div class="mural">${mural.slice(0, 3).map(cardAviso).join("")}</div>
     </section>` : ""}
 
@@ -261,11 +261,11 @@ async function telaInicio() {
         <div class="secao-h"><h2>${icon("folder")} ${esc(g.nome)}</h2><span class="muted">${g.itens.length}</span></div>
         <div class="grade">${g.itens.map(cardDashboard).join("")}</div>
       </section>`).join("") : `
-      <div class="vazio">${icon("chart")}<h3>Nenhum painel liberado ainda</h3>
-        <p>${p.is_admin ? "Cadastre o primeiro painel em Administração." : "Peça à equipe de BI para liberar os painéis que você precisa."}</p>
-        ${p.is_admin ? `<a class="btn btn-primary" href="#/admin/dashboards">${icon("plus")} Cadastrar painel</a>` : ""}
+      <div class="vazio">${icon("chart")}<h3>No reports available yet</h3>
+        <p>${p.is_admin ? "Add the first report under Administration." : "Please ask the BI team to grant you access to the reports you need."}</p>
+        ${p.is_admin ? `<a class="btn btn-primary" href="#/admin/dashboards">${icon("plus")} Add report</a>` : ""}
       </div>`}
-    <div class="vazio oculto" id="semResultado">${icon("search")}<h3>Nenhum painel encontrado</h3></div>
+    <div class="vazio oculto" id="semResultado">${icon("search")}<h3>No reports found</h3></div>
   `, { ativo: "inicio" });
 
   $("#busca")?.addEventListener("input", (e) => {
@@ -287,12 +287,12 @@ async function telaInicio() {
 
 function cardDashboard(d) {
   const sistema = ehSistema(d);
-  const st = sistema ? { cls: "neutro", texto: "Sistema integrado" } : statusAtualizacao(d);
+  const st = sistema ? { cls: "neutro", texto: "Integrated system" } : statusAtualizacao(d);
   return `
   <a class="card-dash ${d.ativo ? "" : "inativo"}" href="#/d/${d.id}" data-busca="${esc((d.titulo + " " + (d.descricao ?? "")).toLowerCase())}">
     <div class="card-dash-topo">
       <span class="card-ic">${icon(sistema ? "grid" : "chart")}</span>
-      ${d.nota ? `<span class="tag tag-${esc(d.nota_tipo)}" title="${esc(d.nota)}">${icon(NIVEL_ICON[d.nota_tipo])}${d.nota_tipo === "info" ? "Novidade" : "Atenção"}</span>` : ""}
+      ${d.nota ? `<span class="tag tag-${esc(d.nota_tipo)}" title="${esc(d.nota)}">${icon(NIVEL_ICON[d.nota_tipo])}${d.nota_tipo === "info" ? "New" : "Attention"}</span>` : ""}
     </div>
     <h3>${esc(d.titulo)}</h3>
     <p>${esc(d.descricao ?? "")}</p>
@@ -308,7 +308,7 @@ function cardAviso(a) {
       <div class="aviso-meta">${icon(NIVEL_ICON[a.nivel])}<span>${esc(dataBR(a.inicio))}</span></div>
       <h3>${esc(a.titulo)}</h3>
       ${a.conteudo ? `<p>${esc(a.conteudo).replace(/\n/g, "<br>")}</p>` : ""}
-      ${a.link ? `<a class="link" href="${esc(a.link)}" target="_blank" rel="noopener">Saiba mais ${icon("external")}</a>` : ""}
+      ${a.link ? `<a class="link" href="${esc(a.link)}" target="_blank" rel="noopener">Learn more ${icon("external")}</a>` : ""}
     </div>
   </article>`;
 }
@@ -317,9 +317,9 @@ async function telaAvisos() {
   const agora = new Date();
   const lista = (await api.avisos()).filter((a) => a.tipo === "mural" && a.ativo && new Date(a.inicio) <= agora && (!a.fim || new Date(a.fim) > agora));
   await shell(`
-    <section class="ola"><div><h1>Mural de avisos</h1><p class="muted">Comunicados da equipe de BI.</p></div></section>
+    <section class="ola"><div><h1>Announcements</h1><p class="muted">Communications from the BI team.</p></div></section>
     ${lista.length ? `<div class="mural mural-lista">${lista.map(cardAviso).join("")}</div>`
-      : `<div class="vazio">${icon("megaphone")}<h3>Nenhum aviso no momento</h3></div>`}
+      : `<div class="vazio">${icon("megaphone")}<h3>No announcements at this time</h3></div>`}
   `, { ativo: "avisos" });
 }
 
@@ -329,8 +329,8 @@ async function telaAvisos() {
 async function telaDashboard(id) {
   const d = await api.dashboard(id);
   if (!d) {
-    return shell(`<div class="vazio">${icon("lock")}<h3>Painel indisponível</h3>
-      <p>Você não tem acesso a este painel ou ele foi removido.</p><a class="btn" href="#/">Voltar ao início</a></div>`);
+    return shell(`<div class="vazio">${icon("lock")}<h3>Report unavailable</h3>
+      <p>You do not have access to this report, or it has been removed.</p><a class="btn" href="#/">Back to home</a></div>`);
   }
   const st = statusAtualizacao(d);
   const demo = d.link.startsWith("demo:");
@@ -338,15 +338,15 @@ async function telaDashboard(id) {
   await shell(`
     <div class="visor">
       <div class="visor-barra">
-        <a class="btn-icon" href="#/" title="Voltar" aria-label="Voltar">${icon("back")}</a>
+        <a class="btn-icon" href="#/" title="Back" aria-label="Back">${icon("back")}</a>
         <div class="visor-titulo">
           <h1>${esc(d.titulo)}</h1>
           ${sistema ? "" : `<div class="status status-${st.cls}">${icon("clock")}<span>${esc(st.texto)}</span>
             ${d.atualizado_em ? `<span class="muted">· ${esc(dataHoraBR(d.atualizado_em))} · ${esc(FREQ_LABEL[d.frequencia])}</span>` : ""}</div>`}
         </div>
         <div class="visor-acoes">
-          <button class="btn btn-ghost" id="telaCheia">${icon("expand")}<span>Tela cheia</span></button>
-          ${demo ? "" : `<a class="btn btn-ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${icon("external")}<span>Nova aba</span></a>`}
+          <button class="btn btn-ghost" id="telaCheia">${icon("expand")}<span>Full screen</span></button>
+          ${demo ? "" : `<a class="btn btn-ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}
         </div>
       </div>
       ${d.nota ? `<div class="nota nota-${esc(d.nota_tipo)}">${icon(NIVEL_ICON[d.nota_tipo])}<span>${esc(d.nota)}</span></div>` : ""}
@@ -372,9 +372,9 @@ function demoRelatorio(d) {
     .k{background:#fff;border-radius:8px;padding:14px;border:1px solid #e3e7ee}.k b{display:block;font-size:24px;margin-top:4px}
     .k span{font-size:12px;color:#5b6577}.c{flex:1;margin:0 20px 20px;background:#fff;border-radius:8px;border:1px solid #e3e7ee;display:flex;align-items:flex-end;gap:2%;padding:20px 20px 30px;position:relative}
     .c i{flex:1;background:#2d6a4f;border-radius:3px 3px 0 0}.c p{position:absolute;top:10px;left:20px;margin:0;font-size:13px;color:#5b6577}
-  </style></head><body><header>${esc(d.titulo)} <small style="color:#8a93a3;font-weight:400">· relatório de demonstração</small></header>
-  <div class="g">${["Receita", "Meta", "Realizado", "Variação"].map((k, i) => `<div class="k"><span>${k}</span><b>${["R$ 4,8 mi", "R$ 5,1 mi", "94%", "+6,2%"][i]}</b></div>`).join("")}</div>
-  <div class="c"><p>Evolução mensal</p>${barras.map((b) => `<i style="height:${b}%"></i>`).join("")}</div>
+  </style></head><body><header>${esc(d.titulo)} <small style="color:#8a93a3;font-weight:400">· demo report</small></header>
+  <div class="g">${["Revenue", "Target", "Achieved", "Variance"].map((k, i) => `<div class="k"><span>${k}</span><b>${["R$ 4.8M", "R$ 5.1M", "94%", "+6.2%"][i]}</b></div>`).join("")}</div>
+  <div class="c"><p>Monthly trend</p>${barras.map((b) => `<i style="height:${b}%"></i>`).join("")}</div>
   </body></html>`;
 }
 
@@ -382,10 +382,10 @@ function demoRelatorio(d) {
 // ADMINISTRAÇÃO
 // =====================================================================
 const ABAS = [
-  ["dashboards", "Painéis", "chart"],
-  ["categorias", "Categorias", "folder"],
-  ["usuarios", "Usuários", "users"],
-  ["avisos", "Avisos", "megaphone"],
+  ["dashboards", "Reports", "chart"],
+  ["categorias", "Categories", "folder"],
+  ["usuarios", "Users", "users"],
+  ["avisos", "Announcements", "megaphone"],
 ];
 
 async function telaAdmin(aba) {
@@ -393,7 +393,7 @@ async function telaAdmin(aba) {
   if (!render) { location.hash = "#/admin/dashboards"; return; }
   const corpo = await render();
   await shell(`
-    <section class="ola"><div><h1>Administração</h1><p class="muted">Gerencie painéis, acessos e comunicados.</p></div></section>
+    <section class="ola"><div><h1>Administration</h1><p class="muted">Manage reports, user access and announcements.</p></div></section>
     <nav class="abas" role="tablist">
       ${ABAS.map(([k, t, ic]) => `<a role="tab" href="#/admin/${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}${t}</a>`).join("")}
     </nav>
@@ -412,11 +412,11 @@ async function adminDashboards() {
   return {
     html: `
     <div class="barra-acoes">
-      <label class="busca">${icon("search")}<input type="search" id="filtro" placeholder="Filtrar painéis…"></label>
-      <button class="btn btn-primary" id="novo">${icon("plus")} Novo painel</button>
+      <label class="busca">${icon("search")}<input type="search" id="filtro" placeholder="Filter reports…"></label>
+      <button class="btn btn-primary" id="novo">${icon("plus")} New report</button>
     </div>
     <div class="tabela-wrap"><table class="tabela">
-      <thead><tr><th>Painel</th><th>Categoria</th><th>Atualização</th><th>Usuários</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Report</th><th>Category</th><th>Last refresh</th><th>Users</th><th>Status</th><th></th></tr></thead>
       <tbody>
       ${dashs.length ? dashs.map((d) => {
         const st = statusAtualizacao(d);
@@ -425,26 +425,26 @@ async function adminDashboards() {
           <td>${esc(nomeCat(d.categoria_id))}</td>
           <td><span class="status status-${st.cls}">${icon("clock")}${esc(d.atualizado_em ? tempoRelativo(d.atualizado_em) : "—")}</span><div class="sub">${esc(FREQ_LABEL[d.frequencia])}</div></td>
           <td>${qtd(d.id)}</td>
-          <td>${d.ativo ? `<span class="pill pill-ok">Ativo</span>` : `<span class="pill">Inativo</span>`}</td>
+          <td>${d.ativo ? `<span class="pill pill-ok">Active</span>` : `<span class="pill">Inactive</span>`}</td>
           <td class="acoes">
-            <button class="btn-icon" data-atualizado="${d.id}" title="Marcar como atualizado agora" aria-label="Marcar como atualizado agora">${icon("refresh")}</button>
-            <button class="btn-icon" data-editar="${d.id}" title="Editar" aria-label="Editar">${icon("edit")}</button>
-            <button class="btn-icon perigo" data-excluir="${d.id}" title="Excluir" aria-label="Excluir">${icon("trash")}</button>
+            <button class="btn-icon" data-atualizado="${d.id}" title="Mark as refreshed now" aria-label="Mark as refreshed now">${icon("refresh")}</button>
+            <button class="btn-icon" data-editar="${d.id}" title="Edit" aria-label="Edit">${icon("edit")}</button>
+            <button class="btn-icon perigo" data-excluir="${d.id}" title="Delete" aria-label="Delete">${icon("trash")}</button>
           </td></tr>`;
-      }).join("") : `<tr><td colspan="6" class="vazio-td">Nenhum painel cadastrado.</td></tr>`}
+      }).join("") : `<tr><td colspan="6" class="vazio-td">No reports registered.</td></tr>`}
       </tbody></table></div>`,
     bind() {
       filtroTabela();
       $("#novo").addEventListener("click", () => formDashboard(null, cats));
       $$("[data-editar]").forEach((b) => b.addEventListener("click", () => formDashboard(dashs.find((d) => d.id === Number(b.dataset.editar)), cats)));
       $$("[data-atualizado]").forEach((b) => b.addEventListener("click", async () => {
-        try { await api.marcarAtualizado(Number(b.dataset.atualizado)); toast("Atualização registrada."); recarregar(); }
+        try { await api.marcarAtualizado(Number(b.dataset.atualizado)); toast("Refresh recorded."); recarregar(); }
         catch (e) { toast(e.message, "erro"); }
       }));
       $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {
         const d = dashs.find((x) => x.id === Number(b.dataset.excluir));
-        if (!(await confirmar("Excluir painel", `O painel <strong>${esc(d.titulo)}</strong> e todos os acessos a ele serão removidos.`))) return;
-        try { await api.excluirDashboard(d.id); toast("Painel excluído."); recarregar(); } catch (e) { toast(e.message, "erro"); }
+        if (!(await confirmar("Delete report", `The report <strong>${esc(d.titulo)}</strong> and all access granted to it will be removed.`))) return;
+        try { await api.excluirDashboard(d.id); toast("Report deleted."); recarregar(); } catch (e) { toast(e.message, "erro"); }
       }));
     },
   };
@@ -457,49 +457,49 @@ async function formDashboard(d, cats) {
   const comuns = usuarios.filter((u) => !u.is_admin);
 
   modal({
-    titulo: novo ? "Novo painel" : "Editar painel",
+    titulo: novo ? "New report" : "Edit report",
     largura: "modal-lg",
     corpo: `
     <div class="form-grid">
-      <label class="campo col-2"><span>Título *</span><input name="titulo" required maxlength="120" value="${esc(d.titulo)}"></label>
-      <label class="campo"><span>Categoria</span><select name="categoria_id">
-        <option value="">Sem categoria</option>
+      <label class="campo col-2"><span>Title *</span><input name="titulo" required maxlength="120" value="${esc(d.titulo)}"></label>
+      <label class="campo"><span>Category</span><select name="categoria_id">
+        <option value="">No category</option>
         ${cats.map((c) => `<option value="${c.id}" ${c.id === d.categoria_id ? "selected" : ""}>${esc(c.nome)}</option>`).join("")}
       </select></label>
-      <label class="campo"><span>Ordem</span><input type="number" name="ordem" value="${esc(d.ordem)}"></label>
-      <label class="campo col-2"><span>Link de incorporação do Power BI *</span>
-        <input type="url" name="link" required placeholder="https://app.powerbi.com/view?r=…" value="${esc(d.link)}">
-        <small class="dica">No Power BI: Arquivo › Inserir relatório › Site ou portal (ou Publicar na Web).
-          Um link de ${esc(location.origin)} (ex.: o Informativo) vira sistema integrado: abre com o mesmo login e aparece no menu do topo.</small></label>
-      <label class="campo col-2"><span>Descrição</span><textarea name="descricao" rows="2" maxlength="500">${esc(d.descricao ?? "")}</textarea></label>
+      <label class="campo"><span>Display order</span><input type="number" name="ordem" value="${esc(d.ordem)}"></label>
+      <label class="campo col-2"><span>Power BI embed link *</span>
+        <input type="url" name="link" required placeholder="https://app.powerbi.com/reportEmbed?reportId=…" value="${esc(d.link)}">
+        <small class="dica">In Power BI: File › Embed report › Website or portal (or Publish to web).
+          A link from ${esc(location.origin)} (e.g. the Daily Report) becomes an integrated system: it opens with the same sign-in and appears in the top menu.</small></label>
+      <label class="campo col-2"><span>Description</span><textarea name="descricao" rows="2" maxlength="500">${esc(d.descricao ?? "")}</textarea></label>
 
-      <fieldset class="col-2 grupo-campos"><legend>${icon("clock")} Status de atualização</legend>
+      <fieldset class="col-2 grupo-campos"><legend>${icon("clock")} Refresh status</legend>
         <div class="form-grid">
-          <label class="campo"><span>Frequência esperada</span><select name="frequencia">
+          <label class="campo"><span>Expected frequency</span><select name="frequencia">
             ${Object.entries(FREQ_LABEL).map(([k, v]) => `<option value="${k}" ${k === d.frequencia ? "selected" : ""}>${v}</option>`).join("")}
           </select></label>
-          <label class="campo"><span>Última atualização dos dados</span>
+          <label class="campo"><span>Last data refresh</span>
             <div class="input-btn"><input type="datetime-local" name="atualizado_em" value="${toLocalInput(d.atualizado_em)}">
-            <button type="button" class="btn btn-ghost" id="agora">Agora</button></div></label>
+            <button type="button" class="btn btn-ghost" id="agora">Now</button></div></label>
         </div>
       </fieldset>
 
-      <fieldset class="col-2 grupo-campos"><legend>${icon("info")} Nota do painel</legend>
+      <fieldset class="col-2 grupo-campos"><legend>${icon("info")} Report note</legend>
         <div class="form-grid">
-          <label class="campo col-2"><span>Texto exibido no painel (opcional)</span>
-            <input name="nota" maxlength="200" placeholder="Ex.: Dados de setembro em validação" value="${esc(d.nota ?? "")}"></label>
-          <label class="campo"><span>Tipo</span><select name="nota_tipo">
-            <option value="info" ${d.nota_tipo === "info" ? "selected" : ""}>Informação / novidade</option>
-            <option value="alerta" ${d.nota_tipo === "alerta" ? "selected" : ""}>Alerta</option>
-            <option value="critico" ${d.nota_tipo === "critico" ? "selected" : ""}>Crítico</option>
+          <label class="campo col-2"><span>Text shown on the report (optional)</span>
+            <input name="nota" maxlength="200" placeholder="e.g. September figures under review" value="${esc(d.nota ?? "")}"></label>
+          <label class="campo"><span>Type</span><select name="nota_tipo">
+            <option value="info" ${d.nota_tipo === "info" ? "selected" : ""}>Information / new</option>
+            <option value="alerta" ${d.nota_tipo === "alerta" ? "selected" : ""}>Warning</option>
+            <option value="critico" ${d.nota_tipo === "critico" ? "selected" : ""}>Critical</option>
           </select></label>
-          <label class="switch"><input type="checkbox" name="ativo" ${d.ativo ? "checked" : ""}><span></span>Painel ativo</label>
+          <label class="switch"><input type="checkbox" name="ativo" ${d.ativo ? "checked" : ""}><span></span>Report active</label>
         </div>
       </fieldset>
 
-      <fieldset class="col-2 grupo-campos"><legend>${icon("users")} Quem pode ver</legend>
-        <p class="dica">Administradores veem todos os painéis automaticamente.</p>
-        ${checklist("usuarios", comuns.map((u) => ({ v: u.id, t: u.nome || u.email, s: u.email, on: liberados.includes(u.id) })), "Nenhum usuário comum cadastrado.")}
+      <fieldset class="col-2 grupo-campos"><legend>${icon("users")} Who can view</legend>
+        <p class="dica">Administrators automatically see all reports.</p>
+        ${checklist("usuarios", comuns.map((u) => ({ v: u.id, t: u.nome || u.email, s: u.email, on: liberados.includes(u.id) })), "No standard users registered.")}
       </fieldset>
     </div>`,
     onOpen(f) {
@@ -509,8 +509,8 @@ async function formDashboard(d, cats) {
     async onSubmit(f) {
       const titulo = f.titulo.value.trim();
       const link = f.link.value.trim();
-      if (!titulo) throw new Error("Informe o título.");
-      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:")) throw new Error("O link deve começar com https://");
+      if (!titulo) throw new Error("Please enter a title.");
+      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:")) throw new Error("The link must start with https://");
       const dados = {
         titulo, link,
         id: d.id,
@@ -526,7 +526,7 @@ async function formDashboard(d, cats) {
       if (novo) delete dados.id;
       const usuariosSel = $$('input[name="usuarios"]:checked', f).map((c) => c.value);
       await api.salvarDashboard(dados, usuariosSel);
-      toast(novo ? "Painel cadastrado." : "Painel atualizado.");
+      toast(novo ? "Report added." : "Report updated.");
       recarregar();
     },
   });
@@ -538,26 +538,26 @@ async function adminCategorias() {
   const qtd = (id) => dashs.filter((d) => d.categoria_id === id).length;
   return {
     html: `
-    <div class="barra-acoes"><span></span><button class="btn btn-primary" id="novo">${icon("plus")} Nova categoria</button></div>
+    <div class="barra-acoes"><span></span><button class="btn btn-primary" id="novo">${icon("plus")} New category</button></div>
     <div class="tabela-wrap"><table class="tabela">
-      <thead><tr><th>Categoria</th><th>Ordem</th><th>Painéis</th><th></th></tr></thead>
+      <thead><tr><th>Category</th><th>Order</th><th>Reports</th><th></th></tr></thead>
       <tbody>${cats.length ? cats.map((c) => `
         <tr><td><strong>${esc(c.nome)}</strong></td><td>${c.ordem}</td><td>${qtd(c.id)}</td>
         <td class="acoes">
-          <button class="btn-icon" data-editar="${c.id}" aria-label="Editar">${icon("edit")}</button>
-          <button class="btn-icon perigo" data-excluir="${c.id}" aria-label="Excluir">${icon("trash")}</button>
-        </td></tr>`).join("") : `<tr><td colspan="4" class="vazio-td">Nenhuma categoria.</td></tr>`}
+          <button class="btn-icon" data-editar="${c.id}" aria-label="Edit">${icon("edit")}</button>
+          <button class="btn-icon perigo" data-excluir="${c.id}" aria-label="Delete">${icon("trash")}</button>
+        </td></tr>`).join("") : `<tr><td colspan="4" class="vazio-td">No categories.</td></tr>`}
       </tbody></table></div>`,
     bind() {
       const form = (c) => modal({
-        titulo: c ? "Editar categoria" : "Nova categoria",
+        titulo: c ? "Edit category" : "New category",
         corpo: `<div class="form-grid">
-          <label class="campo col-2"><span>Nome *</span><input name="nome" required maxlength="60" value="${esc(c?.nome ?? "")}"></label>
-          <label class="campo"><span>Ordem de exibição</span><input type="number" name="ordem" value="${c?.ordem ?? cats.length + 1}"></label></div>`,
+          <label class="campo col-2"><span>Name *</span><input name="nome" required maxlength="60" value="${esc(c?.nome ?? "")}"></label>
+          <label class="campo"><span>Display order</span><input type="number" name="ordem" value="${c?.ordem ?? cats.length + 1}"></label></div>`,
         async onSubmit(f) {
-          if (!f.nome.value.trim()) throw new Error("Informe o nome.");
+          if (!f.nome.value.trim()) throw new Error("Please enter a name.");
           await api.salvarCategoria({ ...(c ? { id: c.id } : {}), nome: f.nome.value.trim(), ordem: Number(f.ordem.value) || 0 });
-          toast("Categoria salva."); recarregar();
+          toast("Category saved."); recarregar();
         },
       });
       $("#novo").addEventListener("click", () => form(null));
@@ -565,8 +565,8 @@ async function adminCategorias() {
       $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {
         const c = cats.find((x) => x.id === Number(b.dataset.excluir));
         const n = qtd(c.id);
-        if (!(await confirmar("Excluir categoria", `Excluir <strong>${esc(c.nome)}</strong>?${n ? ` Os ${n} painéis dela ficarão em "Outros".` : ""}`))) return;
-        try { await api.excluirCategoria(c.id); toast("Categoria excluída."); recarregar(); } catch (e) { toast(e.message, "erro"); }
+        if (!(await confirmar("Delete category", `Delete <strong>${esc(c.nome)}</strong>?${n ? ` Its ${n} report(s) will be moved to "Other".` : ""}`, "Delete"))) return;
+        try { await api.excluirCategoria(c.id); toast("Category deleted."); recarregar(); } catch (e) { toast(e.message, "erro"); }
       }));
     },
   };
@@ -576,29 +576,29 @@ async function adminCategorias() {
 async function adminUsuarios() {
   const [usuarios, dashs, cats, acessos] = await Promise.all([api.usuarios(), api.dashboards(), api.categorias(), api.contagemAcessos()]);
   const qtd = (uid) => acessos.filter((a) => a.user_id === uid).length;
-  const situacao = (u) => !u.ativo ? `<span class="pill">Inativo</span>`
-    : u.confirmado === false ? `<span class="pill pill-alerta">Convite pendente</span>`
-    : `<span class="pill pill-ok">Ativo</span>`;
+  const situacao = (u) => !u.ativo ? `<span class="pill">Inactive</span>`
+    : u.confirmado === false ? `<span class="pill pill-alerta">Invitation pending</span>`
+    : `<span class="pill pill-ok">Active</span>`;
 
   return {
     html: `
     <div class="barra-acoes">
-      <label class="busca">${icon("search")}<input type="search" id="filtro" placeholder="Filtrar usuários…"></label>
-      <button class="btn btn-primary" id="novo">${icon("plus")} Convidar usuário</button>
+      <label class="busca">${icon("search")}<input type="search" id="filtro" placeholder="Filter users…"></label>
+      <button class="btn btn-primary" id="novo">${icon("plus")} Invite user</button>
     </div>
     <div class="tabela-wrap"><table class="tabela">
-      <thead><tr><th>Usuário</th><th>Perfil</th><th>Painéis</th><th>Último acesso</th><th>Situação</th><th></th></tr></thead>
+      <thead><tr><th>User</th><th>Role</th><th>Reports</th><th>Last access</th><th>Status</th><th></th></tr></thead>
       <tbody>${usuarios.map((u) => `
         <tr data-busca="${esc((u.nome + " " + u.email).toLowerCase())}">
           <td><div class="user-cel"><span class="avatar sm">${esc(iniciais(u.nome))}</span><div><strong>${esc(u.nome || "—")}</strong><div class="sub">${esc(u.email)}</div></div></div></td>
-          <td>${u.is_admin ? `<span class="pill pill-adm">Administrador</span>` : "Usuário"}</td>
-          <td>${u.is_admin ? "Todos" : qtd(u.id)}</td>
-          <td>${u.ultimo_acesso ? esc(tempoRelativo(u.ultimo_acesso)) : `<span class="muted">Nunca</span>`}</td>
+          <td>${u.is_admin ? `<span class="pill pill-adm">Administrator</span>` : "User"}</td>
+          <td>${u.is_admin ? "All" : qtd(u.id)}</td>
+          <td>${u.ultimo_acesso ? esc(tempoRelativo(u.ultimo_acesso)) : `<span class="muted">Never</span>`}</td>
           <td>${situacao(u)}</td>
           <td class="acoes">
-            <button class="btn-icon" data-reenviar="${u.id}" title="${u.confirmado === false ? "Reenviar convite" : "Enviar link de nova senha"}" aria-label="Reenviar e-mail">${icon("mail")}</button>
-            <button class="btn-icon" data-editar="${u.id}" title="Editar" aria-label="Editar">${icon("edit")}</button>
-            ${u.id !== estado.perfil.id ? `<button class="btn-icon perigo" data-excluir="${u.id}" title="Excluir" aria-label="Excluir">${icon("trash")}</button>` : `<span class="btn-icon-vazio"></span>`}
+            <button class="btn-icon" data-reenviar="${u.id}" title="${u.confirmado === false ? "Resend invitation" : "Send password reset link"}" aria-label="Resend e-mail">${icon("mail")}</button>
+            <button class="btn-icon" data-editar="${u.id}" title="Edit" aria-label="Edit">${icon("edit")}</button>
+            ${u.id !== estado.perfil.id ? `<button class="btn-icon perigo" data-excluir="${u.id}" title="Delete" aria-label="Delete">${icon("trash")}</button>` : `<span class="btn-icon-vazio"></span>`}
           </td></tr>`).join("")}
       </tbody></table></div>`,
     bind() {
@@ -609,13 +609,13 @@ async function adminUsuarios() {
         b.disabled = true;
         try {
           const r = await api.reenviarConvite(b.dataset.reenviar);
-          toast(r?.tipo === "senha" ? "Link de nova senha enviado." : "Convite reenviado.");
+          toast(r?.tipo === "senha" ? "Password reset link sent." : "Invitation resent.");
         } catch (e) { toast(e.message, "erro"); } finally { b.disabled = false; }
       }));
       $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {
         const u = usuarios.find((x) => x.id === b.dataset.excluir);
-        if (!(await confirmar("Excluir usuário", `<strong>${esc(u.nome)}</strong> perderá o acesso ao portal (o login dele em outros sistemas não é afetado). Para bloquear temporariamente, prefira desativar.`))) return;
-        try { await api.excluirUsuario(u.id); toast("Usuário excluído."); recarregar(); } catch (e) { toast(e.message, "erro"); }
+        if (!(await confirmar("Delete user", `<strong>${esc(u.nome)}</strong> will lose access to the portal (their sign-in to other systems is not affected). To block access temporarily, deactivate the user instead.`, "Delete"))) return;
+        try { await api.excluirUsuario(u.id); toast("User deleted."); recarregar(); } catch (e) { toast(e.message, "erro"); }
       }));
     },
   };
@@ -625,23 +625,23 @@ async function formUsuario(u, dashs, cats) {
   const novo = !u;
   const liberados = novo ? [] : await api.acessosDoUsuario(u.id);
   const eu = u?.id === estado.perfil.id;
-  const opcoes = [...cats, { id: null, nome: "Outros" }].flatMap((c) =>
+  const opcoes = [...cats, { id: null, nome: "Other" }].flatMap((c) =>
     dashs.filter((d) => (d.categoria_id ?? null) === c.id).map((d) => ({ v: d.id, t: d.titulo, s: c.nome, on: liberados.includes(d.id) })));
 
   modal({
-    titulo: novo ? "Convidar usuário" : "Editar usuário",
-    botao: novo ? "Enviar convite" : "Salvar",
+    titulo: novo ? "Invite user" : "Edit user",
+    botao: novo ? "Send invitation" : "Save",
     largura: "modal-lg",
     corpo: `
     <div class="form-grid">
-      <label class="campo"><span>Nome *</span><input name="nome" required maxlength="120" value="${esc(u?.nome ?? "")}"></label>
+      <label class="campo"><span>Name *</span><input name="nome" required maxlength="120" value="${esc(u?.nome ?? "")}"></label>
       <label class="campo"><span>E-mail *</span><input type="email" name="email" required value="${esc(u?.email ?? "")}" ${novo ? "" : "disabled"}></label>
-      <label class="switch"><input type="checkbox" name="is_admin" ${u?.is_admin ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Administrador</label>
-      ${novo ? "" : `<label class="switch"><input type="checkbox" name="ativo" ${u.ativo ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Acesso ativo</label>`}
-      ${novo ? `<p class="dica col-2">${icon("mail")} O usuário receberá um e-mail para definir a própria senha.</p>` : ""}
-      <fieldset class="col-2 grupo-campos" id="gDash"><legend>${icon("chart")} Painéis liberados</legend>
-        <p class="dica adm-dica">Administradores veem todos os painéis.</p>
-        ${checklist("dashs", opcoes, "Nenhum painel cadastrado.")}
+      <label class="switch"><input type="checkbox" name="is_admin" ${u?.is_admin ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Administrator</label>
+      ${novo ? "" : `<label class="switch"><input type="checkbox" name="ativo" ${u.ativo ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Access active</label>`}
+      ${novo ? `<p class="dica col-2">${icon("mail")} The user will receive an e-mail to set their own password.</p>` : ""}
+      <fieldset class="col-2 grupo-campos" id="gDash"><legend>${icon("chart")} Report access</legend>
+        <p class="dica adm-dica">Administrators see all reports.</p>
+        ${checklist("dashs", opcoes, "No reports registered.")}
       </fieldset>
     </div>`,
     onOpen(f) {
@@ -651,18 +651,18 @@ async function formUsuario(u, dashs, cats) {
     },
     async onSubmit(f) {
       const nome = f.nome.value.trim();
-      if (!nome) throw new Error("Informe o nome.");
+      if (!nome) throw new Error("Please enter a name.");
       const dashboards = $$('input[name="dashs"]:checked', f).map((c) => Number(c.value));
       if (novo) {
         const email = f.email.value.trim().toLowerCase();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("E-mail inválido.");
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Invalid e-mail address.");
         const r = await api.convidarUsuario({ nome, email, is_admin: f.is_admin.checked, dashboards });
         toast(r?.ja_tinha_login
-          ? `${email} já tinha login: acesso liberado, ele entra com a senha que já usa.`
-          : `Convite enviado para ${email}.`);
+          ? `${email} already had an account: access granted with their existing password.`
+          : `Invitation sent to ${email}.`);
       } else {
         await api.salvarUsuario({ id: u.id, nome, is_admin: eu ? u.is_admin : f.is_admin.checked, ativo: eu ? true : f.ativo.checked }, dashboards);
-        toast("Usuário atualizado.");
+        toast("User updated.");
         if (eu) estado.perfil = null;
       }
       recarregar();
@@ -674,36 +674,36 @@ async function formUsuario(u, dashs, cats) {
 async function adminAvisos() {
   const avisos = await api.avisos();
   const agora = new Date();
-  const situacao = (a) => !a.ativo ? ["Inativo", ""]
-    : new Date(a.inicio) > agora ? ["Agendado", "pill-alerta"]
-    : a.fim && new Date(a.fim) <= agora ? ["Expirado", ""]
-    : ["No ar", "pill-ok"];
+  const situacao = (a) => !a.ativo ? ["Inactive", ""]
+    : new Date(a.inicio) > agora ? ["Scheduled", "pill-alerta"]
+    : a.fim && new Date(a.fim) <= agora ? ["Expired", ""]
+    : ["Live", "pill-ok"];
   return {
     html: `
-    <div class="barra-acoes"><span class="muted">Banners aparecem no topo de todas as páginas; avisos do mural aparecem no início.</span>
-      <button class="btn btn-primary" id="novo">${icon("plus")} Novo aviso</button></div>
+    <div class="barra-acoes"><span class="muted">Banners appear at the top of every page; board announcements appear on the home page.</span>
+      <button class="btn btn-primary" id="novo">${icon("plus")} New announcement</button></div>
     <div class="tabela-wrap"><table class="tabela">
-      <thead><tr><th>Aviso</th><th>Tipo</th><th>Período</th><th>Situação</th><th></th></tr></thead>
+      <thead><tr><th>Announcement</th><th>Type</th><th>Period</th><th>Status</th><th></th></tr></thead>
       <tbody>${avisos.length ? avisos.map((a) => {
         const [s, c] = situacao(a);
         return `<tr>
           <td><div class="aviso-cel tag-txt-${esc(a.nivel)}">${icon(NIVEL_ICON[a.nivel])}<div><strong>${esc(a.titulo)}</strong><div class="sub">${esc((a.conteudo ?? "").slice(0, 90))}</div></div></div></td>
-          <td>${a.tipo === "banner" ? "Banner" : "Mural"}</td>
-          <td class="nowrap">${esc(dataBR(a.inicio))} → ${a.fim ? esc(dataBR(a.fim)) : "sem fim"}</td>
+          <td>${a.tipo === "banner" ? "Banner" : "Board"}</td>
+          <td class="nowrap">${esc(dataBR(a.inicio))} → ${a.fim ? esc(dataBR(a.fim)) : "no end date"}</td>
           <td><span class="pill ${c}">${s}</span></td>
           <td class="acoes">
-            <button class="btn-icon" data-editar="${a.id}" aria-label="Editar">${icon("edit")}</button>
-            <button class="btn-icon perigo" data-excluir="${a.id}" aria-label="Excluir">${icon("trash")}</button>
+            <button class="btn-icon" data-editar="${a.id}" aria-label="Edit">${icon("edit")}</button>
+            <button class="btn-icon perigo" data-excluir="${a.id}" aria-label="Delete">${icon("trash")}</button>
           </td></tr>`;
-      }).join("") : `<tr><td colspan="5" class="vazio-td">Nenhum aviso cadastrado.</td></tr>`}
+      }).join("") : `<tr><td colspan="5" class="vazio-td">No announcements registered.</td></tr>`}
       </tbody></table></div>`,
     bind() {
       $("#novo").addEventListener("click", () => formAviso(null));
       $$("[data-editar]").forEach((b) => b.addEventListener("click", () => formAviso(avisos.find((a) => a.id === Number(b.dataset.editar)))));
       $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {
         const a = avisos.find((x) => x.id === Number(b.dataset.excluir));
-        if (!(await confirmar("Excluir aviso", `Excluir <strong>${esc(a.titulo)}</strong>?`))) return;
-        try { await api.excluirAviso(a.id); toast("Aviso excluído."); recarregar(); } catch (e) { toast(e.message, "erro"); }
+        if (!(await confirmar("Delete announcement", `Delete <strong>${esc(a.titulo)}</strong>?`, "Delete"))) return;
+        try { await api.excluirAviso(a.id); toast("Announcement deleted."); recarregar(); } catch (e) { toast(e.message, "erro"); }
       }));
     },
   };
@@ -714,30 +714,30 @@ function formAviso(a) {
   a = a ?? { tipo: "mural", nivel: "info", titulo: "", conteudo: "", imagem_url: null, link: "", inicio: new Date().toISOString(), fim: null, ativo: true };
   let imagem = a.imagem_url;
   modal({
-    titulo: novo ? "Novo aviso" : "Editar aviso",
+    titulo: novo ? "New announcement" : "Edit announcement",
     largura: "modal-lg",
     corpo: `
     <div class="form-grid">
-      <label class="campo"><span>Onde exibir</span><select name="tipo">
-        <option value="mural" ${a.tipo === "mural" ? "selected" : ""}>Mural de avisos (página inicial)</option>
-        <option value="banner" ${a.tipo === "banner" ? "selected" : ""}>Banner de destaque (topo)</option></select></label>
-      <label class="campo"><span>Nível</span><select name="nivel">
-        <option value="info" ${a.nivel === "info" ? "selected" : ""}>Informativo</option>
-        <option value="alerta" ${a.nivel === "alerta" ? "selected" : ""}>Alerta</option>
-        <option value="critico" ${a.nivel === "critico" ? "selected" : ""}>Crítico</option></select></label>
-      <label class="campo col-2"><span>Título *</span><input name="titulo" required maxlength="120" value="${esc(a.titulo)}"></label>
-      <label class="campo col-2"><span>Texto</span><textarea name="conteudo" rows="4" maxlength="1000">${esc(a.conteudo ?? "")}</textarea></label>
-      <label class="campo col-2"><span>Link "Saiba mais" (opcional)</span><input type="url" name="link" placeholder="https://…" value="${esc(a.link ?? "")}"></label>
-      <div class="campo col-2" id="campoImg"><span>Imagem (somente mural)</span>
+      <label class="campo"><span>Display location</span><select name="tipo">
+        <option value="mural" ${a.tipo === "mural" ? "selected" : ""}>Announcement board (home page)</option>
+        <option value="banner" ${a.tipo === "banner" ? "selected" : ""}>Highlight banner (top of page)</option></select></label>
+      <label class="campo"><span>Level</span><select name="nivel">
+        <option value="info" ${a.nivel === "info" ? "selected" : ""}>Information</option>
+        <option value="alerta" ${a.nivel === "alerta" ? "selected" : ""}>Warning</option>
+        <option value="critico" ${a.nivel === "critico" ? "selected" : ""}>Critical</option></select></label>
+      <label class="campo col-2"><span>Title *</span><input name="titulo" required maxlength="120" value="${esc(a.titulo)}"></label>
+      <label class="campo col-2"><span>Text</span><textarea name="conteudo" rows="4" maxlength="1000">${esc(a.conteudo ?? "")}</textarea></label>
+      <label class="campo col-2"><span>"Learn more" link (optional)</span><input type="url" name="link" placeholder="https://…" value="${esc(a.link ?? "")}"></label>
+      <div class="campo col-2" id="campoImg"><span>Image (board only)</span>
         <div class="img-up">
           <div class="img-prev" id="prev">${imagem ? `<img src="${esc(imagem)}" alt="">` : icon("image")}</div>
           <div><input type="file" accept="image/png,image/jpeg,image/webp" id="arq">
-          <button type="button" class="link ${imagem ? "" : "oculto"}" id="remImg">Remover imagem</button>
-          <p class="dica">PNG, JPG ou WEBP até 2 MB.</p></div>
+          <button type="button" class="link ${imagem ? "" : "oculto"}" id="remImg">Remove image</button>
+          <p class="dica">PNG, JPG or WEBP up to 2 MB.</p></div>
         </div></div>
-      <label class="campo"><span>Início</span><input type="datetime-local" name="inicio" value="${toLocalInput(a.inicio)}"></label>
-      <label class="campo"><span>Fim (opcional)</span><input type="datetime-local" name="fim" value="${toLocalInput(a.fim)}"></label>
-      <label class="switch"><input type="checkbox" name="ativo" ${a.ativo ? "checked" : ""}><span></span>Ativo</label>
+      <label class="campo"><span>Start</span><input type="datetime-local" name="inicio" value="${toLocalInput(a.inicio)}"></label>
+      <label class="campo"><span>End (optional)</span><input type="datetime-local" name="fim" value="${toLocalInput(a.fim)}"></label>
+      <label class="switch"><input type="checkbox" name="ativo" ${a.ativo ? "checked" : ""}><span></span>Active</label>
     </div>`,
     onOpen(f) {
       const sync = () => $("#campoImg", f).classList.toggle("oculto", f.tipo.value !== "mural");
@@ -745,7 +745,7 @@ function formAviso(a) {
       $("#arq", f).addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 2 * 1024 * 1024) { toast("Imagem maior que 2 MB.", "erro"); e.target.value = ""; return; }
+        if (file.size > 2 * 1024 * 1024) { toast("Image is larger than 2 MB.", "erro"); e.target.value = ""; return; }
         try {
           $("#prev", f).classList.add("loading");
           imagem = await api.enviarImagem(file);
@@ -756,12 +756,12 @@ function formAviso(a) {
       $("#remImg", f).addEventListener("click", () => { imagem = null; $("#prev", f).innerHTML = icon("image"); $("#remImg", f).classList.add("oculto"); $("#arq", f).value = ""; });
     },
     async onSubmit(f) {
-      if (!f.titulo.value.trim()) throw new Error("Informe o título.");
+      if (!f.titulo.value.trim()) throw new Error("Please enter a title.");
       const inicio = fromLocalInput(f.inicio.value) ?? new Date().toISOString();
       const fim = fromLocalInput(f.fim.value);
-      if (fim && fim <= inicio) throw new Error("O fim deve ser depois do início.");
+      if (fim && fim <= inicio) throw new Error("The end date must be after the start date.");
       const link = f.link.value.trim();
-      if (link && !/^https?:\/\//i.test(link)) throw new Error("O link deve começar com http:// ou https://");
+      if (link && !/^https?:\/\//i.test(link)) throw new Error("The link must start with http:// or https://");
       await api.salvarAviso({
         ...(novo ? {} : { id: a.id }),
         tipo: f.tipo.value, nivel: f.nivel.value, titulo: f.titulo.value.trim(),
@@ -769,7 +769,7 @@ function formAviso(a) {
         imagem_url: f.tipo.value === "mural" ? imagem : null,
         inicio, fim, ativo: f.ativo.checked,
       });
-      toast("Aviso salvo."); recarregar();
+      toast("Announcement saved."); recarregar();
     },
   });
 }
@@ -779,10 +779,10 @@ function checklist(nome, itens, vazio) {
   if (!itens.length) return `<p class="muted">${vazio}</p>`;
   return `
   <div class="check-ferr">
-    <label class="busca sm">${icon("search")}<input type="search" data-check-busca placeholder="Filtrar…"></label>
+    <label class="busca sm">${icon("search")}<input type="search" data-check-busca placeholder="Filter…"></label>
     <span class="muted" data-check-cont></span>
-    <button type="button" class="link" data-check-todos>Marcar todos</button>
-    <button type="button" class="link" data-check-nenhum>Limpar</button>
+    <button type="button" class="link" data-check-todos>Select all</button>
+    <button type="button" class="link" data-check-nenhum>Clear</button>
   </div>
   <div class="check-lista">
     ${itens.map((i) => `
@@ -797,7 +797,7 @@ function bindChecklist(root) {
   const cont = $("[data-check-cont]", root);
   if (!cont) return;
   const caixas = () => $$(".check-lista input[type=checkbox]", root);
-  const conta = () => { cont.textContent = `${caixas().filter((c) => c.checked).length} de ${caixas().length} selecionados`; };
+  const conta = () => { cont.textContent = `${caixas().filter((c) => c.checked).length} of ${caixas().length} selected`; };
   conta();
   root.addEventListener("change", (e) => e.target.matches(".check-lista input") && conta());
   $("[data-check-busca]", root).addEventListener("input", (e) => {

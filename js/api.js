@@ -20,13 +20,13 @@ function check({ data, error }) {
 }
 
 function traduzErro(msg = "") {
-  if (/Invalid login credentials/i.test(msg)) return "E-mail ou senha incorretos.";
-  if (/Email not confirmed/i.test(msg)) return "Seu convite ainda não foi aceito. Verifique seu e-mail.";
-  if (/Password should be at least/i.test(msg)) return "A senha deve ter pelo menos 8 caracteres.";
-  if (/New password should be different/i.test(msg)) return "A nova senha deve ser diferente da anterior.";
-  if (/duplicate key/i.test(msg)) return "Já existe um registro com esse nome.";
-  if (/rate limit/i.test(msg)) return "Muitas tentativas. Aguarde alguns minutos.";
-  if (/Failed to fetch/i.test(msg)) return "Sem conexão com o servidor.";
+  if (/Invalid login credentials/i.test(msg)) return "Incorrect e-mail or password.";
+  if (/Email not confirmed/i.test(msg)) return "Your invitation has not been accepted yet. Please check your e-mail.";
+  if (/Password should be at least/i.test(msg)) return "The password must be at least 8 characters long.";
+  if (/New password should be different/i.test(msg)) return "The new password must be different from the previous one.";
+  if (/duplicate key/i.test(msg)) return "A record with this name already exists.";
+  if (/rate limit/i.test(msg)) return "Too many attempts. Please wait a few minutes.";
+  if (/Failed to fetch/i.test(msg)) return "Unable to connect to the server.";
   return msg;
 }
 

@@ -39,7 +39,7 @@ async function buscarPorEmail(admin: SupabaseClient, email: string) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  if (req.method !== "POST") return json({ error: "Método não permitido" }, 405);
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -48,15 +48,15 @@ Deno.serve(async (req) => {
   // 1) Quem está chamando?
   const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
   const { data: caller, error: callerErr } = await admin.auth.getUser(token);
-  if (callerErr || !caller?.user) return json({ error: "Não autenticado" }, 401);
+  if (callerErr || !caller?.user) return json({ error: "Not authenticated" }, 401);
 
   const { data: perfil } = await admin
     .from("bi_perfis").select("is_admin, ativo").eq("id", caller.user.id).maybeSingle();
-  if (!perfil?.is_admin || !perfil?.ativo) return json({ error: "Acesso negado" }, 403);
+  if (!perfil?.is_admin || !perfil?.ativo) return json({ error: "Access denied" }, 403);
 
   // 2) O que fazer?
   let body: Record<string, any>;
-  try { body = await req.json(); } catch { return json({ error: "JSON inválido" }, 400); }
+  try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
 
   try {
     switch (body.action) {
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
       case "convidar": {
         const email = String(body.email ?? "").trim().toLowerCase();
         const nome = String(body.nome ?? "").trim();
-        if (!email || !nome) return json({ error: "Nome e e-mail são obrigatórios" }, 400);
+        if (!email || !nome) return json({ error: "Name and e-mail are required" }, 400);
 
         let userId: string;
         let jaTinhaLogin = false;
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
 
         if (existente) {
           const { data: jaNoPortal } = await admin.from("bi_perfis").select("id").eq("id", existente.id).maybeSingle();
-          if (jaNoPortal) return json({ error: "Este e-mail já tem acesso ao portal" }, 400);
+          if (jaNoPortal) return json({ error: "This e-mail already has access to the portal" }, 400);
           userId = existente.id;
           jaTinhaLogin = true;
         } else {
@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
       // ---------------------------------------------------------------
       case "reenviar": {
         const { data: u, error } = await admin.auth.admin.getUserById(body.user_id);
-        if (error || !u?.user?.email) return json({ error: "Usuário não encontrado" }, 404);
+        if (error || !u?.user?.email) return json({ error: "User not found" }, 404);
 
         if (!u.user.email_confirmed_at) {
           const { error: e2 } = await admin.auth.admin.inviteUserByEmail(u.user.email, { redirectTo: body.redirectTo });
@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
       // ---------------------------------------------------------------
       case "excluir": {
         // remove só o acesso ao portal; o login continua valendo nos outros sistemas
-        if (body.user_id === caller.user.id) return json({ error: "Você não pode excluir o próprio usuário" }, 400);
+        if (body.user_id === caller.user.id) return json({ error: "You cannot delete your own user" }, 400);
         const { error } = await admin.from("bi_perfis").delete().eq("id", body.user_id);
         if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
       }
 
       default:
-        return json({ error: "Ação desconhecida" }, 400);
+        return json({ error: "Unknown action" }, 400);
     }
   } catch (e) {
     return json({ error: String((e as Error)?.message ?? e) }, 500);
@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
 });
 
 function traduz(msg: string) {
-  if (/already been registered|already registered/i.test(msg)) return "Este e-mail já está cadastrado";
-  if (/rate limit/i.test(msg)) return "Limite de e-mails atingido. Tente novamente em alguns minutos";
+  if (/already been registered|already registered/i.test(msg)) return "This e-mail is already registered";
+  if (/rate limit/i.test(msg)) return "E-mail limit reached. Please try again in a few minutes";
   return msg;
 }

@@ -55,19 +55,19 @@ export function toast(msg, tipo = "ok") {
 
 // ---------------------------------------------------------------- modal
 // abre um modal; `onSubmit(form)` pode lançar erro (mostrado no rodapé)
-export function modal({ titulo, corpo, botao = "Salvar", largura = "", onSubmit, onOpen }) {
+export function modal({ titulo, corpo, botao = "Save", largura = "", onSubmit, onOpen }) {
   const wrap = document.createElement("div");
   wrap.className = "modal-bg";
   wrap.innerHTML = `
     <form class="modal ${largura}" novalidate>
       <header class="modal-h">
         <h2>${esc(titulo)}</h2>
-        <button type="button" class="btn-icon" data-close aria-label="Fechar">${icon("x")}</button>
+        <button type="button" class="btn-icon" data-close aria-label="Close">${icon("x")}</button>
       </header>
       <div class="modal-b">${corpo}</div>
       <footer class="modal-f">
         <p class="form-erro" aria-live="polite"></p>
-        <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+        <button type="button" class="btn btn-ghost" data-close>Cancel</button>
         ${onSubmit ? `<button type="submit" class="btn btn-primary">${esc(botao)}</button>` : ""}
       </footer>
     </form>`;
@@ -105,7 +105,7 @@ export function modal({ titulo, corpo, botao = "Salvar", largura = "", onSubmit,
   return { fechar, form };
 }
 
-export function confirmar(titulo, texto, botao = "Excluir") {
+export function confirmar(titulo, texto, botao = "Delete") {
   return new Promise((resolve) => {
     let ok = false;
     const m = modal({
@@ -126,22 +126,22 @@ export function confirmar(titulo, texto, botao = "Excluir") {
 export function tempoRelativo(iso) {
   if (!iso) return "";
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60) return "agora há pouco";
+  if (diff < 60) return "just now";
   const m = Math.floor(diff / 60);
-  if (m < 60) return `há ${m} min`;
+  if (m < 60) return `${m} min ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `há ${h} h`;
+  if (h < 24) return `${h} h ago`;
   const d = Math.floor(h / 24);
-  if (d === 1) return "ontem";
-  if (d < 30) return `há ${d} dias`;
+  if (d === 1) return "yesterday";
+  if (d < 30) return `${d} days ago`;
   return dataBR(iso);
 }
 
 export const dataBR = (iso) =>
-  iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+  iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
 
 export const dataHoraBR = (iso) =>
-  iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 
 // valor para <input type="datetime-local">
 export function toLocalInput(iso) {
@@ -154,15 +154,15 @@ export const fromLocalInput = (v) => (v ? new Date(v).toISOString() : null);
 
 // status de atualização do dashboard conforme frequência esperada
 const LIMITE_H = { horaria: 2, diaria: 26, semanal: 24 * 8, mensal: 24 * 32 };
-export const FREQ_LABEL = { horaria: "A cada hora", diaria: "Diária", semanal: "Semanal", mensal: "Mensal", manual: "Manual" };
+export const FREQ_LABEL = { horaria: "Hourly", diaria: "Daily", semanal: "Weekly", mensal: "Monthly", manual: "Manual" };
 
 export function statusAtualizacao(d) {
-  if (!d.atualizado_em) return { cls: "neutro", texto: "Atualização não informada" };
+  if (!d.atualizado_em) return { cls: "neutro", texto: "Refresh date not provided" };
   const horas = (Date.now() - new Date(d.atualizado_em).getTime()) / 36e5;
   const limite = LIMITE_H[d.frequencia];
   const rel = tempoRelativo(d.atualizado_em);
-  if (limite && horas > limite) return { cls: "atrasado", texto: `Atualização atrasada · ${rel}` };
-  return { cls: "ok", texto: `Atualizado ${rel}` };
+  if (limite && horas > limite) return { cls: "atrasado", texto: `Refresh overdue · ${rel}` };
+  return { cls: "ok", texto: `Refreshed ${rel}` };
 }
 
 export const NIVEL_ICON = { info: "info", alerta: "alert", critico: "alert" };
@@ -172,7 +172,7 @@ export const iniciais = (nome = "") =>
 
 export function saudacao() {
   const h = new Date().getHours();
-  return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
 export const storage = {
