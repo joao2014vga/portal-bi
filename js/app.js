@@ -23,6 +23,17 @@ function semCache(link) {
   return u.href;
 }
 
+// Relatórios do Power BI sempre em inglês (tela de login e interface),
+// independente do idioma do navegador. Respeita um language= já no link.
+function powerBiEmIngles(link) {
+  try {
+    const u = new URL(link);
+    if (!/(^|\.)powerbi\.com$/i.test(u.hostname) || u.searchParams.has("language")) return link;
+    u.searchParams.set("language", "en-US");
+    return u.href;
+  } catch { return link; }
+}
+
 document.title = CONFIG.NOME_PORTAL;
 
 // =====================================================================
@@ -356,12 +367,12 @@ async function telaDashboard(id) {
         </div>
         <div class="visor-acoes">
           <button class="btn btn-ghost" id="telaCheia">${icon("expand")}<span>Full screen</span></button>
-          ${demo ? "" : `<a class="btn btn-ghost" href="${esc(d.link)}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}
+          ${demo ? "" : `<a class="btn btn-ghost" href="${esc(powerBiEmIngles(d.link))}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}
         </div>
       </div>
       ${d.nota ? `<div class="nota nota-${esc(d.nota_tipo)}">${icon(NIVEL_ICON[d.nota_tipo])}<span>${esc(d.nota)}</span></div>` : ""}
       <div class="visor-frame" id="frame">
-        <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(sistema ? semCache(d.link) : d.link)}"`}
+        <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(sistema ? semCache(d.link) : powerBiEmIngles(d.link))}"`}
           allowfullscreen loading="eager"></iframe>
       </div>
     </div>`, { banner: false, cheio: true, ativo: sistema ? `d${d.id}` : "" });
