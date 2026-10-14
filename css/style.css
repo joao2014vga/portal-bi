@@ -316,6 +316,24 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .vazio h3 { color: var(--texto); font-size: 17px; }
 .vazio .btn { margin-top: 8px; }
 
+/* ---------------------------------------------------------------- arquivos */
+.arq-lista { display: flex; flex-direction: column; gap: 12px; }
+.arq {
+  display: flex; align-items: center; gap: 16px; padding: 16px 18px;
+  background: var(--sup); border: 1px solid var(--borda); border-radius: 12px; box-shadow: var(--sombra);
+}
+.arq-ic { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 10px; background: var(--brand-claro); color: var(--brand); flex: none; }
+.arq-ic .ic { width: 22px; height: 22px; }
+.arq-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.arq-txt h3 { font-size: 15.5px; font-weight: 600; }
+.arq-txt p { color: var(--texto-2); font-size: 13px; }
+.arq-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--texto-3); font-size: 12.5px; }
+.arq-meta span { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .arq { flex-wrap: wrap; }
+  .arq .btn { width: 100%; }
+}
+
 /* ---------------------------------------------------------------- visualizador */
 .pg-cheio .conteudo { max-width: none; padding: 0; }
 .visor { display: flex; flex-direction: column; height: calc(100vh - 60px); }

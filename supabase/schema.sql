@@ -305,7 +305,114 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------
--- 6. PRIMEIRO ADMINISTRADOR
+-- 6. ARQUIVOS PARA DOWNLOAD (ex.: planilha de Position)
+-- O ADM sobe o arquivo; os usuários liberados baixam por um link
+-- temporário. Bucket privado: ninguém baixa sem login e permissão.
+-- ---------------------------------------------------------------------
+create table if not exists public.bi_arquivos (
+  id             bigint generated always as identity primary key,
+  titulo         text not null,
+  descricao      text,
+  caminho        text not null,                    -- objeto no bucket bi-arquivos
+  nome_arquivo   text not null,                    -- nome original, usado no download
+  tamanho        bigint,
+  atualizado_em  timestamptz not null default now(),
+  ativo          boolean not null default true,
+  ordem          int not null default 0,
+  created_at     timestamptz not null default now()
+);
+
+create table if not exists public.bi_arquivo_acessos (
+  user_id     uuid   not null references public.bi_perfis (id) on delete cascade,
+  arquivo_id  bigint not null references public.bi_arquivos (id) on delete cascade,
+  primary key (user_id, arquivo_id)
+);
+create index if not exists bi_arquivo_acessos_arq_idx on public.bi_arquivo_acessos (arquivo_id);
+
+alter table public.bi_arquivos        enable row level security;
+alter table public.bi_arquivo_acessos enable row level security;
+
+drop policy if exists bi_arquivos_select on public.bi_arquivos;
+create policy bi_arquivos_select on public.bi_arquivos for select to authenticated
+  using (
+    public.bi_is_admin()
+    or (
+      ativo and public.bi_is_ativo() and exists (
+        select 1 from public.bi_arquivo_acessos a
+        where a.arquivo_id = bi_arquivos.id and a.user_id = auth.uid()
+      )
+    )
+  );
+
+drop policy if exists bi_arquivos_admin on public.bi_arquivos;
+create policy bi_arquivos_admin on public.bi_arquivos for all to authenticated
+  using (public.bi_is_admin()) with check (public.bi_is_admin());
+
+drop policy if exists bi_arquivo_acessos_select on public.bi_arquivo_acessos;
+create policy bi_arquivo_acessos_select on public.bi_arquivo_acessos for select to authenticated
+  using (user_id = auth.uid() or public.bi_is_admin());
+
+drop policy if exists bi_arquivo_acessos_admin on public.bi_arquivo_acessos;
+create policy bi_arquivo_acessos_admin on public.bi_arquivo_acessos for all to authenticated
+  using (public.bi_is_admin()) with check (public.bi_is_admin());
+
+-- Bucket privado, até 50 MB por arquivo
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('bi-arquivos', 'bi-arquivos', false, 52428800)
+on conflict (id) do nothing;
+
+-- Baixa quem vê o registro em bi_arquivos (a subconsulta passa pelo RLS dela)
+drop policy if exists bi_arquivos_obj_select on storage.objects;
+create policy bi_arquivos_obj_select on storage.objects for select to authenticated
+  using (bucket_id = 'bi-arquivos'
+         and exists (select 1 from public.bi_arquivos a where a.caminho = storage.objects.name));
+
+drop policy if exists bi_arquivos_obj_insert on storage.objects;
+create policy bi_arquivos_obj_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'bi-arquivos' and public.bi_is_admin());
+
+drop policy if exists bi_arquivos_obj_update on storage.objects;
+create policy bi_arquivos_obj_update on storage.objects for update to authenticated
+  using (bucket_id = 'bi-arquivos' and public.bi_is_admin());
+
+drop policy if exists bi_arquivos_obj_delete on storage.objects;
+create policy bi_arquivos_obj_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'bi-arquivos' and public.bi_is_admin());
+
+-- Notificações também para arquivos (novo ou substituído)
+alter table public.bi_notificacoes alter column dashboard_id drop not null;
+alter table public.bi_notificacoes add column if not exists
+  arquivo_id bigint references public.bi_arquivos (id) on delete cascade;
+
+-- Substitui a política da seção 5: vê a notificação quem vê o painel ou o arquivo
+drop policy if exists bi_notificacoes_select on public.bi_notificacoes;
+create policy bi_notificacoes_select on public.bi_notificacoes for select to authenticated
+  using (
+    (dashboard_id is not null and exists (select 1 from public.bi_dashboards d where d.id = dashboard_id))
+    or (arquivo_id is not null and exists (select 1 from public.bi_arquivos a where a.id = arquivo_id))
+  );
+
+create or replace function public.bi_notifica_arquivo()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if new.ativo and (tg_op = 'INSERT' or new.atualizado_em > old.atualizado_em) then
+    insert into public.bi_notificacoes (arquivo_id, titulo, mensagem)
+    values (new.id, new.titulo || case when tg_op = 'INSERT' then ' is available' else ' was updated' end,
+            'File ready to download');
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists bi_arquivos_notifica on public.bi_arquivos;
+create trigger bi_arquivos_notifica
+  after insert or update of atualizado_em on public.bi_arquivos
+  for each row execute function public.bi_notifica_arquivo();
+
+-- ---------------------------------------------------------------------
+-- 7. PRIMEIRO ADMINISTRADOR
 -- Use um usuário que já exista em Authentication > Users (pode ser o
 -- mesmo login que você usa nos outros sistemas). Troque o e-mail e rode:
 --

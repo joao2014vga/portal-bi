@@ -2,11 +2,12 @@ import { CONFIG } from "./config.js";
 import { api, MODO_DEMO, ACAO_URL, ERRO_URL } from "./api.js";
 import {
   esc, $, $$, icon, toast, modal, confirmar, tempoRelativo, dataBR, dataHoraBR,
-  toLocalInput, fromLocalInput, statusAtualizacao, FREQ_LABEL, NIVEL_ICON, iniciais, saudacao, storage,
+  toLocalInput, fromLocalInput, statusAtualizacao, FREQ_LABEL, NIVEL_ICON, iniciais, saudacao, storage, tamanhoArquivo,
 } from "./ui.js";
 
 const app = $("#app");
-const estado = { perfil: null, precisaSenha: ACAO_URL, sistemas: null, notifs: null, notifIniciado: false };
+// arquivos: undefined = ainda não buscou; false = recurso não instalado no banco
+const estado = { perfil: null, precisaSenha: ACAO_URL, sistemas: null, arquivos: undefined, notifs: null, notifIniciado: false };
 
 // Sistema integrado: "painel" cujo link fica no mesmo endereço do portal
 // (ex.: o Informativo). Abre dentro do portal usando o mesmo login e
@@ -70,7 +71,7 @@ async function rota() {
     return telaLogin();
   }
   if (!estado.perfil) {
-    estado.sistemas = null;
+    estado.sistemas = null; estado.arquivos = undefined;
     try { estado.perfil = await api.meuPerfil(); } catch (e) { estado.perfil = null; }
     if (!estado.perfil) { await api.sair(); return telaLogin("Profile not found. Please contact the administrator."); }
     if (!estado.perfil.ativo) { await api.sair(); return telaLogin("Your access has been deactivated. Please contact the administrator."); }
@@ -87,6 +88,7 @@ async function rota() {
     if (!secao) return await telaInicio();
     if (secao === "d" && sub) return await telaDashboard(sub);
     if (secao === "avisos") return await telaAvisos();
+    if (secao === "arquivos") return await telaArquivos();
     if (secao === "admin") {
       if (!estado.perfil.is_admin) { location.hash = "#/"; return; }
       return await telaAdmin(sub || "dashboards");
@@ -215,12 +217,15 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}
   const p = estado.perfil;
   const banners = banner ? await bannersVigentes() : [];
   estado.sistemas ??= (await api.dashboards()).filter((d) => d.ativo && ehSistema(d));
+  if (estado.arquivos === undefined) estado.arquivos = (await api.arquivos().catch(() => null)) ?? false;
+  const menuArquivos = estado.arquivos && (p.is_admin || estado.arquivos.length);
   app.innerHTML = `
   <header class="topo">
     <a class="topo-marca" href="#/">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></a>
     <nav class="topo-nav">
       <a href="#/" class="${ativo === "inicio" ? "on" : ""}">${icon("home")}<span>Home</span></a>
       ${estado.sistemas.map((d) => `<a href="#/d/${d.id}" class="${ativo === `d${d.id}` ? "on" : ""}">${icon("grid")}<span>${esc(d.titulo)}</span></a>`).join("")}
+      ${menuArquivos ? `<a href="#/arquivos" class="${ativo === "arquivos" ? "on" : ""}">${icon("file")}<span>Files</span></a>` : ""}
       <a href="#/avisos" class="${ativo === "avisos" ? "on" : ""}">${icon("megaphone")}<span>Announcements</span></a>
       ${p.is_admin ? `<a href="#/admin" class="${ativo === "admin" ? "on" : ""}">${icon("settings")}<span>Administration</span></a>` : ""}
     </nav>
@@ -285,8 +290,8 @@ function atualizarSino({ lista = true } = {}) {
   qtd.textContent = novas > 9 ? "9+" : novas;
   if (!lista) return;
   $("#notifLista").innerHTML = estado.notifs.length ? estado.notifs.map((n) => `
-    <a class="notif-item ${notifNova(n) ? "nova" : ""}" href="#/d/${n.dashboard_id}">
-      <span class="notif-ic">${icon("chart")}</span>
+    <a class="notif-item ${notifNova(n) ? "nova" : ""}" href="${n.arquivo_id ? "#/arquivos" : `#/d/${n.dashboard_id}`}">
+      <span class="notif-ic">${icon(n.arquivo_id ? "file" : "chart")}</span>
       <span class="notif-txt"><strong>${esc(n.titulo)}</strong>${n.mensagem ? `<span>${esc(n.mensagem)}</span>` : ""}
         <small title="${esc(dataHoraBR(n.created_at))}">${esc(tempoRelativo(n.created_at))}</small></span>
     </a>`).join("") : `<p class="notif-vazio">No notifications yet.</p>`;
@@ -423,6 +428,43 @@ async function telaAvisos() {
 }
 
 // =====================================================================
+// ARQUIVOS (downloads)
+// =====================================================================
+async function telaArquivos() {
+  const lista = await api.arquivos();
+  if (!lista) { location.hash = "#/"; return; }
+  const visiveis = lista.filter((a) => a.ativo);
+  await shell(`
+    <section class="ola"><div><h1>Files</h1><p class="muted">Spreadsheets and documents shared by the BI team.</p></div></section>
+    ${visiveis.length ? `<div class="arq-lista">${visiveis.map((a) => `
+      <article class="arq">
+        <span class="arq-ic">${icon("file")}</span>
+        <div class="arq-txt">
+          <h3>${esc(a.titulo)}</h3>
+          ${a.descricao ? `<p>${esc(a.descricao)}</p>` : ""}
+          <div class="arq-meta"><span>${esc(a.nome_arquivo)}</span><span>${esc(tamanhoArquivo(a.tamanho))}</span>
+            <span title="${esc(dataHoraBR(a.atualizado_em))}">Updated ${esc(tempoRelativo(a.atualizado_em))}</span></div>
+        </div>
+        <button class="btn btn-primary" data-baixar="${a.id}">${icon("download")}<span>Download</span></button>
+      </article>`).join("")}</div>`
+      : `<div class="vazio">${icon("file")}<h3>No files available</h3>
+        <p>${estado.perfil.is_admin ? "Upload the first file under Administration › Files." : "There are no files shared with you yet."}</p></div>`}
+  `, { ativo: "arquivos" });
+
+  $$("[data-baixar]").forEach((b) => b.addEventListener("click", async () => {
+    const a = visiveis.find((x) => x.id === Number(b.dataset.baixar));
+    b.disabled = true; b.classList.add("loading");
+    try {
+      const link = document.createElement("a");
+      link.href = await api.linkDownload(a);
+      link.download = a.nome_arquivo;
+      document.body.appendChild(link); link.click(); link.remove();
+    } catch (e) { toast(e.message, "erro"); }
+    finally { b.disabled = false; b.classList.remove("loading"); }
+  }));
+}
+
+// =====================================================================
 // VISUALIZADOR DO DASHBOARD
 // =====================================================================
 async function telaDashboard(id) {
@@ -484,11 +526,12 @@ const ABAS = [
   ["dashboards", "Reports", "chart"],
   ["categorias", "Categories", "folder"],
   ["usuarios", "Users", "users"],
+  ["arquivos", "Files", "file"],
   ["avisos", "Announcements", "megaphone"],
 ];
 
 async function telaAdmin(aba) {
-  const render = { dashboards: adminDashboards, categorias: adminCategorias, usuarios: adminUsuarios, avisos: adminAvisos }[aba];
+  const render = { dashboards: adminDashboards, categorias: adminCategorias, usuarios: adminUsuarios, arquivos: adminArquivos, avisos: adminAvisos }[aba];
   if (!render) { location.hash = "#/admin/dashboards"; return; }
   const corpo = await render();
   await shell(`
@@ -500,7 +543,7 @@ async function telaAdmin(aba) {
   corpo.bind?.();
 }
 
-const recarregar = () => { estado.sistemas = null; return rota(); };
+const recarregar = () => { estado.sistemas = null; estado.arquivos = undefined; return rota(); };
 
 // ---------------------------------------------------------------- painéis
 async function adminDashboards() {
@@ -891,6 +934,100 @@ function formAviso(a) {
         inicio, fim, ativo: f.ativo.checked,
       });
       toast("Announcement saved."); recarregar();
+    },
+  });
+}
+
+// ---------------------------------------------------------------- arquivos
+async function adminArquivos() {
+  const arqs = await api.arquivos();
+  if (!arqs) {
+    return { html: `<div class="vazio">${icon("file")}<h3>Files are not set up yet</h3>
+      <p>Run section 6 of <code>supabase/schema.sql</code> in the Supabase SQL Editor.</p></div>` };
+  }
+  const acessos = await api.contagemAcessosArquivos();
+  const qtd = (id) => acessos.filter((a) => a.arquivo_id === id).length;
+  return {
+    html: `
+    <div class="barra-acoes"><span class="muted">Files appear under Files in the top menu for the selected users.</span>
+      <button class="btn btn-primary" id="novo">${icon("upload")} Upload file</button></div>
+    <div class="tabela-wrap"><table class="tabela">
+      <thead><tr><th>File</th><th>Updated</th><th>Size</th><th>Users</th><th>Status</th><th></th></tr></thead>
+      <tbody>${arqs.length ? arqs.map((a) => `
+        <tr><td><strong>${esc(a.titulo)}</strong><div class="sub">${esc(a.nome_arquivo)}</div></td>
+          <td class="nowrap" title="${esc(dataHoraBR(a.atualizado_em))}">${esc(tempoRelativo(a.atualizado_em))}</td>
+          <td class="nowrap">${esc(tamanhoArquivo(a.tamanho))}</td>
+          <td>${qtd(a.id)}</td>
+          <td>${a.ativo ? `<span class="pill pill-ok">Active</span>` : `<span class="pill">Inactive</span>`}</td>
+          <td class="acoes">
+            <button class="btn-icon" data-substituir="${a.id}" title="Replace with a new version" aria-label="Replace with a new version">${icon("upload")}</button>
+            <button class="btn-icon" data-editar="${a.id}" title="Edit" aria-label="Edit">${icon("edit")}</button>
+            <button class="btn-icon perigo" data-excluir="${a.id}" title="Delete" aria-label="Delete">${icon("trash")}</button>
+          </td></tr>`).join("") : `<tr><td colspan="6" class="vazio-td">No files uploaded.</td></tr>`}
+      </tbody></table></div>`,
+    bind() {
+      const achar = (b, k) => arqs.find((a) => a.id === Number(b.dataset[k]));
+      $("#novo").addEventListener("click", () => formArquivo(null));
+      $$("[data-editar]").forEach((b) => b.addEventListener("click", () => formArquivo(achar(b, "editar"))));
+      $$("[data-substituir]").forEach((b) => b.addEventListener("click", () => formArquivo(achar(b, "substituir"), { substituir: true })));
+      $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {
+        const a = achar(b, "excluir");
+        if (!(await confirmar("Delete file", `Delete <strong>${esc(a.titulo)}</strong>? Users will no longer be able to download it.`))) return;
+        try { await api.excluirArquivo(a); toast("File deleted."); recarregar(); } catch (e) { toast(e.message, "erro"); }
+      }));
+    },
+  };
+}
+
+const LIMITE_ARQUIVO = 50 * 1024 * 1024;
+
+async function formArquivo(a, { substituir = false } = {}) {
+  const novo = !a;
+  a = a ?? { titulo: "", descricao: "", ativo: true, ordem: 0 };
+  const [usuarios, liberados] = await Promise.all([api.usuarios(), novo ? [] : api.acessosDoArquivo(a.id)]);
+  const comuns = usuarios.filter((u) => !u.is_admin);
+
+  modal({
+    titulo: novo ? "Upload file" : substituir ? "Replace file" : "Edit file",
+    botao: novo ? "Upload" : "Save",
+    largura: substituir ? "" : "modal-lg",
+    corpo: `
+    <div class="form-grid">
+      ${substituir ? `<p class="col-2 muted">Upload the new version of <strong>${esc(a.titulo)}</strong>. Users with access will be notified.</p>` : `
+      <label class="campo col-2"><span>Title *</span><input name="titulo" required maxlength="120" placeholder="e.g. Position Overview" value="${esc(a.titulo)}"></label>
+      <label class="campo col-2"><span>Description</span><textarea name="descricao" rows="2" maxlength="500">${esc(a.descricao ?? "")}</textarea></label>`}
+      <label class="campo col-2"><span>${novo ? "File *" : substituir ? "New version *" : "Replace file (optional)"}</span>
+        <input type="file" name="arquivo" ${novo || substituir ? "required" : ""}>
+        <small class="dica">${novo || substituir ? "" : `Current: ${esc(a.nome_arquivo)} (${esc(tamanhoArquivo(a.tamanho))}). `}Excel, PDF or any other file up to 50 MB.</small></label>
+      ${substituir ? "" : `
+      <label class="campo"><span>Display order</span><input type="number" name="ordem" value="${esc(a.ordem)}"></label>
+      <label class="switch"><input type="checkbox" name="ativo" ${a.ativo ? "checked" : ""}><span></span>File active</label>
+      <fieldset class="col-2 grupo-campos"><legend>${icon("users")} Who can download</legend>
+        <p class="dica">Administrators can always download.</p>
+        ${checklist("usuarios", comuns.map((u) => ({ v: u.id, t: u.nome || u.email, s: u.email, on: novo || liberados.includes(u.id) })), "No standard users registered.")}
+      </fieldset>`}
+    </div>`,
+    onOpen: (f) => bindChecklist(f),
+    async onSubmit(f) {
+      const file = f.arquivo.files[0];
+      if ((novo || substituir) && !file) throw new Error("Please choose a file.");
+      if (file && file.size > LIMITE_ARQUIVO) throw new Error("The file is larger than 50 MB.");
+      const dados = substituir ? { id: a.id } : {
+        ...(novo ? {} : { id: a.id }),
+        titulo: f.titulo.value.trim(),
+        descricao: f.descricao.value.trim() || null,
+        ordem: Number(f.ordem.value) || 0,
+        ativo: f.ativo.checked,
+      };
+      if (!substituir && !dados.titulo) throw new Error("Please enter a title.");
+      // sobe o arquivo novo antes de gravar; o antigo só é apagado depois que deu certo
+      if (file) Object.assign(dados, await api.enviarArquivo(file), { atualizado_em: new Date().toISOString() });
+      const usuariosSel = substituir ? null : $$('input[name="usuarios"]:checked', f).map((c) => c.value);
+      try { await api.salvarArquivo(dados, usuariosSel); }
+      catch (e) { if (file) await api.removerObjetoArquivo(dados.caminho).catch(() => {}); throw e; }
+      if (file && !novo) await api.removerObjetoArquivo(a.caminho).catch(() => {});
+      toast(novo ? "File uploaded." : file ? "New version uploaded. Users have been notified." : "File updated.");
+      recarregar();
     },
   });
 }

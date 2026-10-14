@@ -172,9 +172,47 @@ export function criarDemo() {
     },
     async excluirAviso(id) { exigeAdmin(); db.avisos = db.avisos.filter((x) => x.id !== id); salvar(); },
 
+    // arquivos ficam no próprio navegador (data URL), então só servem arquivos pequenos
+    async arquivos() {
+      const me = eu();
+      const lista = (db.arquivos ??= []).filter((a) => me.is_admin || (a.ativo && (db.arqAcessos ?? []).some(([u, x]) => u === me.id && x === a.id)));
+      return structuredClone(lista).sort((a, b) => a.ordem - b.ordem || a.titulo.localeCompare(b.titulo));
+    },
+    async enviarArquivo(file) {
+      if (file.size > 1024 * 1024) throw new Error("Demo mode only stores files up to 1 MB.");
+      const caminho = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result); r.onerror = () => rej(new Error("Unable to read the file"));
+        r.readAsDataURL(file);
+      });
+      return { caminho, nome_arquivo: file.name, tamanho: file.size };
+    },
+    async salvarArquivo(a, usuarios) {
+      exigeAdmin();
+      db.arquivos ??= []; db.arqAcessos ??= [];
+      let id = a.id;
+      const antes = id ? db.arquivos.find((x) => x.id === id) : null;
+      if (antes) Object.assign(antes, a);
+      else { id = novoId(); db.arquivos.push({ ...a, id, atualizado_em: a.atualizado_em ?? new Date().toISOString() }); }
+      if (usuarios) db.arqAcessos = db.arqAcessos.filter(([, x]) => x !== id).concat(usuarios.map((u) => [u, id]));
+      if (!antes || a.atualizado_em) {
+        const arq = db.arquivos.find((x) => x.id === id);
+        const n = { id: novoId(), arquivo_id: id, dashboard_id: null, titulo: `${arq.titulo} ${antes ? "was updated" : "is available"}`, mensagem: "File ready to download", autor: db.sessao, created_at: new Date().toISOString() };
+        (db.notificacoes ??= []).unshift(n);
+        ouvintesNotif.forEach((cb) => cb(structuredClone(n)));
+      }
+      salvar();
+    },
+    async removerObjetoArquivo() {},
+    async excluirArquivo(a) { exigeAdmin(); db.arquivos = db.arquivos.filter((x) => x.id !== a.id); db.arqAcessos = (db.arqAcessos ?? []).filter(([, x]) => x !== a.id); salvar(); },
+    async acessosDoArquivo(id) { return (db.arqAcessos ?? []).filter(([, x]) => x === id).map(([u]) => u); },
+    async contagemAcessosArquivos() { return (db.arqAcessos ?? []).map(([u, a]) => ({ user_id: u, arquivo_id: a })); },
+    async linkDownload(a) { return a.caminho; },
+
     async notificacoes() {
       const visiveis = (await this.dashboards()).map((d) => d.id);
-      return structuredClone((db.notificacoes ?? []).filter((n) => visiveis.includes(n.dashboard_id)).slice(0, 30));
+      const arqs = (await this.arquivos()).map((a) => a.id);
+      return structuredClone((db.notificacoes ?? []).filter((n) => n.arquivo_id ? arqs.includes(n.arquivo_id) : visiveis.includes(n.dashboard_id)).slice(0, 30));
     },
     async marcarNotificacoesVistas() {
       const agora = new Date().toISOString();

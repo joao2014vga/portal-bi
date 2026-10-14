@@ -144,6 +144,38 @@ async function criarApiSupabase() {
     },
     async excluirAviso(id) { check(await sb.from("bi_avisos").delete().eq("id", id)); },
 
+    // ----------------------------------------------------------- arquivos
+    // null = recurso ainda não instalado no banco (schema.sql, seção 6)
+    async arquivos() {
+      const { data, error } = await sb.from("bi_arquivos").select("*").order("ordem").order("titulo");
+      return error ? null : data;
+    },
+    async enviarArquivo(file) {
+      const seguro = file.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "_");
+      const caminho = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${seguro}`;
+      check(await sb.storage.from("bi-arquivos").upload(caminho, file, { upsert: false, contentType: file.type || undefined }));
+      return { caminho, nome_arquivo: file.name, tamanho: file.size };
+    },
+    async salvarArquivo({ id, ...a }, usuarios) {
+      let arqId = id;
+      if (id) check(await sb.from("bi_arquivos").update(a).eq("id", id));
+      else arqId = check(await sb.from("bi_arquivos").insert(a).select("id").single()).id;
+      if (usuarios) await sincronizar("bi_arquivo_acessos", "arquivo_id", arqId, "user_id", usuarios);
+    },
+    async removerObjetoArquivo(caminho) { await sb.storage.from("bi-arquivos").remove([caminho]); },
+    async excluirArquivo(a) {
+      check(await sb.from("bi_arquivos").delete().eq("id", a.id));
+      await sb.storage.from("bi-arquivos").remove([a.caminho]);
+    },
+    async acessosDoArquivo(id) {
+      return check(await sb.from("bi_arquivo_acessos").select("user_id").eq("arquivo_id", id)).map((r) => r.user_id);
+    },
+    async contagemAcessosArquivos() { return check(await sb.from("bi_arquivo_acessos").select("arquivo_id, user_id")); },
+    // link temporário (1 min) que já baixa com o nome original
+    async linkDownload(a) {
+      return check(await sb.storage.from("bi-arquivos").createSignedUrl(a.caminho, 60, { download: a.nome_arquivo })).signedUrl;
+    },
+
     // ----------------------------------------------------------- notificações
     // null = recurso ainda não instalado no banco (schema.sql, seção 5)
     async notificacoes() {
