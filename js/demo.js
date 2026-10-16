@@ -179,6 +179,20 @@ export function criarDemo() {
       const lista = (db.arquivos ??= []).filter((a) => me.is_admin || me.gerencia_arquivos || (a.ativo && (db.arqAcessos ?? []).some(([u, x]) => u === me.id && x === a.id)));
       return structuredClone(lista).sort((a, b) => a.ordem - b.ordem || a.titulo.localeCompare(b.titulo));
     },
+    async pastas() { return structuredClone(db.pastas ??= []).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome)); },
+    async salvarPasta(p) {
+      exigeArquivos();
+      db.pastas ??= [];
+      if (p.id) Object.assign(db.pastas.find((x) => x.id === p.id), p);
+      else db.pastas.push({ ordem: 0, pai_id: null, ...p, id: novoId() });
+      salvar();
+    },
+    async excluirPasta(id) {
+      exigeArquivos();
+      if ((db.arquivos ?? []).some((a) => a.pasta_id === id) || db.pastas.some((p) => p.pai_id === id))
+        throw new Error("This folder is not empty. Move or delete its contents first.");
+      db.pastas = db.pastas.filter((p) => p.id !== id); salvar();
+    },
     async enviarArquivo(file) {
       if (file.size > 1024 * 1024) throw new Error("Demo mode only stores files up to 1 MB.");
       const caminho = await new Promise((res, rej) => {

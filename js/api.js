@@ -25,6 +25,7 @@ function traduzErro(msg = "") {
   if (/Password should be at least/i.test(msg)) return "The password must be at least 8 characters long.";
   if (/New password should be different/i.test(msg)) return "The new password must be different from the previous one.";
   if (/duplicate key/i.test(msg)) return "A record with this name already exists.";
+  if (/bi_pastas|pasta_id/i.test(msg) && /foreign key/i.test(msg)) return "This folder is not empty. Move or delete its contents first.";
   if (/rate limit/i.test(msg)) return "Too many attempts. Please wait a few minutes.";
   if (/Failed to fetch/i.test(msg)) return "Unable to connect to the server.";
   return msg;
@@ -152,6 +153,16 @@ async function criarApiSupabase() {
       const { data, error } = await sb.from("bi_arquivos").select("*").order("ordem").order("titulo");
       return error ? null : data;
     },
+    // null = pastas ainda não instaladas no banco
+    async pastas() {
+      const { data, error } = await sb.from("bi_pastas").select("*").order("ordem").order("nome");
+      return error ? null : data;
+    },
+    async salvarPasta({ id, ...p }) {
+      if (id) check(await sb.from("bi_pastas").update(p).eq("id", id));
+      else check(await sb.from("bi_pastas").insert(p));
+    },
+    async excluirPasta(id) { check(await sb.from("bi_pastas").delete().eq("id", id)); },
     async enviarArquivo(file) {
       const seguro = file.name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "_");
       const caminho = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${seguro}`;

@@ -337,6 +337,30 @@ create table if not exists public.bi_arquivos (
   created_at     timestamptz not null default now()
 );
 
+-- Pastas (e subpastas) para organizar os arquivos. Só é possível apagar uma
+-- pasta vazia: arquivos e subpastas dentro dela impedem a exclusão.
+create table if not exists public.bi_pastas (
+  id          bigint generated always as identity primary key,
+  nome        text not null,
+  pai_id      bigint references public.bi_pastas (id) on delete restrict,   -- null = no topo
+  ordem       int not null default 0,
+  created_at  timestamptz not null default now()
+);
+alter table public.bi_arquivos add column if not exists
+  pasta_id bigint references public.bi_pastas (id) on delete restrict;      -- null = no topo
+
+alter table public.bi_pastas enable row level security;
+
+-- Nomes das pastas ficam visíveis para quem está no portal; o portal só mostra
+-- a cada usuário as pastas que têm algum arquivo liberado para ele
+drop policy if exists bi_pastas_select on public.bi_pastas;
+create policy bi_pastas_select on public.bi_pastas for select to authenticated
+  using (public.bi_is_ativo());
+
+drop policy if exists bi_pastas_admin on public.bi_pastas;
+create policy bi_pastas_admin on public.bi_pastas for all to authenticated
+  using (public.bi_gerencia_arquivos()) with check (public.bi_gerencia_arquivos());
+
 create table if not exists public.bi_arquivo_acessos (
   user_id     uuid   not null references public.bi_perfis (id) on delete cascade,
   arquivo_id  bigint not null references public.bi_arquivos (id) on delete cascade,

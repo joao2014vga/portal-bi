@@ -91,13 +91,11 @@ async function rota() {
     if (!secao) return await telaInicio();
     if (secao === "d" && sub) return await telaDashboard(sub);
     if (secao === "avisos") return await telaAvisos();
-    if (secao === "arquivos") return await telaArquivos();
+    if (secao === "arquivos") return await telaArquivos(sub, partes[2]);
     if (secao === "admin") {
-      // File manager (sem ser ADM) só entra na aba de arquivos
-      if (!estado.perfil.is_admin) {
-        if (gerenciaArquivos() && sub === "arquivos") return await telaAdmin("arquivos");
-        location.hash = "#/"; return;
-      }
+      // a gestão de arquivos fica na própria tela Files (endereço antigo)
+      if (sub === "arquivos") { location.hash = "#/arquivos"; return; }
+      if (!estado.perfil.is_admin) { location.hash = "#/"; return; }
       return await telaAdmin(sub || "dashboards");
     }
     location.hash = "#/";
@@ -297,7 +295,7 @@ function atualizarSino({ lista = true } = {}) {
   qtd.textContent = novas > 9 ? "9+" : novas;
   if (!lista) return;
   $("#notifLista").innerHTML = estado.notifs.length ? estado.notifs.map((n) => `
-    <a class="notif-item ${notifNova(n) ? "nova" : ""}" href="${n.arquivo_id ? "#/arquivos" : `#/d/${n.dashboard_id}`}">
+    <a class="notif-item ${notifNova(n) ? "nova" : ""}" href="${n.arquivo_id ? `#/arquivos/a/${n.arquivo_id}` : `#/d/${n.dashboard_id}`}">
       <span class="notif-ic">${icon(n.arquivo_id ? "file" : "chart")}</span>
       <span class="notif-txt"><strong>${esc(n.titulo)}</strong>${n.mensagem ? `<span>${esc(n.mensagem)}</span>` : ""}
         <small title="${esc(dataHoraBR(n.created_at))}">${esc(tempoRelativo(n.created_at))}</small></span>
@@ -435,32 +433,113 @@ async function telaAvisos() {
 }
 
 // =====================================================================
-// ARQUIVOS (downloads)
+// ARQUIVOS (downloads, organizados em pastas)
+// Rotas: #/arquivos (topo) · #/arquivos/p/<pasta> · #/arquivos/a/<arquivo>
+// (abre a pasta do arquivo, com ele em destaque — usado pelas notificações).
+// Quem gerencia arquivos (ADM ou File manager) faz tudo nesta mesma tela.
 // =====================================================================
-async function telaArquivos() {
-  const lista = await api.arquivos();
+const ordenar = (a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || (a.nome ?? a.titulo).localeCompare(b.nome ?? b.titulo);
+
+// "Pasta › Subpasta" para os seletores de pasta
+function rotuloPasta(p, pastas) {
+  const nomes = [];
+  for (let x = p; x; x = pastas.find((y) => y.id === x.pai_id)) nomes.unshift(x.nome);
+  return nomes.join(" › ");
+}
+
+async function telaArquivos(tipo, id) {
+  const [lista, pastasDb] = await Promise.all([api.arquivos(), api.pastas().catch(() => null)]);
   if (!lista) { location.hash = "#/"; return; }
-  const visiveis = lista.filter((a) => a.ativo);
+  const gerente = gerenciaArquivos();
+  const pastas = pastasDb ?? []; // null = pastas ainda não instaladas no banco
+  const arqs = gerente ? lista : lista.filter((a) => a.ativo);
+  const destaque = tipo === "a" ? arqs.find((a) => a.id === Number(id)) : null;
+  const atual = tipo === "p" ? pastas.find((p) => p.id === Number(id)) ?? null
+    : destaque ? pastas.find((p) => p.id === destaque.pasta_id) ?? null : null;
+  const aqui = atual?.id ?? null;
+
+  const filhas = (pid) => pastas.filter((p) => (p.pai_id ?? null) === pid);
+  // o usuário só vê a pasta que tem (nela ou numa subpasta) algum arquivo liberado para ele
+  const temArquivo = (p) => arqs.some((a) => a.pasta_id === p.id) || filhas(p.id).some(temArquivo);
+  const visivel = (p) => gerente || temArquivo(p);
+  const qtdItens = (p) => arqs.filter((a) => a.pasta_id === p.id).length + filhas(p.id).filter(visivel).length;
+  const trilha = [];
+  for (let p = atual; p; p = pastas.find((x) => x.id === p.pai_id)) trilha.unshift(p);
+  const subpastas = filhas(aqui).filter(visivel).sort(ordenar);
+  const arquivosAqui = arqs.filter((a) => (a.pasta_id ?? null) === aqui).sort(ordenar);
+  const acessos = gerente ? await api.contagemAcessosArquivos().catch(() => []) : [];
+  const qtdUsuarios = (aid) => acessos.filter((x) => x.arquivo_id === aid).length;
+
   await shell(`
-    <section class="ola"><div><h1>Files</h1><p class="muted">Spreadsheets and documents shared by the BI team.</p></div>
-      ${gerenciaArquivos() ? `<a class="btn" href="#/admin/arquivos">${icon("upload")} Manage files</a>` : ""}</section>
-    ${visiveis.length ? `<div class="arq-lista">${visiveis.map((a) => `
-      <article class="arq">
+    <section class="ola"><div><h1>${esc(atual?.nome ?? "Files")}</h1><p class="muted">Spreadsheets and documents shared by the BI team.</p></div>
+      ${gerente ? `<div class="barra-btns">
+        ${pastasDb ? `<button class="btn" id="novaPasta">${icon("folder")}<span>New folder</span></button>` : ""}
+        <button class="btn btn-primary" id="novoArq">${icon("upload")}<span>Upload file</span></button></div>` : ""}
+    </section>
+    ${trilha.length ? `<nav class="trilha" aria-label="Folder path"><a href="#/arquivos">Files</a>${trilha.map((p, i) => i === trilha.length - 1
+      ? `<span>›</span><strong>${esc(p.nome)}</strong>` : `<span>›</span><a href="#/arquivos/p/${p.id}">${esc(p.nome)}</a>`).join("")}</nav>` : ""}
+    ${subpastas.length || arquivosAqui.length ? `<div class="arq-lista">
+      ${subpastas.map((p) => `
+      <article class="arq arq-pasta" data-abrir="${p.id}">
+        <span class="arq-ic">${icon("folder")}</span>
+        <div class="arq-txt"><h3><a href="#/arquivos/p/${p.id}">${esc(p.nome)}</a></h3>
+          <div class="arq-meta"><span>${qtdItens(p)} ${qtdItens(p) === 1 ? "item" : "items"}</span></div></div>
+        ${gerente ? `<div class="arq-acoes">
+          <button class="btn-icon" data-pasta-editar="${p.id}" title="Rename or move" aria-label="Rename or move">${icon("edit")}</button>
+          <button class="btn-icon perigo" data-pasta-excluir="${p.id}" title="Delete folder" aria-label="Delete folder">${icon("trash")}</button></div>` : ""}
+      </article>`).join("")}
+      ${arquivosAqui.map((a) => `
+      <article class="arq ${destaque?.id === a.id ? "arq-destaque" : ""}">
         <span class="arq-ic">${icon("file")}</span>
         <div class="arq-txt">
-          <h3>${esc(a.titulo)}</h3>
+          <h3>${esc(a.titulo)}${a.ativo ? "" : ` <span class="pill">Inactive</span>`}</h3>
           ${a.descricao ? `<p>${esc(a.descricao)}</p>` : ""}
           <div class="arq-meta"><span>${esc(a.nome_arquivo)}</span><span>${esc(tamanhoArquivo(a.tamanho))}</span>
-            <span title="${esc(dataHoraBR(a.atualizado_em))}">Updated ${esc(tempoRelativo(a.atualizado_em))}</span></div>
+            <span title="${esc(dataHoraBR(a.atualizado_em))}">Updated ${esc(tempoRelativo(a.atualizado_em))}</span>
+            ${gerente ? `<span>Shared with ${qtdUsuarios(a.id)} ${qtdUsuarios(a.id) === 1 ? "user" : "users"}</span>` : ""}</div>
         </div>
+        ${gerente ? `<div class="arq-acoes">
+          <button class="btn-icon" data-substituir="${a.id}" title="Replace with a new version" aria-label="Replace with a new version">${icon("upload")}</button>
+          <button class="btn-icon" data-editar="${a.id}" title="Edit" aria-label="Edit">${icon("edit")}</button>
+          <button class="btn-icon perigo" data-excluir="${a.id}" title="Delete" aria-label="Delete">${icon("trash")}</button></div>` : ""}
         <button class="btn btn-primary" data-baixar="${a.id}">${icon("download")}<span>Download</span></button>
-      </article>`).join("")}</div>`
-      : `<div class="vazio">${icon("file")}<h3>No files available</h3>
-        <p>${gerenciaArquivos() ? "Upload the first file under Manage files." : "There are no files shared with you yet."}</p></div>`}
+      </article>`).join("")}
+    </div>`
+      : `<div class="vazio">${icon(atual ? "folder" : "file")}<h3>${atual ? "This folder is empty" : "No files available"}</h3>
+        <p>${gerente ? "Use New folder or Upload file to add content." : "There are no files shared with you yet."}</p></div>`}
   `, { ativo: "arquivos" });
 
+  $(".arq-destaque")?.scrollIntoView({ block: "center" });
+  $$("[data-abrir]").forEach((el) => el.addEventListener("click", (e) => {
+    if (!e.target.closest("button, a")) location.hash = `#/arquivos/p/${el.dataset.abrir}`;
+  }));
+
+  if (gerente) {
+    const achar = (b, k) => arqs.find((a) => a.id === Number(b.dataset[k]));
+    const opcoesPasta = pastasDb;
+    $("#novaPasta")?.addEventListener("click", () => formPasta(null, aqui, pastas));
+    $("#novoArq").addEventListener("click", () => formArquivo(null, { pastaPadrao: aqui, pastas: opcoesPasta }));
+    $$("[data-editar]").forEach((b) => b.addEventListener("click", () => formArquivo(achar(b, "editar"), { pastas: opcoesPasta })));
+    $$("[data-substituir]").forEach((b) => b.addEventListener("click", () => formArquivo(achar(b, "substituir"), { substituir: true })));
+    $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {
+      const a = achar(b, "excluir");
+      if (!(await confirmar("Delete file", `Delete <strong>${esc(a.titulo)}</strong>? Users will no longer be able to download it.`))) return;
+      try { await api.excluirArquivo(a); toast("File deleted."); recarregar(); } catch (e) { toast(e.message, "erro"); }
+    }));
+    $$("[data-pasta-editar]").forEach((b) => b.addEventListener("click", () =>
+      formPasta(pastas.find((p) => p.id === Number(b.dataset.pastaEditar)), aqui, pastas)));
+    $$("[data-pasta-excluir]").forEach((b) => b.addEventListener("click", async () => {
+      const p = pastas.find((x) => x.id === Number(b.dataset.pastaExcluir));
+      if (arqs.some((a) => a.pasta_id === p.id) || filhas(p.id).length) {
+        toast("This folder is not empty. Move or delete its contents first.", "erro"); return;
+      }
+      if (!(await confirmar("Delete folder", `Delete the folder <strong>${esc(p.nome)}</strong>?`))) return;
+      try { await api.excluirPasta(p.id); toast("Folder deleted."); recarregar(); } catch (e) { toast(e.message, "erro"); }
+    }));
+  }
+
   $$("[data-baixar]").forEach((b) => b.addEventListener("click", async () => {
-    const a = visiveis.find((x) => x.id === Number(b.dataset.baixar));
+    const a = arqs.find((x) => x.id === Number(b.dataset.baixar));
     b.disabled = true; b.classList.add("loading");
     try {
       const link = document.createElement("a");
@@ -534,22 +613,19 @@ const ABAS = [
   ["dashboards", "Reports", "chart"],
   ["categorias", "Categories", "folder"],
   ["usuarios", "Users", "users"],
-  ["arquivos", "Files", "file"],
   ["avisos", "Announcements", "megaphone"],
 ];
 
 async function telaAdmin(aba) {
-  const render = { dashboards: adminDashboards, categorias: adminCategorias, usuarios: adminUsuarios, arquivos: adminArquivos, avisos: adminAvisos }[aba];
+  const render = { dashboards: adminDashboards, categorias: adminCategorias, usuarios: adminUsuarios, avisos: adminAvisos }[aba];
   if (!render) { location.hash = "#/admin/dashboards"; return; }
-  const adm = estado.perfil.is_admin;
   const corpo = await render();
   await shell(`
-    <section class="ola"><div><h1>${adm ? "Administration" : "Manage files"}</h1>
-      <p class="muted">${adm ? "Manage reports, user access and announcements." : "Upload files and choose who can download them."}</p></div></section>
+    <section class="ola"><div><h1>Administration</h1><p class="muted">Manage reports, user access and announcements. Files are managed on the Files page.</p></div></section>
     <nav class="abas" role="tablist">
-      ${ABAS.filter(([k]) => adm || k === "arquivos").map(([k, t, ic]) => `<a role="tab" href="#/admin/${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}${t}</a>`).join("")}
+      ${ABAS.map(([k, t, ic]) => `<a role="tab" href="#/admin/${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}${t}</a>`).join("")}
     </nav>
-    <div class="admin-corpo">${corpo.html}</div>`, { ativo: adm ? "admin" : "arquivos", banner: false });
+    <div class="admin-corpo">${corpo.html}</div>`, { ativo: "admin", banner: false });
   corpo.bind?.();
 }
 
@@ -952,52 +1028,41 @@ function formAviso(a) {
   });
 }
 
-// ---------------------------------------------------------------- arquivos
-async function adminArquivos() {
-  const arqs = await api.arquivos();
-  if (!arqs) {
-    return { html: `<div class="vazio">${icon("file")}<h3>Files are not set up yet</h3>
-      <p>Run section 6 of <code>supabase/schema.sql</code> in the Supabase SQL Editor.</p></div>` };
-  }
-  const acessos = await api.contagemAcessosArquivos();
-  const qtd = (id) => acessos.filter((a) => a.arquivo_id === id).length;
-  return {
-    html: `
-    <div class="barra-acoes"><span class="muted">Files appear under Files in the top menu for the selected users.</span>
-      <button class="btn btn-primary" id="novo">${icon("upload")} Upload file</button></div>
-    <div class="tabela-wrap"><table class="tabela">
-      <thead><tr><th>File</th><th>Updated</th><th>Size</th><th>Users</th><th>Status</th><th></th></tr></thead>
-      <tbody>${arqs.length ? arqs.map((a) => `
-        <tr><td><strong>${esc(a.titulo)}</strong><div class="sub">${esc(a.nome_arquivo)}</div></td>
-          <td class="nowrap" title="${esc(dataHoraBR(a.atualizado_em))}">${esc(tempoRelativo(a.atualizado_em))}</td>
-          <td class="nowrap">${esc(tamanhoArquivo(a.tamanho))}</td>
-          <td>${qtd(a.id)}</td>
-          <td>${a.ativo ? `<span class="pill pill-ok">Active</span>` : `<span class="pill">Inactive</span>`}</td>
-          <td class="acoes">
-            <button class="btn-icon" data-substituir="${a.id}" title="Replace with a new version" aria-label="Replace with a new version">${icon("upload")}</button>
-            <button class="btn-icon" data-editar="${a.id}" title="Edit" aria-label="Edit">${icon("edit")}</button>
-            <button class="btn-icon perigo" data-excluir="${a.id}" title="Delete" aria-label="Delete">${icon("trash")}</button>
-          </td></tr>`).join("") : `<tr><td colspan="6" class="vazio-td">No files uploaded.</td></tr>`}
-      </tbody></table></div>`,
-    bind() {
-      const achar = (b, k) => arqs.find((a) => a.id === Number(b.dataset[k]));
-      $("#novo").addEventListener("click", () => formArquivo(null));
-      $$("[data-editar]").forEach((b) => b.addEventListener("click", () => formArquivo(achar(b, "editar"))));
-      $$("[data-substituir]").forEach((b) => b.addEventListener("click", () => formArquivo(achar(b, "substituir"), { substituir: true })));
-      $$("[data-excluir]").forEach((b) => b.addEventListener("click", async () => {
-        const a = achar(b, "excluir");
-        if (!(await confirmar("Delete file", `Delete <strong>${esc(a.titulo)}</strong>? Users will no longer be able to download it.`))) return;
-        try { await api.excluirArquivo(a); toast("File deleted."); recarregar(); } catch (e) { toast(e.message, "erro"); }
-      }));
+// ---------------------------------------------------------------- arquivos e pastas (formulários)
+// <select> de pasta; `excluir` = ids que não podem ser escolhidos (a própria pasta e as de dentro dela)
+function seletorPasta(pastas, escolhida, excluir = []) {
+  const opcoes = pastas.filter((p) => !excluir.includes(p.id))
+    .map((p) => ({ id: p.id, rotulo: rotuloPasta(p, pastas) })).sort((a, b) => a.rotulo.localeCompare(b.rotulo));
+  return `<select name="pasta_id"><option value="">Files (top level)</option>
+    ${opcoes.map((o) => `<option value="${o.id}" ${o.id === escolhida ? "selected" : ""}>${esc(o.rotulo)}</option>`).join("")}</select>`;
+}
+
+function formPasta(p, pastaAtual, pastas) {
+  const nova = !p;
+  // não deixa mover uma pasta para dentro dela mesma ou de uma subpasta dela
+  const descendentes = (id) => pastas.filter((x) => x.pai_id === id).flatMap((x) => [x.id, ...descendentes(x.id)]);
+  modal({
+    titulo: nova ? "New folder" : "Edit folder",
+    botao: nova ? "Create folder" : "Save",
+    corpo: `<div class="form-grid">
+      <label class="campo col-2"><span>Name *</span><input name="nome" required maxlength="80" value="${esc(p?.nome ?? "")}"></label>
+      <label class="campo col-2"><span>Inside</span>${seletorPasta(pastas, nova ? pastaAtual : p.pai_id ?? null, nova ? [] : [p.id, ...descendentes(p.id)])}</label>
+      <label class="campo"><span>Display order</span><input type="number" name="ordem" value="${esc(p?.ordem ?? 0)}"></label></div>`,
+    async onSubmit(f) {
+      const nome = f.nome.value.trim();
+      if (!nome) throw new Error("Please enter a name.");
+      await api.salvarPasta({ ...(nova ? {} : { id: p.id }), nome, pai_id: f.pasta_id.value ? Number(f.pasta_id.value) : null, ordem: Number(f.ordem.value) || 0 });
+      toast(nova ? "Folder created." : "Folder updated."); recarregar();
     },
-  };
+  });
 }
 
 const LIMITE_ARQUIVO = 50 * 1024 * 1024;
 
-async function formArquivo(a, { substituir = false } = {}) {
+// `pastas` = lista de pastas (null quando ainda não instaladas no banco: sem seletor)
+async function formArquivo(a, { substituir = false, pastaPadrao = null, pastas = null } = {}) {
   const novo = !a;
-  a = a ?? { titulo: "", descricao: "", ativo: true, ordem: 0 };
+  a = a ?? { titulo: "", descricao: "", ativo: true, ordem: 0, pasta_id: pastaPadrao };
   const [usuarios, liberados] = await Promise.all([api.usuarios(), novo ? [] : api.acessosDoArquivo(a.id)]);
   const comuns = usuarios.filter((u) => !u.is_admin);
 
@@ -1014,6 +1079,7 @@ async function formArquivo(a, { substituir = false } = {}) {
         <input type="file" name="arquivo" ${novo || substituir ? "required" : ""}>
         <small class="dica">${novo || substituir ? "" : `Current: ${esc(a.nome_arquivo)} (${esc(tamanhoArquivo(a.tamanho))}). `}Excel, PDF or any other file up to 50 MB.</small></label>
       ${substituir ? "" : `
+      ${pastas ? `<label class="campo col-2"><span>Folder</span>${seletorPasta(pastas, a.pasta_id ?? null)}</label>` : ""}
       <label class="campo"><span>Display order</span><input type="number" name="ordem" value="${esc(a.ordem)}"></label>
       <label class="switch"><input type="checkbox" name="ativo" ${a.ativo ? "checked" : ""}><span></span>File active</label>
       <fieldset class="col-2 grupo-campos"><legend>${icon("users")} Who can download</legend>
@@ -1032,6 +1098,7 @@ async function formArquivo(a, { substituir = false } = {}) {
         descricao: f.descricao.value.trim() || null,
         ordem: Number(f.ordem.value) || 0,
         ativo: f.ativo.checked,
+        ...(pastas ? { pasta_id: f.pasta_id.value ? Number(f.pasta_id.value) : null } : {}),
       };
       if (!substituir && !dados.titulo) throw new Error("Please enter a title.");
       // sobe o arquivo novo antes de gravar; o antigo só é apagado depois que deu certo
