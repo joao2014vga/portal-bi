@@ -88,6 +88,16 @@ th.col-marca,td.col-marca{text-align:center}
 </div>
 
 <script>
+// ── LOGIN DO PORTAL BI ──────────────────────────────────────────────────
+// Só abre dentro do Portal BI (iframe no mesmo endereço) e usa o login de lá:
+// a API confere o token e se o usuário tem acesso ao painel do Payments.
+const PORTAL_KEY='sb-cfrvnsnwdldnflowxqbs-auth-token';
+if(window.self===window.top){document.documentElement.style.display='none';location.replace('../#/');}
+function tokenPortal(){try{return JSON.parse(localStorage.getItem(PORTAL_KEY))?.access_token||'';}catch(e){return '';}}
+const headersPortal=()=>({Authorization:'Bearer '+tokenPortal()});
+// erro de login/permissão aparece como veio; os demais são falha do Digisul
+const msgErro=e=>e.status===401||e.status===403?e.message:`Error loading Digisul data: ${e.message}`;
+
 // ── CONFIG ──────────────────────────────────────────────────────────────
 const SUPA_URL='https://cfrvnsnwdldnflowxqbs.supabase.co';
 const SUPA_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmcnZuc253ZGxkbmZsb3d4cWJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTUyOTgsImV4cCI6MjA5Mjg5MTI5OH0.E89BcKeiQtJHPFVU-IYTGgKee3ieV-LMZjCOzsWC2YQ'; // anon key do projeto cfrvnsnwdldnflowxqbs (não usada mais aqui, mantida caso volte a precisar)
@@ -139,9 +149,9 @@ async function carregarTvDashboard(){
   document.getElementById('periodoLabel').textContent=label;
   document.getElementById('periodoLabel2').textContent=label;
   try{
-    const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}`);
+    const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}`,{headers:headersPortal()});
     const json=await res.json();
-    if(!res.ok)throw new Error(json.error||'Error fetching data');
+    if(!res.ok)throw Object.assign(new Error(json.error||'Error fetching data'),{status:res.status});
     document.getElementById('erroBox').innerHTML=json.erros?.length
       ?`<div class="err">Warning: Digisul query partially failed (${json.erros.join(' · ')}). The data below may be incomplete.</div>`
       :'';
@@ -150,7 +160,7 @@ async function carregarTvDashboard(){
     aplicarFiltros();
     renderExportacao(json.exportacoes,json.totais,json.ptax);
   }catch(e){
-    document.getElementById('erroBox').innerHTML=`<div class="err">Error loading Digisul data: ${e.message}</div>`;
+    document.getElementById('erroBox').innerHTML=`<div class="err">${msgErro(e)}</div>`;
     document.getElementById('contratosTableWrap').innerHTML='<div class="empty">—</div>';
     document.getElementById('exportTableWrap').innerHTML='<div class="empty">—</div>';
   }
@@ -253,16 +263,16 @@ async function buscarFornecedorTodosPeriodos(){
     document.getElementById('contratosTableWrap').innerHTML='<div class="empty">Searching all contracts for "'+busca+'"...</div>';
     document.getElementById('periodoLabel').textContent='on any date ("'+busca+'")';
     try{
-      const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}&fornecedor=${encodeURIComponent(busca)}`);
+      const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}&fornecedor=${encodeURIComponent(busca)}`,{headers:headersPortal()});
       const json=await res.json();
-      if(!res.ok)throw new Error(json.error||'Error fetching data');
+      if(!res.ok)throw Object.assign(new Error(json.error||'Error fetching data'),{status:res.status});
       const totais={
         contratosCompra:json.contratos.filter(c=>c.tipo==='PURCHASE').reduce((a,c)=>a+(c.total||0),0),
         contratosVenda:json.contratos.filter(c=>c.tipo==='SALE').reduce((a,c)=>a+(c.total||0),0),
       };
       renderContratos(json.contratos,totais);
     }catch(e){
-      document.getElementById('contratosTableWrap').innerHTML=`<div class="empty">Error: ${e.message}</div>`;
+      document.getElementById('contratosTableWrap').innerHTML=`<div class="empty">${e.status===401||e.status===403?e.message:'Error: '+e.message}</div>`;
     }
   },500); // pequena pausa pra não disparar uma busca a cada letra digitada
 }
