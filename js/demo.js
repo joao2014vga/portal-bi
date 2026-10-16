@@ -11,9 +11,9 @@ function seed() {
     seq: 100,
     sessao: null,
     usuarios: [
-      { id: "u1", nome: "João Otavio Souza", email: "admin@demo.com", senha: "demo1234", is_admin: true, ativo: true, confirmado: true, ultimo_acesso: h(1), created_at: h(900) },
-      { id: "u2", nome: "Mariana Costa", email: "mariana@demo.com", senha: "demo1234", is_admin: false, ativo: true, confirmado: true, ultimo_acesso: h(20), created_at: h(700) },
-      { id: "u3", nome: "Rafael Lima", email: "rafael@demo.com", senha: "demo1234", is_admin: false, ativo: true, confirmado: false, ultimo_acesso: null, created_at: h(30) },
+      { id: "u1", nome: "João Otavio Souza", email: "admin@demo.com", senha: "demo1234", is_admin: true, gerencia_arquivos: false, ativo: true, confirmado: true, ultimo_acesso: h(1), created_at: h(900) },
+      { id: "u2", nome: "Mariana Costa", email: "mariana@demo.com", senha: "demo1234", is_admin: false, gerencia_arquivos: false, ativo: true, confirmado: true, ultimo_acesso: h(20), created_at: h(700) },
+      { id: "u3", nome: "Rafael Lima", email: "rafael@demo.com", senha: "demo1234", is_admin: false, gerencia_arquivos: false, ativo: true, confirmado: false, ultimo_acesso: null, created_at: h(30) },
     ],
     categorias: [
       { id: 1, nome: "Comercial", ordem: 1 },
@@ -50,6 +50,7 @@ export function criarDemo() {
   const espera = () => new Promise((r) => setTimeout(r, 150));
   const eu = () => db.usuarios.find((u) => u.id === db.sessao);
   const exigeAdmin = () => { if (!eu()?.is_admin) throw new Error("Acesso negado"); };
+  const exigeArquivos = () => { if (!eu()?.is_admin && !eu()?.gerencia_arquivos) throw new Error("Acesso negado"); };
   const semSenha = ({ senha, ...u }) => u;
   const novoId = () => ++db.seq;
   const vigente = (a) => a.ativo && new Date(a.inicio) <= new Date() && (!a.fim || new Date(a.fim) > new Date());
@@ -129,7 +130,7 @@ export function criarDemo() {
     async acessosDoUsuario(uid) { return db.acessos.filter(([u]) => u === uid).map(([, x]) => x); },
     async contagemAcessos() { return db.acessos.map(([u, d]) => ({ user_id: u, dashboard_id: d })); },
 
-    async usuarios() { exigeAdmin(); return db.usuarios.map(semSenha).sort((a, b) => a.nome.localeCompare(b.nome)); },
+    async usuarios() { exigeArquivos(); return db.usuarios.map(semSenha).sort((a, b) => a.nome.localeCompare(b.nome)); },
     async criarUsuario({ nome, email, senha, is_admin, dashboards }) {
       exigeAdmin(); await espera();
       if (db.usuarios.some((u) => u.email.toLowerCase() === email.toLowerCase())) throw new Error("This e-mail already has access to the portal");
@@ -140,9 +141,9 @@ export function criarDemo() {
       salvar();
       return { ok: true, id, ja_tinha_login: false };
     },
-    async salvarUsuario({ id, nome, is_admin, ativo }, dashboards) {
+    async salvarUsuario({ id, nome, is_admin, ativo, gerencia_arquivos }, dashboards) {
       exigeAdmin();
-      Object.assign(db.usuarios.find((u) => u.id === id), { nome, is_admin, ativo });
+      Object.assign(db.usuarios.find((u) => u.id === id), { nome, is_admin, ativo, gerencia_arquivos: !!gerencia_arquivos });
       if (dashboards) db.acessos = db.acessos.filter(([u]) => u !== id).concat(dashboards.map((d) => [id, d]));
       salvar();
     },
@@ -175,7 +176,7 @@ export function criarDemo() {
     // arquivos ficam no próprio navegador (data URL), então só servem arquivos pequenos
     async arquivos() {
       const me = eu();
-      const lista = (db.arquivos ??= []).filter((a) => me.is_admin || (a.ativo && (db.arqAcessos ?? []).some(([u, x]) => u === me.id && x === a.id)));
+      const lista = (db.arquivos ??= []).filter((a) => me.is_admin || me.gerencia_arquivos || (a.ativo && (db.arqAcessos ?? []).some(([u, x]) => u === me.id && x === a.id)));
       return structuredClone(lista).sort((a, b) => a.ordem - b.ordem || a.titulo.localeCompare(b.titulo));
     },
     async enviarArquivo(file) {
@@ -188,7 +189,7 @@ export function criarDemo() {
       return { caminho, nome_arquivo: file.name, tamanho: file.size };
     },
     async salvarArquivo(a, usuarios) {
-      exigeAdmin();
+      exigeArquivos();
       db.arquivos ??= []; db.arqAcessos ??= [];
       let id = a.id;
       const antes = id ? db.arquivos.find((x) => x.id === id) : null;
@@ -204,7 +205,7 @@ export function criarDemo() {
       salvar();
     },
     async removerObjetoArquivo() {},
-    async excluirArquivo(a) { exigeAdmin(); db.arquivos = db.arquivos.filter((x) => x.id !== a.id); db.arqAcessos = (db.arqAcessos ?? []).filter(([, x]) => x !== a.id); salvar(); },
+    async excluirArquivo(a) { exigeArquivos(); db.arquivos = db.arquivos.filter((x) => x.id !== a.id); db.arqAcessos = (db.arqAcessos ?? []).filter(([, x]) => x !== a.id); salvar(); },
     async acessosDoArquivo(id) { return (db.arqAcessos ?? []).filter(([, x]) => x === id).map(([u]) => u); },
     async contagemAcessosArquivos() { return (db.arqAcessos ?? []).map(([u, a]) => ({ user_id: u, arquivo_id: a })); },
     async linkDownload(a) { return a.caminho; },

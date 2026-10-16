@@ -22,6 +22,8 @@ create table if not exists public.bi_perfis (
   ativo       boolean not null default true,
   created_at  timestamptz not null default now()
 );
+-- "File manager": sobe e gerencia os arquivos da seção 6 sem ser ADM
+alter table public.bi_perfis add column if not exists gerencia_arquivos boolean not null default false;
 
 create table if not exists public.bi_categorias (
   id          bigint generated always as identity primary key,
@@ -94,6 +96,17 @@ as $$
   select coalesce((select p.ativo from public.bi_perfis p where p.id = auth.uid()), false);
 $$;
 
+-- Usuário logado pode gerenciar os arquivos para download? (ADM ou File manager)
+create or replace function public.bi_gerencia_arquivos()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select coalesce(
+    (select (p.is_admin or p.gerencia_arquivos) and p.ativo from public.bi_perfis p where p.id = auth.uid()),
+    false
+  );
+$$;
+
 -- Impede que um usuário comum se promova a ADM ou se reative
 create or replace function public.bi_protege_perfil()
 returns trigger
@@ -102,6 +115,7 @@ as $$
 begin
   if auth.uid() is not null and not public.bi_is_admin() then
     new.is_admin := old.is_admin;
+    new.gerencia_arquivos := old.gerencia_arquivos;
     new.ativo    := old.ativo;
     new.email    := old.email;
   end if;
@@ -123,10 +137,11 @@ alter table public.bi_dashboards enable row level security;
 alter table public.bi_acessos    enable row level security;
 alter table public.bi_avisos     enable row level security;
 
--- PERFIS: cada um vê o próprio; ADM vê e altera todos
+-- PERFIS: cada um vê o próprio; ADM vê e altera todos; o File manager vê a
+-- lista (só leitura) para escolher quem baixa cada arquivo
 drop policy if exists bi_perfis_select on public.bi_perfis;
 create policy bi_perfis_select on public.bi_perfis for select to authenticated
-  using (id = auth.uid() or public.bi_is_admin());
+  using (id = auth.uid() or public.bi_is_admin() or public.bi_gerencia_arquivos());
 
 drop policy if exists bi_perfis_update on public.bi_perfis;
 create policy bi_perfis_update on public.bi_perfis for update to authenticated
@@ -333,9 +348,10 @@ alter table public.bi_arquivos        enable row level security;
 alter table public.bi_arquivo_acessos enable row level security;
 
 drop policy if exists bi_arquivos_select on public.bi_arquivos;
+-- Gerenciar = ADM ou File manager (bi_gerencia_arquivos)
 create policy bi_arquivos_select on public.bi_arquivos for select to authenticated
   using (
-    public.bi_is_admin()
+    public.bi_gerencia_arquivos()
     or (
       ativo and public.bi_is_ativo() and exists (
         select 1 from public.bi_arquivo_acessos a
@@ -346,15 +362,15 @@ create policy bi_arquivos_select on public.bi_arquivos for select to authenticat
 
 drop policy if exists bi_arquivos_admin on public.bi_arquivos;
 create policy bi_arquivos_admin on public.bi_arquivos for all to authenticated
-  using (public.bi_is_admin()) with check (public.bi_is_admin());
+  using (public.bi_gerencia_arquivos()) with check (public.bi_gerencia_arquivos());
 
 drop policy if exists bi_arquivo_acessos_select on public.bi_arquivo_acessos;
 create policy bi_arquivo_acessos_select on public.bi_arquivo_acessos for select to authenticated
-  using (user_id = auth.uid() or public.bi_is_admin());
+  using (user_id = auth.uid() or public.bi_gerencia_arquivos());
 
 drop policy if exists bi_arquivo_acessos_admin on public.bi_arquivo_acessos;
 create policy bi_arquivo_acessos_admin on public.bi_arquivo_acessos for all to authenticated
-  using (public.bi_is_admin()) with check (public.bi_is_admin());
+  using (public.bi_gerencia_arquivos()) with check (public.bi_gerencia_arquivos());
 
 -- Bucket privado, até 50 MB por arquivo
 insert into storage.buckets (id, name, public, file_size_limit)
@@ -369,15 +385,15 @@ create policy bi_arquivos_obj_select on storage.objects for select to authentica
 
 drop policy if exists bi_arquivos_obj_insert on storage.objects;
 create policy bi_arquivos_obj_insert on storage.objects for insert to authenticated
-  with check (bucket_id = 'bi-arquivos' and public.bi_is_admin());
+  with check (bucket_id = 'bi-arquivos' and public.bi_gerencia_arquivos());
 
 drop policy if exists bi_arquivos_obj_update on storage.objects;
 create policy bi_arquivos_obj_update on storage.objects for update to authenticated
-  using (bucket_id = 'bi-arquivos' and public.bi_is_admin());
+  using (bucket_id = 'bi-arquivos' and public.bi_gerencia_arquivos());
 
 drop policy if exists bi_arquivos_obj_delete on storage.objects;
 create policy bi_arquivos_obj_delete on storage.objects for delete to authenticated
-  using (bucket_id = 'bi-arquivos' and public.bi_is_admin());
+  using (bucket_id = 'bi-arquivos' and public.bi_gerencia_arquivos());
 
 -- Notificações também para arquivos (novo ou substituído)
 alter table public.bi_notificacoes alter column dashboard_id drop not null;

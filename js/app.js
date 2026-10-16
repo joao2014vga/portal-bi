@@ -9,6 +9,9 @@ const app = $("#app");
 // arquivos: undefined = ainda não buscou; false = recurso não instalado no banco
 const estado = { perfil: null, precisaSenha: ACAO_URL, sistemas: null, arquivos: undefined, notifs: null, notifIniciado: false };
 
+// ADM ou "File manager": sobe e gerencia os arquivos para download
+const gerenciaArquivos = () => !!(estado.perfil?.is_admin || estado.perfil?.gerencia_arquivos);
+
 // Sistema integrado: "painel" cujo link fica no mesmo endereço do portal
 // (ex.: o Informativo). Abre dentro do portal usando o mesmo login e
 // aparece também no menu do topo.
@@ -90,7 +93,11 @@ async function rota() {
     if (secao === "avisos") return await telaAvisos();
     if (secao === "arquivos") return await telaArquivos();
     if (secao === "admin") {
-      if (!estado.perfil.is_admin) { location.hash = "#/"; return; }
+      // File manager (sem ser ADM) só entra na aba de arquivos
+      if (!estado.perfil.is_admin) {
+        if (gerenciaArquivos() && sub === "arquivos") return await telaAdmin("arquivos");
+        location.hash = "#/"; return;
+      }
       return await telaAdmin(sub || "dashboards");
     }
     location.hash = "#/";
@@ -218,7 +225,7 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}
   const banners = banner ? await bannersVigentes() : [];
   estado.sistemas ??= (await api.dashboards()).filter((d) => d.ativo && ehSistema(d));
   if (estado.arquivos === undefined) estado.arquivos = (await api.arquivos().catch(() => null)) ?? false;
-  const menuArquivos = estado.arquivos && (p.is_admin || estado.arquivos.length);
+  const menuArquivos = estado.arquivos && (gerenciaArquivos() || estado.arquivos.length);
   app.innerHTML = `
   <header class="topo">
     <a class="topo-marca" href="#/">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></a>
@@ -435,7 +442,8 @@ async function telaArquivos() {
   if (!lista) { location.hash = "#/"; return; }
   const visiveis = lista.filter((a) => a.ativo);
   await shell(`
-    <section class="ola"><div><h1>Files</h1><p class="muted">Spreadsheets and documents shared by the BI team.</p></div></section>
+    <section class="ola"><div><h1>Files</h1><p class="muted">Spreadsheets and documents shared by the BI team.</p></div>
+      ${gerenciaArquivos() ? `<a class="btn" href="#/admin/arquivos">${icon("upload")} Manage files</a>` : ""}</section>
     ${visiveis.length ? `<div class="arq-lista">${visiveis.map((a) => `
       <article class="arq">
         <span class="arq-ic">${icon("file")}</span>
@@ -448,7 +456,7 @@ async function telaArquivos() {
         <button class="btn btn-primary" data-baixar="${a.id}">${icon("download")}<span>Download</span></button>
       </article>`).join("")}</div>`
       : `<div class="vazio">${icon("file")}<h3>No files available</h3>
-        <p>${estado.perfil.is_admin ? "Upload the first file under Administration › Files." : "There are no files shared with you yet."}</p></div>`}
+        <p>${gerenciaArquivos() ? "Upload the first file under Manage files." : "There are no files shared with you yet."}</p></div>`}
   `, { ativo: "arquivos" });
 
   $$("[data-baixar]").forEach((b) => b.addEventListener("click", async () => {
@@ -533,13 +541,15 @@ const ABAS = [
 async function telaAdmin(aba) {
   const render = { dashboards: adminDashboards, categorias: adminCategorias, usuarios: adminUsuarios, arquivos: adminArquivos, avisos: adminAvisos }[aba];
   if (!render) { location.hash = "#/admin/dashboards"; return; }
+  const adm = estado.perfil.is_admin;
   const corpo = await render();
   await shell(`
-    <section class="ola"><div><h1>Administration</h1><p class="muted">Manage reports, user access and announcements.</p></div></section>
+    <section class="ola"><div><h1>${adm ? "Administration" : "Manage files"}</h1>
+      <p class="muted">${adm ? "Manage reports, user access and announcements." : "Upload files and choose who can download them."}</p></div></section>
     <nav class="abas" role="tablist">
-      ${ABAS.map(([k, t, ic]) => `<a role="tab" href="#/admin/${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}${t}</a>`).join("")}
+      ${ABAS.filter(([k]) => adm || k === "arquivos").map(([k, t, ic]) => `<a role="tab" href="#/admin/${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}${t}</a>`).join("")}
     </nav>
-    <div class="admin-corpo">${corpo.html}</div>`, { ativo: "admin", banner: false });
+    <div class="admin-corpo">${corpo.html}</div>`, { ativo: adm ? "admin" : "arquivos", banner: false });
   corpo.bind?.();
 }
 
@@ -738,7 +748,7 @@ async function adminUsuarios() {
       <tbody>${usuarios.map((u) => `
         <tr data-busca="${esc((u.nome + " " + u.email).toLowerCase())}">
           <td><div class="user-cel"><span class="avatar sm">${esc(iniciais(u.nome))}</span><div><strong>${esc(u.nome || "—")}</strong><div class="sub">${esc(u.email)}</div></div></div></td>
-          <td>${u.is_admin ? `<span class="pill pill-adm">Administrator</span>` : "User"}</td>
+          <td>${u.is_admin ? `<span class="pill pill-adm">Administrator</span>` : u.gerencia_arquivos ? `<span class="pill">File manager</span>` : "User"}</td>
           <td>${u.is_admin ? "All" : qtd(u.id)}</td>
           <td>${u.ultimo_acesso ? esc(tempoRelativo(u.ultimo_acesso)) : `<span class="muted">Never</span>`}</td>
           <td>${situacao(u)}</td>
@@ -797,6 +807,7 @@ async function formUsuario(u, dashs, cats) {
       <label class="campo"><span>E-mail *</span><input type="email" name="email" required value="${esc(u?.email ?? "")}" ${novo ? "" : "disabled"}></label>
       <label class="switch"><input type="checkbox" name="is_admin" ${u?.is_admin ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Administrator</label>
       ${novo ? "" : `<label class="switch"><input type="checkbox" name="ativo" ${u.ativo ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Access active</label>`}
+      ${!novo && "gerencia_arquivos" in u ? `<label class="switch" title="Can upload and manage files, without being an administrator"><input type="checkbox" name="gerencia_arquivos" ${u.gerencia_arquivos ? "checked" : ""}><span></span>File manager (uploads files)</label>` : ""}
       ${novo ? `<div class="col-2">${campoSenhaProvisoria()}
         <p class="dica">${icon("key")} No e-mail is sent: share this password with the user. They will be required to change it at first sign-in.
           If the e-mail already has an account (e.g. the Daily Report), access is granted and they keep their current password.</p></div>` : ""}
@@ -825,7 +836,10 @@ async function formUsuario(u, dashs, cats) {
           ? `${email} already had an account: access granted with their existing password.`
           : `User created. Share the temporary password with ${email}.`);
       } else {
-        await api.salvarUsuario({ id: u.id, nome, is_admin: eu ? u.is_admin : f.is_admin.checked, ativo: eu ? true : f.ativo.checked }, dashboards);
+        await api.salvarUsuario({
+          id: u.id, nome, is_admin: eu ? u.is_admin : f.is_admin.checked, ativo: eu ? true : f.ativo.checked,
+          gerencia_arquivos: f.gerencia_arquivos ? f.gerencia_arquivos.checked : undefined,
+        }, dashboards);
         toast("User updated.");
         if (eu) estado.perfil = null;
       }
