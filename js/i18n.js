@@ -149,7 +149,9 @@ const PT = {
 
   // ---------------------------------------------------------------- Position: geral
   "Position Overview": "Visão Geral da Posição", "Physical Position": "Posição Física", "Open Contracts": "Contratos em Aberto",
-  "Export Sales": "Vendas de Exportação", "Purchases": "Compras",
+  "Export Sales": "Vendas de Exportação", "Purchases": "Compras", "Export Sale Diffs": "Diferenciais de Exportação",
+  "Average sale diff by month and quality, by inclusion date or EOM Ship.":
+    "Diferencial médio de venda por mês e qualidade, por data de inclusão ou EOM Ship.",
   "Net position by term month and change vs the previous position — Arabica, Robusta, Exportable and Low Grade.":
     "Posição líquida por mês de vencimento e variação contra a posição anterior — Arábica, Robusta, Exportable e Low Grade.",
   "Net position by term month and change vs the previous position.": "Posição líquida por mês de vencimento e variação contra a posição anterior.",

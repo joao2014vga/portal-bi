@@ -483,10 +483,10 @@ drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
 create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated
   using (
     public.bi_gerencia_arquivos()
-    or public.bi_ve_painel(case tipo
-      when 'vendas'  then 'portal:position-sales'
-      when 'compras' then 'portal:position-purchases'
-      else 'portal:position-contracts' end)
+    -- histórico de vendas: Export Sales e Export Sale Diffs
+    or (tipo = 'vendas' and (public.bi_ve_painel('portal:position-sales') or public.bi_ve_painel('portal:position-diffs')))
+    or (tipo = 'compras' and public.bi_ve_painel('portal:position-purchases'))
+    or (tipo not in ('vendas', 'compras') and public.bi_ve_painel('portal:position-contracts'))
   );
 -- (gravação só pela função abaixo)
 
@@ -549,7 +549,8 @@ from public.bi_categorias c,
        ('Physical Position', 'Physical position by month and running balance by quality.', 'portal:position-physical', 2),
        ('Open Contracts', 'Open purchases, export and domestic sales, and inventory, contract by contract.', 'portal:position-contracts', 3),
        ('Export Sales', 'Shipped volume, revenue and sale diff, crop over crop, by client and quality.', 'portal:position-sales', 4),
-       ('Purchases', 'Purchased volume, value and purchase diff, crop over crop, by supplier and quality.', 'portal:position-purchases', 5)
+       ('Purchases', 'Purchased volume, value and purchase diff, crop over crop, by supplier and quality.', 'portal:position-purchases', 5),
+       ('Export Sale Diffs', 'Average sale diff by month and quality, by inclusion date or EOM Ship.', 'portal:position-diffs', 6)
      ) as v (titulo, descricao, link, ordem)
 where c.nome = 'Position'
   and not exists (select 1 from public.bi_dashboards d where d.link = v.link);
