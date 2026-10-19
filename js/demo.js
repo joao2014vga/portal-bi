@@ -30,10 +30,12 @@ function seed() {
       { id: 41, categoria_id: 4, titulo: "Position Overview", descricao: "Net position by term month and change vs the previous position.", link: "portal:position-overview", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 1 },
       { id: 42, categoria_id: 4, titulo: "Physical Position", descricao: "Physical position by month and running balance by quality.", link: "portal:position-physical", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 2 },
       { id: 43, categoria_id: 4, titulo: "Open Contracts", descricao: "Open purchases, export and domestic sales, and inventory, contract by contract.", link: "portal:position-contracts", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 3 },
+      { id: 44, categoria_id: 4, titulo: "Export Sales", descricao: "Shipped volume, revenue and sale diff, crop over crop, by client and quality.", link: "portal:position-sales", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 4 },
+      { id: 45, categoria_id: 4, titulo: "Purchases", descricao: "Purchased volume, value and purchase diff, crop over crop, by supplier and quality.", link: "portal:position-purchases", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 5 },
       { id: 32, categoria_id: 3, titulo: "Logística de Entregas", descricao: "OTIF, prazo médio e ocorrências por transportadora.", link: "demo:logistica", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "semanal", ativo: true, ordem: 2 },
     ],
     acessos: [
-      ["u2", 11], ["u2", 12], ["u2", 31], ["u2", 41], ["u2", 42],
+      ["u2", 11], ["u2", 12], ["u2", 31], ["u2", 41], ["u2", 42], ["u2", 44],
       ["u3", 21], ["u3", 22],
     ],
     avisos: [
@@ -223,7 +225,10 @@ export function criarDemo() {
       const porDia = new Map((db.position?.cargas ?? []).map((c) => [c.data_ref, { id: c.id, data_ref: c.data_ref, kpis: c.resumo.kpis }]));
       return structuredClone([...porDia.values()]);
     },
-    async positionDetalhe() { return structuredClone(db.position?.detalhe ?? {}); },
+    async positionDetalhe(tipos) {
+      const d = db.position?.detalhe ?? {};
+      return structuredClone(Object.fromEntries(tipos.filter((t) => d[t]).map((t) => [t, d[t]])));
+    },
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       exigeArquivos();
       db.position ??= { cargas: [], detalhe: {} };

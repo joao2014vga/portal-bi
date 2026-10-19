@@ -199,10 +199,11 @@ async function criarApiSupabase() {
       const porDia = new Map(data.map((c) => [c.data_ref, c]));
       return [...porDia.values()].slice(-120);
     },
-    async positionDetalhe() {
-      const { data, error } = await sb.from("bi_position_detalhe").select("tipo, linhas");
+    // tipos: purchases | expsales | intsales | inventory (Open Contracts), vendas | compras (crop over crop)
+    async positionDetalhe(tipos) {
+      const { data, error } = await sb.from("bi_position_detalhe").select("tipo, linhas").in("tipo", tipos);
       if (error) throw new Error(erroPosition(error.message));
-      if (!data.length) throw new Error("You do not have access to the contract details.");
+      if (!data.length) throw new Error("No data available — you may not have access, or the Position needs to be uploaded again.");
       return Object.fromEntries(data.map((r) => [r.tipo, r.linhas]));
     },
     // grava resumo + contratos e marca os painéis como atualizados, tudo numa transação

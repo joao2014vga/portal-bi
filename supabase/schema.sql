@@ -473,14 +473,21 @@ $$;
 alter table public.bi_position_cargas  enable row level security;
 alter table public.bi_position_detalhe enable row level security;
 
--- Resumo: quem vê qualquer painel do Position. Contratos: só quem vê "Open Contracts".
+-- Resumo: quem vê qualquer painel do Position. Detalhes: cada conjunto só para
+-- quem vê o painel que o usa (contratos em aberto, histórico de vendas, de compras).
 drop policy if exists bi_position_cargas_select on public.bi_position_cargas;
 create policy bi_position_cargas_select on public.bi_position_cargas for select to authenticated
   using (public.bi_ve_painel('portal:position-') or public.bi_gerencia_arquivos());
 
 drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
 create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated
-  using (public.bi_ve_painel('portal:position-contracts') or public.bi_gerencia_arquivos());
+  using (
+    public.bi_gerencia_arquivos()
+    or public.bi_ve_painel(case tipo
+      when 'vendas'  then 'portal:position-sales'
+      when 'compras' then 'portal:position-purchases'
+      else 'portal:position-contracts' end)
+  );
 -- (gravação só pela função abaixo)
 
 -- versão antiga (sem o alerta de fixação)
@@ -540,7 +547,9 @@ from public.bi_categorias c,
      (values
        ('Position Overview', 'Net position by term month and change vs the previous position — Arabica, Robusta, Exportable and Low Grade.', 'portal:position-overview', 1),
        ('Physical Position', 'Physical position by month and running balance by quality.', 'portal:position-physical', 2),
-       ('Open Contracts', 'Open purchases, export and domestic sales, and inventory, contract by contract.', 'portal:position-contracts', 3)
+       ('Open Contracts', 'Open purchases, export and domestic sales, and inventory, contract by contract.', 'portal:position-contracts', 3),
+       ('Export Sales', 'Shipped volume, revenue and sale diff, crop over crop, by client and quality.', 'portal:position-sales', 4),
+       ('Purchases', 'Purchased volume, value and purchase diff, crop over crop, by supplier and quality.', 'portal:position-purchases', 5)
      ) as v (titulo, descricao, link, ordem)
 where c.nome = 'Position'
   and not exists (select 1 from public.bi_dashboards d where d.link = v.link);

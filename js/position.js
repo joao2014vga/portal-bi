@@ -195,6 +195,22 @@ const DETALHES = {
       ["prev_embarque", "Prev. Embarque", "d"], ["modalidade", "Modalidade CTR"], ["especie", "Espécie"], ["safra", "Safra"]],
     aberto: (r) => r.a_entregar > 0 || r.a_fixar > 0 || r.a_receber > 1,
   },
+  // histórico para os cards "crop over crop": vendas realizadas (com BL) e todas as compras
+  vendas: {
+    aba: ABAS.expsales,
+    cols: [["contrato", "Contrato"], ["alertas", "Alertas"], ["referencia", "Referência"], ["sacas", "Sacas", "n"], ["saida", "Saída (sc)", "n"],
+      ["data_bl", "Data BL", "d"], ["safra", "Safras"], ["padrao", "Padrão"], ["grupo", "Quality Group"], ["especie", "Espécie"],
+      ["bolsa", "Bolsa"], ["unidade", "Unidade"], ["diferencial", "Diferencial", "n"], ["vlr_final", "Vlr. Final", "n"],
+      ["valor_usd", "Valor Contrato (US$)", "n"]],
+    aberto: (r) => !!r.data_bl,
+  },
+  compras: {
+    aba: ABAS.purchases,
+    cols: [["contrato", "Contrato"], ["fornecedor", "Fornecedor"], ["emissao", "Emissão", "d"], ["safra", "Safra"], ["sacas", "Sacas Total", "n"],
+      ["padrao", "Padrão"], ["especie", "Espécie"], ["bolsa", "Bolsa"], ["modalidade", "Modalidade CTR"], ["diferencial", "Diferencial", "n"],
+      ["preco", "Média Final (R$)", "n"], ["valor", "Valor Final (R$)", "n"]],
+    aberto: (r) => !!r.safra && r.sacas > 0,
+  },
   inventory: {
     aba: ABAS.inventory,
     cols: [["lote", "Lote/Guia"], ["tipo", "Tipo"], ["sacas", "Sacas 60kg", "n"], ["padrao", "Padrão"], ["bebida", "Bebida"],
@@ -246,7 +262,10 @@ export async function lerPlanilhaPosition(file) {
     variacao: lerVariacao(g("variacao")),
     kpis: Object.fromEntries(Object.entries(termm).map(([k, b]) => [k, { diff: b.total.net_diff, outright: b.total.net_outright }])),
   };
-  const detalhes = Object.fromEntries(Object.entries(DETALHES).map(([k, def]) => [k, lerDetalhe(g(k), def)]));
+  // cada aba vira matriz uma vez só (vendas e expsales, por exemplo, usam a mesma)
+  const grades = new Map();
+  const gAba = (nome) => (grades.has(nome) ? grades.get(nome) : grades.set(nome, grade(XLSX, wb.Sheets[nome])).get(nome));
+  const detalhes = Object.fromEntries(Object.entries(DETALHES).map(([k, def]) => [k, lerDetalhe(gAba(def.aba), def)]));
   return { data_ref: serialIso(serial), resumo, detalhes };
 }
 
@@ -364,7 +383,10 @@ export async function renderPosition(link, alvo, ctx) {
     ligarUpload(alvo, ctx);
     return;
   }
-  const painel = { "portal:position-overview": painelOverview, "portal:position-physical": painelFisica, "portal:position-contracts": painelContratos }[link];
+  const painel = {
+    "portal:position-overview": painelOverview, "portal:position-physical": painelFisica, "portal:position-contracts": painelContratos,
+    "portal:position-sales": painelVendas, "portal:position-purchases": painelCompras,
+  }[link];
   if (!painel) { alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Unknown Position view</h3></div>`; return; }
   alvo.innerHTML = `<div class="pos">${topo}<div id="posCorpo"></div></div>`;
   ligarUpload(alvo, ctx);
@@ -691,7 +713,7 @@ function passaFiltroFix(r, filtro) {
 
 async function painelContratos(alvo, carga, ctx) {
   let detalhes;
-  try { detalhes = await ctx.api.positionDetalhe(); }
+  try { detalhes = await ctx.api.positionDetalhe(["purchases", "expsales", "intsales", "inventory"]); }
   catch (e) { alvo.innerHTML = `<div class="vazio">${icon("lock")}<h3>Contracts unavailable</h3><p>${esc(e.message)}</p></div>`; return; }
   // prazo de fixação calculado uma vez por linha (a data de hoje muda o alerta, não o upload)
   for (const tipo of Object.keys(CAMPO_MES)) {
@@ -795,4 +817,279 @@ async function painelContratos(alvo, carga, ctx) {
     }));
   };
   desenhar();
+}
+
+// =====================================================================
+// CROP OVER CROP: Export Sales e Purchases
+// Venda realizada = mês do BL; safra = coluna Safras do contrato.
+// Compra = mês da emissão do contrato; safra = coluna Safra.
+// Ano-safra de julho a junho; o que cai fora vira "Earlier" / "Later".
+// =====================================================================
+const LB_SACA = 60 * 2.20462262;            // libras por saca de 60 kg
+const USDT_PARA_CLB = 100 / 2204.62262;     // US$/t → ¢/lb
+const MES_INICIO_SAFRA = 7;
+const MESES_SAFRA = ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+
+const inicioSafra = (s) => { const m = String(s ?? "").match(/^(\d{4})/); return m ? Number(m[1]) : null; };
+const safraAnterior = (s) => { const i = inicioSafra(s); return i == null ? null : `${i - 1}/${i}`; };
+// posição do mês dentro da safra: 0 = julho do 1º ano … 11 = junho; -1 antes, 12 depois
+function posicaoSafra(iso, safra) {
+  const ini = inicioSafra(safra);
+  if (!iso || ini == null) return null;
+  const [y, m] = iso.split("-").map(Number);
+  return Math.max(-1, Math.min(12, (y - ini) * 12 + (m - MES_INICIO_SAFRA)));
+}
+const rotuloPosicao = (k) => (k < 0 ? "Earlier" : k > 11 ? "Later" : MESES_SAFRA[k]);
+
+// ---------------------------------------------------------------- cliente final (mesma regra do Power BI)
+function clienteFinal(r) {
+  const a = String(r.alertas ?? "").trim();
+  if (a) return a;
+  const ref = String(r.referencia ?? "").trim().toUpperCase();
+  if (ref.startsWith("PH")) return "HACOFCO";
+  if (ref.startsWith("P0") || ref.startsWith("P6")) return "AMCOF";
+  return null;
+}
+const REGRAS_CLIENTE = [
+  [(c) => c === "JJ" || c.includes("JJ TYPE"), "KRAFT / JJ"],
+  [["LAVAZZA"], "LAVAZZA"], [["JDE"], "JDE"], [["DUNKIN"], "DUNKIN DONUTS"], [["GESTION CARGO", "COLCAFE"], "COLCAFE"],
+  [["GIMOKA"], "GIMOKA"], [["KRAFT"], "KRAFT / JJ"], [["DARBOVEN"], "DARBOVEN"], [["MEHMET", "EFENDI"], "MEHMET EFENDI"],
+  [["ILLY"], "ILLY"], [["NESTLE", "ZOEGAS"], "NESTLE"], [["ALLEGRO"], "ALLEGRO"], [["MELITTA"], "MELITTA"], [["WESTROCK"], "WESTROCK"],
+  [["LUCKIN"], "LUCKIN CHINA"], [["K-FEE", "K FEE", "KFEE"], "K-FEE"], [["CAFINCO"], "CAFINCO"], [["CAFIVER"], "CAFIVER"],
+  [["CAFE SATI"], "CAFE SATI"], [["CAFE TOSTADO"], "CAFE TOSTADO DE EXPORTACION"], [["PAULIG"], "PAULIG"], [["CARUSO"], "CARUSO"],
+  [["DALLMAY"], "DALLMAY"], [["COFHOLD"], "COFHOLD"], [["COFFEIN", "COFFEEIN"], "COFFEIN"], [["CCC"], "CCC"],
+  [["MOTHER PARKER", "MPARKER", "MPUSA", "EIGHT O"], "MOTHER PARKERS"], [["GAVINA"], "GAVINA"], [["SWISS WATER"], "SWISS WATER"],
+  [["S&D"], "S&D"], [["STARBUCKS"], "STARBUCKS"], [["VOLCAFE"], "VOLCAFE"], [["MITSUI"], "MITSUI"], [["BLASER TRADING"], "BLASER TRADING"],
+  [["WAKEFIELD"], "WAKEFIELD"], [["BENNET"], "BENNETTS"], [["RUCQUOY"], "RUCQUOY"], [["FALCON COFFEES"], "FALCON COFFEES"],
+  [["SUCAFINA"], "SUCAFINA"], [["WALTER MATTER"], "WALTER MATTER"], [["ICT"], "ICT"], [["AMCOF"], "AMCOF"], [["HACOFCO"], "HACOFCO"],
+];
+const SEM_CLIENTE = "(no client)";
+function clientePadronizado(r) {
+  const bruto = clienteFinal(r);
+  if (!bruto) return SEM_CLIENTE;
+  const c = bruto.toUpperCase();
+  for (const [teste, nome] of REGRAS_CLIENTE) {
+    if (typeof teste === "function" ? teste(c) : teste.some((t) => c.includes(t))) return nome;
+  }
+  return bruto;
+}
+
+// ---------------------------------------------------------------- agregação
+function agregar(linhas, chave) {
+  const m = new Map();
+  for (const r of linhas) {
+    const k = chave(r);
+    const a = m.get(k) ?? { sacas: 0, valor: 0, difPeso: 0, difSacas: 0, precoPeso: 0, precoSacas: 0, n: 0 };
+    a.sacas += r._sacas; a.valor += r._valor; a.n++;
+    if (r._dif != null) { a.difPeso += r._dif * r._sacas; a.difSacas += r._sacas; }
+    if (r._preco != null) { a.precoPeso += r._preco * r._sacas; a.precoSacas += r._sacas; }
+    m.set(k, a);
+  }
+  return m;
+}
+const VAZIO = { sacas: 0, valor: 0, difPeso: 0, difSacas: 0, precoPeso: 0, precoSacas: 0, n: 0 };
+const total = (linhas) => agregar(linhas, () => 0).get(0) ?? VAZIO;
+const media = (a, campo) => (a?.[campo + "Sacas"] ? a[campo + "Peso"] / a[campo + "Sacas"] : null);
+
+const fmtDin = (v, moeda = "$") => {
+  const a = Math.abs(v), s = v < 0 ? "-" : "";
+  return a >= 1e6 ? `${s}${moeda}${fmtN(a / 1e6, 2)}M` : a >= 1e3 ? `${s}${moeda}${fmtN(a / 1e3, 1)}K` : `${s}${moeda}${fmtN(a)}`;
+};
+// variação contra o ano anterior: % para volumes e valores, diferença absoluta para preços/diferenciais
+function yoy(atual, ant, { abs = false, dec = 2 } = {}) {
+  if (atual == null || ant == null || (!abs && !ant)) return `<span class="muted">—</span>`;
+  const d = atual - ant;
+  if (Math.abs(d) < 1e-9) return `<span class="yoy">= 0</span>`;
+  const seta = d > 0 ? "▲" : "▼";
+  const txt = abs ? `${d > 0 ? "+" : ""}${fmtN(d, dec)}` : `${d > 0 ? "+" : ""}${fmtN((d / Math.abs(ant)) * 100)}%`;
+  return `<span class="yoy">${seta} ${txt}</span>`;
+}
+const barra = (v, max) => `<span class="cel-barra"><i style="width:${max ? Math.max(0, Math.min(100, (v / max) * 100)) : 0}%"></i><b>${fmtN(v)}</b></span>`;
+
+// barras agrupadas: safra escolhida (série 1) × safra anterior (cinza), um eixo em sacas
+async function graficoSafras(canvas, { rotulos, atual, anterior, rotAtual, rotAnterior }) {
+  const Chart = await carregarChart();
+  const t = tema();
+  const c = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: rotulos,
+      datasets: [
+        { label: rotAtual, data: atual, backgroundColor: t.s1, borderRadius: 3, maxBarThickness: 26 },
+        { label: rotAnterior, data: anterior, backgroundColor: t.muda, borderRadius: 3, maxBarThickness: 26 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
+        y: { grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) },
+          title: { display: true, text: "bags (60 kg)", color: t.muda, font: { size: 11 } } },
+      },
+      plugins: {
+        legend: { position: "top", align: "start", labels: { color: t.tinta2, boxWidth: 10, boxHeight: 10, padding: 14, font: { size: 12 } } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)} bags` } },
+      },
+    },
+  });
+  graficos.push(c);
+}
+
+// Monta a visão comum aos dois cards. `cfg` descreve o que muda entre vendas e compras.
+async function painelSafras(alvo, ctx, cfg) {
+  let dados;
+  try { dados = (await ctx.api.positionDetalhe([cfg.tipo]))[cfg.tipo] ?? []; }
+  catch (e) { alvo.innerHTML = `<div class="vazio">${icon("lock")}<h3>${esc(cfg.titulo)} unavailable</h3><p>${esc(e.message)}</p></div>`; return; }
+  if (!dados.length) {
+    alvo.innerHTML = `<p class="muted pos-nota">${icon("info")} Upload the Position again to build this view (it needs the full contract history).</p>`;
+    return;
+  }
+  dados.forEach(cfg.preparar);
+  const safras = [...new Set(dados.map((r) => r.safra).filter((s) => inicioSafra(s) != null))].sort();
+  const comMovimento = safras.filter((s) => dados.some((r) => r.safra === s && r._pos != null));
+  // abre na safra corrente (a que contém hoje), se houver dados dela
+  const hoje = hojeIso();
+  const corrente = safras.find((s) => { const p = posicaoSafra(hoje, s); return p >= 0 && p <= 11; });
+  let safra = comMovimento.includes(corrente) ? corrente : comMovimento.at(-1) ?? safras.at(-1);
+  let bolsa = "NY", extra = "", ranking = cfg.rankings[0][0];
+
+  const desenhar = async () => {
+    limparGraficos();
+    const base = dados.filter((r) => r._pos != null && (!bolsa || norm(r.bolsa) === bolsa) && (!extra || cfg.extra.valor(r) === extra));
+    const atual = base.filter((r) => r.safra === safra);
+    const ant = safraAnterior(safra);
+    // safra em andamento (ou futura): compara com o mesmo período da anterior, até o mês de hoje
+    const posHoje = posicaoSafra(hoje, safra);
+    const emAndamento = posHoje <= 11;
+    const limite = emAndamento ? posHoje : 12;
+    const anterior = base.filter((r) => r.safra === ant && r._pos <= limite);
+    const periodo = !emAndamento ? "full crop" : limite >= 0 ? `Jul–${MESES_SAFRA[limite]}, same period` : "same period, before the crop year";
+    const tA = total(atual), tP = total(anterior);
+    const temDif = !!bolsa;
+    const unDif = cfg.unidadeDif(bolsa);
+
+    // tabela por mês (posição na safra)
+    const mA = agregar(atual, (r) => r._pos), mP = agregar(anterior, (r) => r._pos);
+    const posicoes = [...new Set([...mA.keys(), ...mP.keys()])].sort((a, b) => a - b);
+    const maxMes = Math.max(1, ...[...mA.values()].map((a) => a.sacas));
+
+    // ranking
+    const [rk, , rkCampo] = cfg.rankings.find(([k]) => k === ranking);
+    const rA = agregar(atual, rkCampo), rP = agregar(anterior, rkCampo);
+    const itens = [...rA.entries()].sort((a, b) => b[1].sacas - a[1].sacas);
+    const maxRk = Math.max(1, ...itens.map(([, a]) => a.sacas));
+    const opcoesExtra = [...new Set(dados.filter((r) => !bolsa || norm(r.bolsa) === bolsa).map(cfg.extra.valor).filter(Boolean))].sort();
+
+    const tileK = (titulo, valor, py, delta) => `<div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">${titulo}</span>
+      <span class="pos-kpi-v">${valor}</span><span class="pos-kpi-s">PY: ${py} ${delta}</span></div>`;
+
+    alvo.innerHTML = `
+    <div class="pos-filtros">
+      <select id="fSafra" aria-label="Crop">${safras.slice().reverse().map((s) => `<option ${s === safra ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
+      ${segmentos("segBolsa", [["NY", "NY (Arabica)"], ["LONDRES", "London (Robusta)"], ["", "All"]], bolsa)}
+      <select id="fExtra" aria-label="${esc(cfg.extra.rotulo)}"><option value="">${esc(cfg.extra.todos)}</option>${opcoesExtra.map((v) => `<option ${v === extra ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
+      <span class="muted pos-nota">Compared with ${esc(ant ?? "—")} · ${periodo}</span>
+    </div>
+    <div class="pos-kpis">
+      ${tileK(`${cfg.rotVolume} · bags`, fmtN(tA.sacas), fmtN(tP.sacas), yoy(tA.sacas, tP.sacas))}
+      ${tileK(cfg.rotValor, fmtDin(tA.valor, cfg.moeda), fmtDin(tP.valor, cfg.moeda), yoy(tA.valor, tP.valor))}
+      ${tileK(`${cfg.rotPreco}`, media(tA, "preco") == null ? "—" : fmtN(media(tA, "preco"), 2), media(tP, "preco") == null ? "—" : fmtN(media(tP, "preco"), 2), yoy(media(tA, "preco"), media(tP, "preco"), { abs: true }))}
+      ${tileK(`${cfg.rotDif} · ${unDif}`, temDif && media(tA, "dif") != null ? fmtSinalDec(media(tA, "dif")) : "—",
+        temDif && media(tP, "dif") != null ? fmtSinalDec(media(tP, "dif")) : "—", temDif ? yoy(media(tA, "dif"), media(tP, "dif"), { abs: true }) : `<span class="muted">select an exchange</span>`)}
+    </div>
+
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>${esc(cfg.rotVolume)} by month · ${esc(safra)} vs ${esc(ant ?? "—")}</h2>
+        <p class="muted">${esc(cfg.notaMes)}</p></div>
+      <div class="pos-grafico pos-grafico-sm"><canvas id="gSafra" role="img" aria-label="${esc(cfg.rotVolume)} by month, this crop and previous crop"></canvas></div>
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+        <thead><tr><th>Month</th><th class="num">Volume</th><th class="num">PY</th><th class="num">YOY</th>
+          <th class="num">${esc(cfg.rotValor)}</th><th class="num">PY</th><th class="num">YOY</th>
+          <th class="num">${esc(cfg.rotDif)}</th><th class="num">PY</th><th class="num">Δ</th></tr></thead>
+        <tbody>${posicoes.map((p) => { const a = mA.get(p) ?? VAZIO, b = mP.get(p); return `<tr><td>${rotuloPosicao(p)}</td>
+          <td class="num">${barra(a.sacas, maxMes)}</td><td class="num">${b ? fmtN(b.sacas) : "—"}</td><td class="num">${yoy(a.sacas, b?.sacas)}</td>
+          <td class="num">${fmtDin(a.valor, cfg.moeda)}</td><td class="num">${b ? fmtDin(b.valor, cfg.moeda) : "—"}</td><td class="num">${yoy(a.valor, b?.valor)}</td>
+          <td class="num">${temDif && media(a, "dif") != null ? fmtSinalDec(media(a, "dif")) : "—"}</td><td class="num">${temDif && media(b, "dif") != null ? fmtSinalDec(media(b, "dif")) : "—"}</td>
+          <td class="num">${temDif ? yoy(media(a, "dif"), media(b, "dif"), { abs: true }) : "—"}</td></tr>`; }).join("")}</tbody>
+        <tfoot><tr class="total"><th scope="row">Total</th><td class="num">${fmtN(tA.sacas)}</td><td class="num">${fmtN(tP.sacas)}</td><td class="num">${yoy(tA.sacas, tP.sacas)}</td>
+          <td class="num">${fmtDin(tA.valor, cfg.moeda)}</td><td class="num">${fmtDin(tP.valor, cfg.moeda)}</td><td class="num">${yoy(tA.valor, tP.valor)}</td>
+          <td class="num">${temDif && media(tA, "dif") != null ? fmtSinalDec(media(tA, "dif")) : "—"}</td><td class="num">${temDif && media(tP, "dif") != null ? fmtSinalDec(media(tP, "dif")) : "—"}</td>
+          <td class="num">${temDif ? yoy(media(tA, "dif"), media(tP, "dif"), { abs: true }) : "—"}</td></tr></tfoot>
+      </table></div>
+    </section>
+
+    <section class="pos-card">
+      <div class="pos-card-h pos-card-h-linha"><div><h2>Report by ${esc(cfg.rankings.find(([k]) => k === ranking)[1].toLowerCase())} · ${esc(safra)}</h2>
+        <p class="muted">Volume share and change vs ${esc(ant ?? "—")} (${periodo}).${cfg.dicaRanking ? ` ${esc(cfg.dicaRanking)}` : ""}</p></div>
+        ${segmentos("segRk", cfg.rankings.map(([k, t2]) => [k, t2]), ranking)}</div>
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+        <thead><tr><th>${esc(cfg.rankings.find(([k]) => k === ranking)[1])}</th><th class="num">Volume</th><th class="num">%</th><th class="num">YOY</th>
+          <th class="num">${esc(cfg.rotValor)}</th><th class="num">YOY</th><th class="num">${esc(cfg.rotDif)}</th><th class="num">Δ PY</th></tr></thead>
+        <tbody>${itens.length ? itens.map(([k, a]) => { const b = rP.get(k); return `<tr ${cfg.extra.campo === rk ? `class="clicavel" data-extra="${esc(k)}"` : ""}><td>${esc(k)}</td>
+          <td class="num">${barra(a.sacas, maxRk)}</td><td class="num">${fmtN(tA.sacas ? (a.sacas / tA.sacas) * 100 : 0, 1)}%</td><td class="num">${yoy(a.sacas, b?.sacas)}</td>
+          <td class="num">${fmtDin(a.valor, cfg.moeda)}</td><td class="num">${yoy(a.valor, b?.valor)}</td>
+          <td class="num">${temDif && media(a, "dif") != null ? fmtSinalDec(media(a, "dif")) : "—"}</td>
+          <td class="num">${temDif ? yoy(media(a, "dif"), media(b, "dif"), { abs: true }) : "—"}</td></tr>`; }).join("")
+          : `<tr><td colspan="8" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+      </table></div>
+    </section>`;
+
+    $("#fSafra", alvo).addEventListener("change", (e) => { safra = e.target.value; desenhar(); });
+    $("#fExtra", alvo).addEventListener("change", (e) => { extra = e.target.value; desenhar(); });
+    ligarSegmentos(alvo, "segBolsa", (k) => { bolsa = k; extra = ""; desenhar(); });
+    ligarSegmentos(alvo, "segRk", (k) => { ranking = k; desenhar(); });
+    $$("[data-extra]", alvo).forEach((tr) => tr.addEventListener("click", () => { extra = extra === tr.dataset.extra ? "" : tr.dataset.extra; desenhar(); }));
+
+    const comDados = posicoes.filter((p) => mA.has(p) || mP.has(p));
+    await graficoSafras($("#gSafra", alvo), {
+      rotulos: comDados.map(rotuloPosicao),
+      atual: comDados.map((p) => arred(mA.get(p)?.sacas ?? 0)),
+      anterior: comDados.map((p) => arred(mP.get(p)?.sacas ?? 0)),
+      rotAtual: safra, rotAnterior: `${ant ?? "Previous"}${periodo === "full crop" ? "" : ` (${periodo})`}`,
+    });
+  };
+  await desenhar();
+}
+
+const fmtSinalDec = (v) => (v > 0 ? "+" : "") + fmtN(v, 2);
+
+// Export Sales: volume embarcado, receita (US$), preço e diferencial em ¢/lb
+function painelVendas(alvo, carga, ctx) {
+  return painelSafras(alvo, ctx, {
+    tipo: "vendas", titulo: "Export sales", rotVolume: "Shipped", rotValor: "Revenue", moeda: "$",
+    rotPreco: "Avg final price · ¢/lb", rotDif: "Sale diff", unidadeDif: () => "¢/lb",
+    notaMes: "Realized sales: month of the bill of lading (BL); crop from the contract. Crop year July to June.",
+    dicaRanking: "Click a client to filter the page.",
+    extra: { campo: "cliente", rotulo: "Client", todos: "All clients", valor: (r) => r._cliente },
+    rankings: [["cliente", "Client", (r) => r._cliente], ["padrao", "Quality", (r) => r.padrao ?? "—"], ["grupo", "Quality group", (r) => r.grupo ?? "—"]],
+    preparar(r) {
+      const porTon = /TON/i.test(r.unidade ?? "");
+      r._sacas = r.saida > 0 ? r.saida : (r.sacas ?? 0);
+      r._preco = r.vlr_final == null ? null : porTon ? r.vlr_final * USDT_PARA_CLB : r.vlr_final;
+      r._valor = r._preco != null ? (r._preco / 100) * r._sacas * LB_SACA : (r.valor_usd ?? 0);
+      r._dif = r.diferencial == null ? null : porTon ? r.diferencial * USDT_PARA_CLB : r.diferencial;
+      r._pos = posicaoSafra(r.data_bl, r.safra);
+      r._cliente = clientePadronizado(r);
+    },
+  });
+}
+
+// Purchases: volume contratado, valor (R$), preço médio (R$/saca) e diferencial
+function painelCompras(alvo, carga, ctx) {
+  return painelSafras(alvo, ctx, {
+    tipo: "compras", titulo: "Purchases", rotVolume: "Purchased", rotValor: "Value R$", moeda: "R$",
+    rotPreco: "Avg price · R$/bag", rotDif: "Purch diff", unidadeDif: (b) => (b === "NY" ? "¢/lb" : b ? "exchange unit" : "select an exchange"),
+    notaMes: "Purchases by contract date (issue month); crop from the contract. Crop year July to June.",
+    dicaRanking: "Click a supplier to filter the page.",
+    extra: { campo: "fornecedor", rotulo: "Supplier", todos: "All suppliers", valor: (r) => r.fornecedor },
+    rankings: [["fornecedor", "Supplier", (r) => r.fornecedor ?? "—"], ["padrao", "Quality", (r) => r.padrao ?? "—"], ["modalidade", "Type", (r) => r.modalidade ?? "—"]],
+    preparar(r) {
+      r._sacas = r.sacas ?? 0;
+      r._valor = r.valor ?? 0;
+      r._preco = r.preco;
+      r._dif = r.diferencial;
+      r._pos = posicaoSafra(r.emissao, r.safra);
+    },
+  });
 }
