@@ -202,8 +202,9 @@ const DETALHES = {
     cols: [["contrato", "Contrato"], ["alertas", "Alertas"], ["referencia", "Referência"], ["sacas", "Sacas", "n"], ["saida", "Saída (sc)", "n"],
       ["data_bl", "Data BL", "d"], ["safra", "Safras"], ["padrao", "Padrão"], ["peneira", "Peneira"], ["grupo", "Quality Group"], ["especie", "Espécie"],
       ["bolsa", "Bolsa"], ["unidade", "Unidade"], ["diferencial", "Diferencial", "n"], ["vlr_final", "Vlr. Final", "n"],
-      ["valor_usd", "Valor Contrato (US$)", "n"]],
-    aberto: (r) => !!r.data_bl,
+      ["valor_usd", "Valor Contrato (US$)", "n"], ["saldo", "Saldo (sc)", "n"], ["prev_carga", "Prev. Carga", "d"], ["embarque", "Embarque", "d"]],
+    // realizadas (com BL) e as que ainda têm saldo a embarcar
+    aberto: (r) => !!r.data_bl || r.saldo > 0,
   },
   compras: {
     aba: ABAS.purchases,
@@ -858,7 +859,8 @@ function posicaoSafra(iso, safra) {
   const [y, m] = iso.split("-").map(Number);
   return Math.max(-1, Math.min(12, (y - ini) * 12 + (m - MES_INICIO_SAFRA)));
 }
-const rotuloPosicao = (k) => tr(k < 0 ? "Earlier" : k > 11 ? "Later" : MESES_SAFRA[k]);
+const SEM_DATA = 99; // saldo a embarcar sem previsão de carga
+const rotuloPosicao = (k) => tr(k === SEM_DATA ? "No date" : k < 0 ? "Earlier" : k > 11 ? "Later" : MESES_SAFRA[k]);
 
 // ---------------------------------------------------------------- cliente final (mesma regra do Power BI)
 function clienteFinal(r) {
@@ -969,7 +971,7 @@ async function graficoSafras(canvas, { rotulos, atual, anterior, rotAtual, rotAn
       labels: rotulos,
       datasets: [
         { label: rotAtual, data: atual, backgroundColor: t.s1, borderRadius: 3, maxBarThickness: 26 },
-        { label: rotAnterior, data: anterior, backgroundColor: t.muda, borderRadius: 3, maxBarThickness: 26 },
+        ...(anterior ? [{ label: rotAnterior, data: anterior, backgroundColor: t.muda, borderRadius: 3, maxBarThickness: 26 }] : []),
       ],
     },
     options: {
@@ -1006,12 +1008,18 @@ async function painelSafras(alvo, ctx, cfg) {
   const corrente = safras.find((s) => { const p = posicaoSafra(hoje, s); return p >= 0 && p <= 11; });
   let safra = comMovimento.includes(corrente) ? corrente : comMovimento.at(-1) ?? safras.at(-1);
   let bolsa = "NY", extra = "", qualidade = "", contrato = "", ranking = cfg.rankings[0][0];
-  const temBrl = !!cfg.temBrl;
+  // aEntregar: só o saldo ainda a embarcar, pela previsão de carga (sem comparação com a safra anterior)
+  let aEntregar = false;
+  const temSaldo = dados.some((r) => "saldo" in r);
 
   const desenhar = async () => {
     limparGraficos();
+    const temBrl = !!cfg.temBrl && !aEntregar;
     const busca = contrato.trim().toUpperCase();
-    const daBolsa = dados.filter((r) => r._pos != null && (!bolsa || norm(r.bolsa) === bolsa));
+    const fonte = aEntregar
+      ? dados.filter((r) => r.saldo > 0).map((r) => ({ ...r, _sacas: r.saldo, _valor: r._valorE ?? 0, _brl: null, _pos: r._posE }))
+      : dados;
+    const daBolsa = fonte.filter((r) => r._pos != null && (!bolsa || norm(r.bolsa) === bolsa));
     const base = daBolsa.filter((r) => (!extra || cfg.extra.valor(r) === extra) && (!qualidade || r.padrao === qualidade)
       && (!busca || String(r.contrato ?? "").toUpperCase().includes(busca)));
     const atual = base.filter((r) => r.safra === safra);
@@ -1020,7 +1028,10 @@ async function painelSafras(alvo, ctx, cfg) {
     const posHoje = posicaoSafra(hoje, safra);
     const emAndamento = posHoje <= 11;
     const limite = emAndamento ? posHoje : 12;
-    const anterior = base.filter((r) => r.safra === ant && r._pos <= limite);
+    const anterior = aEntregar ? [] : base.filter((r) => r.safra === ant && r._pos <= limite);
+    const semPreco = aEntregar ? atual.filter((r) => r._valorE == null) : [];
+    const rotVol = aEntregar ? "To ship" : cfg.rotVolume;
+    const rotValor = aEntregar ? "Est. value" : cfg.rotValor;
     const periodo = !emAndamento ? "full crop" : limite >= 0 ? `Jul–${MESES_SAFRA[limite]}, same period` : "same period, before the crop year";
     const tA = total(atual), tP = total(anterior);
     const temDif = !!bolsa;
@@ -1039,7 +1050,7 @@ async function painelSafras(alvo, ctx, cfg) {
     const semPtax = temBrl ? atual.filter((r) => r._brl == null).length : 0;
 
     const tileK = (titulo, valor, py, delta) => `<div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">${titulo}</span>
-      <span class="pos-kpi-v">${valor}</span><span class="pos-kpi-s"><span>PY:</span> ${py} ${delta}</span></div>`;
+      <span class="pos-kpi-v">${valor}</span>${aEntregar ? "" : `<span class="pos-kpi-s"><span>PY:</span> ${py} ${delta}</span>`}</div>`;
     const rotRk = cfg.rankings.find(([k]) => k === ranking)[1];
 
     alvo.innerHTML = `
@@ -1049,11 +1060,15 @@ async function painelSafras(alvo, ctx, cfg) {
       <select id="fExtra" aria-label="${esc(cfg.extra.rotulo)}"><option value="">${esc(cfg.extra.todos)}</option>${opcoesExtra.map((v) => `<option ${v === extra ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
       <select id="fQual" aria-label="Quality"><option value="">All qualities</option>${opcoesQual.map((v) => `<option ${v === qualidade ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
       <label class="busca sm">${icon("search")}<input type="search" id="fContrato" placeholder="Search contract…" value="${esc(contrato)}"></label>
-      <span class="muted pos-nota">Compared with ${esc(ant ?? "—")} · ${periodo}</span>
+      ${cfg.temEntregar ? `<label class="check-linha"><input type="checkbox" id="fEntregar" ${aEntregar ? "checked" : ""}><span>Open balance to ship only</span></label>` : ""}
+      <span class="muted pos-nota">${aEntregar ? "Balance still to ship · by estimated loading month" : `Compared with ${esc(ant ?? "—")} · ${periodo}`}</span>
     </div>
+    ${aEntregar && !temSaldo ? `<p class="muted pos-nota">${icon("info")} Upload the Position again to see the open balance to ship.</p>` : ""}
+    ${aEntregar && semPreco.length ? `<p class="muted pos-nota">${icon("info")} <span>${fmtN(semPreco.length)} contracts (${fmtN(semPreco.reduce((s, r) => s + r._sacas, 0))} bags) still without a final price — pending fixation.</span> <span>Value and average price consider only priced contracts.</span></p>` : ""}
     <div class="pos-kpis">
-      ${tileK(`${cfg.rotVolume} · bags`, fmtN(tA.sacas), fmtN(tP.sacas), yoy(tA.sacas, tP.sacas))}
-      ${tileK(cfg.rotValor, fmtDin(tA.valor, cfg.moeda), fmtDin(tP.valor, cfg.moeda), yoy(tA.valor, tP.valor))}
+      ${tileK(`${rotVol} · bags`, fmtN(tA.sacas), fmtN(tP.sacas), yoy(tA.sacas, tP.sacas))}
+      ${aEntregar ? tileK("Contracts", fmtN(tA.n), "", "") : ""}
+      ${tileK(rotValor, fmtDin(tA.valor, cfg.moeda), fmtDin(tP.valor, cfg.moeda), yoy(tA.valor, tP.valor))}
       ${temBrl ? tileK("Revenue R$ · PTAX D-1", fmtDin(tA.brl, "R$"), fmtDin(tP.brl, "R$"), yoy(tA.brl, tP.brl)) : ""}
       ${tileK(`${cfg.rotPreco}`, media(tA, "preco") == null ? "—" : fmtN(media(tA, "preco"), 2), media(tP, "preco") == null ? "—" : fmtN(media(tP, "preco"), 2), yoy(media(tA, "preco"), media(tP, "preco"), { abs: true }))}
       ${tileK(`${cfg.rotDif} · ${unDif}`, dif(tA), dif(tP), temDif ? dDif(tA, tP) : `<span class="muted">select an exchange</span>`)}
@@ -1061,29 +1076,29 @@ async function painelSafras(alvo, ctx, cfg) {
     ${temBrl ? `<p class="muted pos-nota">Revenue R$ = revenue US$ × PTAX (buy) of the business day before each BL. Average PTAX: ${ptaxMedia(tA) == null ? "—" : fmtN(ptaxMedia(tA), 4)}.${semPtax ? ` <span>${semPtax} shipments without PTAX — upload the Position again.</span>` : ""}</p>` : ""}
 
     <section class="pos-card">
-      <div class="pos-card-h"><h2>${esc(cfg.rotVolume)} by month · ${esc(safra)} vs ${esc(ant ?? "—")}</h2>
-        <p class="muted">${esc(cfg.notaMes)}</p></div>
-      <div class="pos-grafico pos-grafico-sm"><canvas id="gSafra" role="img" aria-label="${esc(cfg.rotVolume)} by month, this crop and previous crop"></canvas></div>
+      <div class="pos-card-h"><h2>${aEntregar ? `${esc(rotVol)} by month · ${esc(safra)}` : `${esc(rotVol)} by month · ${esc(safra)} vs ${esc(ant ?? "—")}`}</h2>
+        <p class="muted">${esc(aEntregar ? "Open balance (Saldo) by estimated loading month (Prev. Carga, or the shipment month when there is no estimate); crop from the contract. Value estimated at the final price." : cfg.notaMes)}</p></div>
+      <div class="pos-grafico pos-grafico-sm"><canvas id="gSafra" role="img" aria-label="${esc(rotVol)} by month, this crop and previous crop"></canvas></div>
       <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
-        <thead><tr><th>Month</th><th class="num">Volume</th><th class="num">PY</th><th class="num">YOY</th>
-          <th class="num">${esc(cfg.rotValor)}</th><th class="num">PY</th><th class="num">YOY</th>
+        <thead><tr><th>Month</th><th class="num">Volume</th><th class="num cmp">PY</th><th class="num cmp">YOY</th>
+          <th class="num">${esc(rotValor)}</th><th class="num cmp">PY</th><th class="num cmp">YOY</th>
           ${temBrl ? `<th class="num">Revenue R$</th><th class="num">Avg PTAX</th>` : ""}
-          <th class="num">${esc(cfg.rotDif)}</th><th class="num">PY</th><th class="num">Δ</th></tr></thead>
+          <th class="num">${esc(cfg.rotDif)}</th><th class="num cmp">PY</th><th class="num cmp">Δ</th></tr></thead>
         <tbody>${posicoes.map((p) => { const a = mA.get(p) ?? VAZIO, b = mP.get(p); return `<tr><td>${rotuloPosicao(p)}</td>
-          <td class="num">${barra(a.sacas, maxMes)}</td><td class="num">${b ? fmtN(b.sacas) : "—"}</td><td class="num">${yoy(a.sacas, b?.sacas)}</td>
-          <td class="num">${fmtDin(a.valor, cfg.moeda)}</td><td class="num">${b ? fmtDin(b.valor, cfg.moeda) : "—"}</td><td class="num">${yoy(a.valor, b?.valor)}</td>
+          <td class="num">${barra(a.sacas, maxMes)}</td><td class="num cmp">${b ? fmtN(b.sacas) : "—"}</td><td class="num cmp">${yoy(a.sacas, b?.sacas)}</td>
+          <td class="num">${fmtDin(a.valor, cfg.moeda)}</td><td class="num cmp">${b ? fmtDin(b.valor, cfg.moeda) : "—"}</td><td class="num cmp">${yoy(a.valor, b?.valor)}</td>
           ${temBrl ? `<td class="num">${fmtDin(a.brl, "R$")}</td><td class="num">${ptaxMedia(a) == null ? "—" : fmtN(ptaxMedia(a), 4)}</td>` : ""}
-          <td class="num">${dif(a)}</td><td class="num">${b ? dif(b) : "—"}</td><td class="num">${dDif(a, b)}</td></tr>`; }).join("")}</tbody>
-        <tfoot><tr class="total"><th scope="row">Total</th><td class="num">${fmtN(tA.sacas)}</td><td class="num">${fmtN(tP.sacas)}</td><td class="num">${yoy(tA.sacas, tP.sacas)}</td>
-          <td class="num">${fmtDin(tA.valor, cfg.moeda)}</td><td class="num">${fmtDin(tP.valor, cfg.moeda)}</td><td class="num">${yoy(tA.valor, tP.valor)}</td>
+          <td class="num">${dif(a)}</td><td class="num cmp">${b ? dif(b) : "—"}</td><td class="num cmp">${dDif(a, b)}</td></tr>`; }).join("")}</tbody>
+        <tfoot><tr class="total"><th scope="row">Total</th><td class="num">${fmtN(tA.sacas)}</td><td class="num cmp">${fmtN(tP.sacas)}</td><td class="num cmp">${yoy(tA.sacas, tP.sacas)}</td>
+          <td class="num">${fmtDin(tA.valor, cfg.moeda)}</td><td class="num cmp">${fmtDin(tP.valor, cfg.moeda)}</td><td class="num cmp">${yoy(tA.valor, tP.valor)}</td>
           ${temBrl ? `<td class="num">${fmtDin(tA.brl, "R$")}</td><td class="num">${ptaxMedia(tA) == null ? "—" : fmtN(ptaxMedia(tA), 4)}</td>` : ""}
-          <td class="num">${dif(tA)}</td><td class="num">${dif(tP)}</td><td class="num">${dDif(tA, tP)}</td></tr></tfoot>
+          <td class="num">${dif(tA)}</td><td class="num cmp">${dif(tP)}</td><td class="num cmp">${dDif(tA, tP)}</td></tr></tfoot>
       </table></div>
     </section>
 
     <section class="pos-card">
       <div class="pos-card-h pos-card-h-linha"><div><h2>Report by ${esc(rotRk.toLowerCase())} · ${esc(safra)}</h2>
-        <p class="muted">Volume share and change vs ${esc(ant ?? "—")} (${periodo}).${cfg.dicaRanking && ranking === cfg.extra.campo ? ` ${esc(cfg.dicaRanking)}` : ""}</p></div>
+        <p class="muted">${aEntregar ? "Share of the open balance to ship." : `Volume share and change vs ${esc(ant ?? "—")} (${periodo}).`}${cfg.dicaRanking && ranking === cfg.extra.campo ? ` ${esc(cfg.dicaRanking)}` : ""}</p></div>
         ${segmentos("segRk", cfg.rankings.map(([k, t2]) => [k, t2]), ranking)}</div>
       <div class="tabela-wrap pos-tabela">${ranking === "peneira" ? tabelaPeneiras(atual, anterior, tA, dif, dDif, cfg) : tabelaRanking(atual, anterior, tA, dif, dDif, cfg, ranking)}</div>
     </section>`;
@@ -1091,6 +1106,8 @@ async function painelSafras(alvo, ctx, cfg) {
     $("#fSafra", alvo).addEventListener("change", (e) => { safra = e.target.value; desenhar(); });
     $("#fExtra", alvo).addEventListener("change", (e) => { extra = e.target.value; desenhar(); });
     $("#fQual", alvo).addEventListener("change", (e) => { qualidade = e.target.value; desenhar(); });
+    $("#fEntregar", alvo)?.addEventListener("change", (e) => { aEntregar = e.target.checked; desenhar(); });
+    alvo.classList.toggle("pos-sem-comparacao", aEntregar);
     const fc = $("#fContrato", alvo);
     fc.addEventListener("input", () => { contrato = fc.value; desenhar().then(() => { const n = $("#fContrato", alvo); n.focus(); n.setSelectionRange(contrato.length, contrato.length); }); });
     ligarSegmentos(alvo, "segBolsa", (k) => { bolsa = k; extra = ""; qualidade = ""; desenhar(); });
@@ -1102,8 +1119,8 @@ async function painelSafras(alvo, ctx, cfg) {
     await graficoSafras($("#gSafra", alvo), {
       rotulos: comDados.map(rotuloPosicao),
       atual: comDados.map((p) => arred(mA.get(p)?.sacas ?? 0)),
-      anterior: comDados.map((p) => arred(mP.get(p)?.sacas ?? 0)),
-      rotAtual: safra, rotAnterior: `${ant ?? tr("Previous")}${periodo === "full crop" ? "" : ` (${tr(periodo)})`}`,
+      anterior: aEntregar ? null : comDados.map((p) => arred(mP.get(p)?.sacas ?? 0)),
+      rotAtual: aEntregar ? `${safra} · ${tr("To ship")}` : safra, rotAnterior: `${ant ?? tr("Previous")}${periodo === "full crop" ? "" : ` (${tr(periodo)})`}`,
     });
   };
   await desenhar();
@@ -1117,12 +1134,12 @@ function tabelaRanking(atual, anterior, tA, dif, dDif, cfg, ranking) {
   const max = Math.max(1, ...itens.map(([, a]) => a.sacas));
   const clicavel = (k) => (cfg.extra.campo === rk ? `class="clicavel" data-extra="${esc(k)}"` : rk === "padrao" ? `class="clicavel" data-qual="${esc(k)}"` : "");
   return `<table class="tabela tabela-num">
-    <thead><tr><th>${esc(rot)}</th><th class="num">Volume</th><th class="num">%</th><th class="num">YOY</th>
-      <th class="num">${esc(cfg.rotValor)}</th><th class="num">YOY</th><th class="num">${esc(cfg.rotDif)}</th><th class="num">Δ PY</th></tr></thead>
+    <thead><tr><th>${esc(rot)}</th><th class="num">Volume</th><th class="num">%</th><th class="num cmp">YOY</th>
+      <th class="num">${esc(cfg.rotValor)}</th><th class="num cmp">YOY</th><th class="num">${esc(cfg.rotDif)}</th><th class="num cmp">Δ PY</th></tr></thead>
     <tbody>${itens.length ? itens.map(([k, a]) => { const b = rP.get(k); return `<tr ${clicavel(k)}><td>${esc(k)}</td>
-      <td class="num">${barra(a.sacas, max)}</td><td class="num">${pct(a.sacas, tA.sacas)}</td><td class="num">${yoy(a.sacas, b?.sacas)}</td>
-      <td class="num">${fmtDin(a.valor, cfg.moeda)}</td><td class="num">${yoy(a.valor, b?.valor)}</td>
-      <td class="num">${dif(a)}</td><td class="num">${dDif(a, b)}</td></tr>`; }).join("")
+      <td class="num">${barra(a.sacas, max)}</td><td class="num">${pct(a.sacas, tA.sacas)}</td><td class="num cmp">${yoy(a.sacas, b?.sacas)}</td>
+      <td class="num">${fmtDin(a.valor, cfg.moeda)}</td><td class="num cmp">${yoy(a.valor, b?.valor)}</td>
+      <td class="num">${dif(a)}</td><td class="num cmp">${dDif(a, b)}</td></tr>`; }).join("")
       : `<tr><td colspan="8" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
   </table>`;
 }
@@ -1143,15 +1160,15 @@ function tabelaPeneiras(atual, anterior, tA, dif, dDif, cfg) {
     const b = qP.get(q);
     const telas = [...sA.entries()].filter(([k]) => k.startsWith(`${q}\u0001`)).sort((x, y) => y[1].sacas - x[1].sacas);
     return `<tr class="linha-grupo clicavel" data-qual="${esc(q)}"><td><strong>${esc(q)}</strong></td><td class="num">${barra(a.sacas, max)}</td>
-      <td class="num">${pct(a.sacas, tA.sacas)}</td><td class="num">100%</td><td class="num">${yoy(a.sacas, b?.sacas)}</td>
-      <td class="num">${fmtDin(a.valor, cfg.moeda)}</td><td class="num">${dif(a)}</td><td class="num">${dDif(a, b)}</td></tr>
+      <td class="num">${pct(a.sacas, tA.sacas)}</td><td class="num">100%</td><td class="num cmp">${yoy(a.sacas, b?.sacas)}</td>
+      <td class="num">${fmtDin(a.valor, cfg.moeda)}</td><td class="num">${dif(a)}</td><td class="num cmp">${dDif(a, b)}</td></tr>
       ${telas.map(([k, s]) => { const sp = sP.get(k); return `<tr class="linha-sub"><td>${esc(k.split("\u0001")[1])}</td>
         <td class="num">${fmtN(s.sacas)}</td><td class="num">${pct(s.sacas, tA.sacas)}</td><td class="num"><strong>${pct(s.sacas, a.sacas)}</strong></td>
-        <td class="num">${yoy(s.sacas, sp?.sacas)}</td><td class="num">${fmtDin(s.valor, cfg.moeda)}</td><td class="num">${dif(s)}</td><td class="num">${dDif(s, sp)}</td></tr>`; }).join("")}`;
+        <td class="num cmp">${yoy(s.sacas, sp?.sacas)}</td><td class="num">${fmtDin(s.valor, cfg.moeda)}</td><td class="num">${dif(s)}</td><td class="num cmp">${dDif(s, sp)}</td></tr>`; }).join("")}`;
   }).join("");
   return `<table class="tabela tabela-num pos-peneiras">
-    <thead><tr><th>Quality / screen</th><th class="num">Volume</th><th class="num">% of total</th><th class="num">% of quality</th><th class="num">YOY</th>
-      <th class="num">${esc(cfg.rotValor)}</th><th class="num">${esc(cfg.rotDif)}</th><th class="num">Δ PY</th></tr></thead>
+    <thead><tr><th>Quality / screen</th><th class="num">Volume</th><th class="num">% of total</th><th class="num">% of quality</th><th class="num cmp">YOY</th>
+      <th class="num">${esc(cfg.rotValor)}</th><th class="num">${esc(cfg.rotDif)}</th><th class="num cmp">Δ PY</th></tr></thead>
     <tbody>${linhas || `<tr><td colspan="8" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
   </table>`;
 }
@@ -1159,7 +1176,7 @@ function tabelaPeneiras(atual, anterior, tA, dif, dDif, cfg) {
 // Export Sales: volume embarcado, receita (US$ e R$ pela PTAX D-1 de cada BL), preço e diferencial em ¢/lb
 function painelVendas(alvo, carga, ctx) {
   return painelSafras(alvo, ctx, {
-    tipo: "vendas", titulo: "Export sales", rotVolume: "Shipped", rotValor: "Revenue", moeda: "$", temBrl: true,
+    tipo: "vendas", titulo: "Export sales", rotVolume: "Shipped", rotValor: "Revenue", moeda: "$", temBrl: true, temEntregar: true,
     rotPreco: "Avg final price · ¢/lb", rotDif: "Sale diff", unidadeDif: () => "¢/lb",
     notaMes: "Realized sales: month of the bill of lading (BL); crop from the contract. Crop year July to June.",
     dicaRanking: "Click a client to filter the page.",
@@ -1169,7 +1186,8 @@ function painelVendas(alvo, carga, ctx) {
     preparar(r) {
       const porTon = /TON/i.test(r.unidade ?? "");
       r._sacas = r.saida > 0 ? r.saida : (r.sacas ?? 0);
-      const preco = precoExportacao(r);
+      // contrato pendente de fixação vem com preço final 0: fica sem preço (não entra nas médias)
+      const preco = precoExportacao(r) || null;
       r._preco = preco == null ? null : porTon ? preco * USDT_PARA_CLB : preco;
       r._valor = r._preco != null ? (r._preco / 100) * r._sacas * LB_SACA : (r.valor_usd ?? 0);
       r._brl = r.ptax != null ? r._valor * r.ptax : null;
@@ -1177,6 +1195,10 @@ function painelVendas(alvo, carga, ctx) {
       r._dif = dif == null ? null : porTon ? dif * USDT_PARA_CLB : dif;
       r._pos = posicaoSafra(r.data_bl, r.safra);
       r._cliente = clientePadronizado(r);
+      // saldo a embarcar: mês da previsão de carga (ou do embarque); sem data → "No date"
+      const dataPrev = r.prev_carga ?? r.embarque;
+      r._posE = dataPrev ? posicaoSafra(dataPrev, r.safra) : SEM_DATA;
+      r._valorE = r.saldo > 0 && r._preco != null ? (r._preco / 100) * r.saldo * LB_SACA : null;
     },
   });
 }

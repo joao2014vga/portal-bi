@@ -420,6 +420,12 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
   background: color-mix(in srgb, var(--serie-1) 22%, transparent); }
 .cel-barra b { position: relative; font-weight: 500; }
 .tabela tr.clicavel { cursor: pointer; }
+/* "só saldo a embarcar": esconde as colunas de comparação com a safra anterior */
+.pos-sem-comparacao .cmp { display: none; }
+.check-linha { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: var(--texto-2); cursor: pointer;
+  padding: 6px 10px; border: 1px solid var(--borda); border-radius: 8px; background: var(--sup); }
+.check-linha input { accent-color: var(--brand); width: 15px; height: 15px; margin: 0; }
+.check-linha:has(input:checked) { border-color: var(--brand); color: var(--texto); background: var(--brand-claro); }
 .pos-peneiras tr.linha-grupo td { background: var(--sup-2); border-top: 1px solid var(--borda); }
 .pos-peneiras tr.linha-sub td:first-child { padding-left: 28px; color: var(--texto-2); }
 .pos-peneiras tr.linha-sub td { font-size: 12.5px; }

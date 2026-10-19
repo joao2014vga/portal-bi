@@ -262,6 +262,16 @@ const PT = {
   "Earlier": "Antes", "Later": "Depois", "(no client)": "(sem cliente)",
   "Upload the Position again to see the screens — the data on the portal was saved before screens were read from the spreadsheet.":
     "Envie a posição de novo para ver as peneiras — os dados do portal foram gravados antes de as peneiras serem lidas da planilha.",
+  "Open balance to ship only": "Só saldo a embarcar", "To ship": "A embarcar", "Est. value": "Valor estimado",
+  "Balance still to ship · by estimated loading month": "Saldo ainda a embarcar · por mês de previsão de carga",
+  "Upload the Position again to see the open balance to ship.": "Envie a posição de novo para ver o saldo a embarcar.",
+  "To ship by month": "A embarcar por mês", "Share of the open balance to ship.": "Participação no saldo a embarcar.",
+  "Open balance (Saldo) by estimated loading month (Prev. Carga, or the shipment month when there is no estimate); crop from the contract. Value estimated at the final price.":
+    "Saldo a embarcar por mês de previsão de carga (Prev. Carga, ou o mês de embarque quando não há previsão); safra do contrato. Valor estimado pelo preço final.",
+  "No date": "Sem data", "Contracts": "Contratos",
+  "{n} contracts ({n} bags) still without a final price — pending fixation.": "{n} contratos ({n} sacas) ainda sem preço final — pendentes de fixação.",
+  "{n} contract ({n} bags) still without a final price — pending fixation.": "{n} contrato ({n} sacas) ainda sem preço final — pendente de fixação.",
+  "Value and average price consider only priced contracts.": "Valor e preço médio consideram só os contratos com preço.",
   "Search contract…": "Buscar contrato…", "Quality / screen": "Qualidade / peneira", "Report by quality / screen": "Por qualidade / peneira",
   "% of total": "% do total", "% of quality": "% da qualidade", "Revenue R$": "Receita R$", "Revenue R$ · PTAX D-1": "Receita R$ · PTAX D-1",
   "Avg PTAX": "PTAX média",
