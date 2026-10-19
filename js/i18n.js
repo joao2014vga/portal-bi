@@ -249,7 +249,7 @@ const PT = {
   "NY (Arabica)": "NY (Arábica)", "London (Robusta)": "Londres (Robusta)", "All clients": "Todos os clientes", "All suppliers": "Todos os fornecedores",
   "Shipped": "Embarcado", "Revenue": "Receita", "Avg final price": "Preço final médio", "Sale diff": "Diferencial de venda",
   "Purchased": "Comprado", "Value R$": "Valor R$", "Avg price": "Preço médio", "Purch diff": "Diferencial de compra",
-  "PY: {n}": "Ant.: {n}", "PY": "Ant.", "YOY": "Var.", "Volume": "Volume", "Δ PY": "Δ ant.", "Δ": "Δ",
+  "PY: {n}": "Ant.: {n}", "PY": "Ant.", "PY:": "Ant.:", "YOY": "Var.", "Volume": "Volume", "Δ PY": "Δ ant.", "Δ": "Δ",
   "select an exchange": "escolha uma bolsa", "exchange unit": "unidade da bolsa", "Shipped by month": "Embarcado por mês", "Purchased by month": "Comprado por mês",
   "Realized sales: month of the bill of lading (BL); crop from the contract. Crop year July to June.":
     "Vendas realizadas: mês do conhecimento de embarque (BL); safra do contrato. Ano-safra de julho a junho.",
@@ -260,6 +260,17 @@ const PT = {
   "No data for these filters.": "Sem dados para esses filtros.", "full crop": "safra completa",
   "same period, before the crop year": "mesmo período, antes do ano-safra", "Compared with {n}/{n}": "Comparado com {n}/{n}",
   "Earlier": "Antes", "Later": "Depois", "(no client)": "(sem cliente)",
+  "Search contract…": "Buscar contrato…", "Quality / screen": "Qualidade / peneira", "Report by quality / screen": "Por qualidade / peneira",
+  "% of total": "% do total", "% of quality": "% da qualidade", "Revenue R$": "Receita R$", "Revenue R$ · PTAX D-1": "Receita R$ · PTAX D-1",
+  "Avg PTAX": "PTAX média",
+  "Revenue R$ = revenue US$ × PTAX (buy) of the business day before each BL. Average PTAX: {n}.":
+    "Receita R$ = receita US$ × PTAX de compra do dia útil anterior a cada BL. PTAX média: {n}.",
+  "Revenue R$ = revenue US$ × PTAX (buy) of the business day before each BL. Average PTAX: —.":
+    "Receita R$ = receita US$ × PTAX de compra do dia útil anterior a cada BL. PTAX média: —.",
+  "{n} shipments without PTAX — upload the Position again.": "{n} embarques sem PTAX — envie a posição de novo.",
+  "{n} shipments without PTAX.": "{n} embarques sem PTAX.",
+  "PTAX could not be loaded from the Central Bank — revenue in R$ will be missing for this upload.":
+    "Não foi possível buscar a PTAX no Banco Central — a receita em R$ ficará sem valor neste envio.",
   "Upload the Position again to build this view (it needs the full contract history).":
     "Envie a posição de novo para montar esta visão (ela precisa do histórico completo de contratos).",
   "Jul": "Jul", "Aug": "Ago", "Sep": "Set", "Oct": "Out", "Nov": "Nov", "Dec": "Dez", "Jan": "Jan", "Feb": "Fev", "Mar": "Mar",
@@ -327,7 +338,8 @@ const ESPECIAIS = [
   [/^(\w{3})-(\d{2})$/, (m) => (MESES.includes(m[1]) ? `${PT[m[1]]}/${m[2]}` : null)], // Dec-26 → Dez/26
 ];
 
-const RE_NUM = /[-+−]?\d[\d.,]*/g;
+// número com separadores; não engole a pontuação do fim ("5,1224." → "5,1224")
+const RE_NUM = /[-+−]?\d(?:[\d.,]*\d)?/g;
 
 // Tradução de um texto solto da tela; null quando não há tradução
 function traduzirTexto(bruto) {

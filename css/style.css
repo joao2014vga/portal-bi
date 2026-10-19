@@ -377,7 +377,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .seg button.on { background: var(--sup); color: var(--texto); box-shadow: var(--sombra); font-weight: 600; }
 .seg button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 
-.pos-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.pos-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
 .pos-kpi {
   display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 14px 16px; cursor: pointer;
   background: var(--sup); border: 1px solid var(--borda); border-radius: 12px; box-shadow: var(--sombra); color: var(--texto); font: inherit;
@@ -419,6 +419,9 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
   background: color-mix(in srgb, var(--serie-1) 22%, transparent); }
 .cel-barra b { position: relative; font-weight: 500; }
 .tabela tr.clicavel { cursor: pointer; }
+.pos-peneiras tr.linha-grupo td { background: var(--sup-2); border-top: 1px solid var(--borda); }
+.pos-peneiras tr.linha-sub td:first-child { padding-left: 28px; color: var(--texto-2); }
+.pos-peneiras tr.linha-sub td { font-size: 12.5px; }
 
 /* fixação: indicadores, aviso e prazo por contrato (cor de status sempre com ícone e texto) */
 .pos-kpis-fix { grid-template-columns: repeat(5, minmax(0, 1fr)); }
