@@ -288,6 +288,22 @@ const PT = {
   "Jul": "Jul", "Aug": "Ago", "Sep": "Set", "Oct": "Out", "Nov": "Nov", "Dec": "Dez", "Jan": "Jan", "Feb": "Fev", "Mar": "Mar",
   "Apr": "Abr", "May": "Mai", "Jun": "Jun",
 
+  // ---------------------------------------------------------------- Diferenciais médios das exportações
+  "Avg diff": "Diferencial médio", "Inclusion date": "Data de inclusão", "EOM Ship": "EOM Ship", "From": "De", "To": "Até",
+  "All EOM Ship": "Todos os EOM Ship", "Qualities": "Qualidades", "Quality groups": "Grupos de qualidade",
+  "Months counted by inclusion date.": "Meses contados pela data de inclusão.", "Months counted by EOM Ship.": "Meses contados pelo EOM Ship.",
+  "Average weighted by bags; Conilon diffs ÷ 100.": "Média ponderada pelas sacas; diferenciais de Conilon ÷ 100.",
+  "{n} rows without a diff left out.": "{n} linhas sem diferencial ficaram de fora.",
+  "{n} rows without a date left out.": "{n} linhas sem data ficaram de fora.",
+  "Avg diff by month": "Diferencial médio por mês", "Line: average sale diff. Bars: bags.": "Linha: diferencial médio de venda. Barras: sacas.",
+  "Avg diff by quality and month": "Diferencial médio por qualidade e mês",
+  "Avg diff by quality group and month": "Diferencial médio por grupo de qualidade e mês",
+  "Each cell: average diff and, below, the bags. Hover a cell for the exact volume.":
+    "Cada célula: diferencial médio e, embaixo, as sacas. Passe o mouse para ver o volume exato.",
+  "Export sale diffs unavailable": "Diferenciais de exportação indisponíveis", "Average diff by month": "Diferencial médio por mês",
+  "Upload the Position again to build this view — it needs the inclusion date and the EOM Ship from the spreadsheet.":
+    "Envie a posição de novo para montar esta visão — ela precisa da data de inclusão e do EOM Ship da planilha.",
+
   // ---------------------------------------------------------------- Commercial Control (TV) e API do Payments
   "Brascof · TV Dashboard": "Brascof · Painel TV", "Commercial Control": "Controle Comercial", "Due/Loading from": "Vencimento/Carga de",
   "to": "até", "Today": "Hoje", "This week": "Esta semana", "Supplier:": "Fornecedor:", "Search...": "Buscar...",

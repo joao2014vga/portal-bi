@@ -202,7 +202,9 @@ const DETALHES = {
     cols: [["contrato", "Contrato"], ["alertas", "Alertas"], ["referencia", "Referência"], ["sacas", "Sacas", "n"], ["saida", "Saída (sc)", "n"],
       ["data_bl", "Data BL", "d"], ["safra", "Safras"], ["padrao", "Padrão"], ["peneira", "Peneira"], ["grupo", "Quality Group"], ["especie", "Espécie"],
       ["bolsa", "Bolsa"], ["unidade", "Unidade"], ["diferencial", "Diferencial", "n"], ["vlr_final", "Vlr. Final", "n"],
-      ["valor_usd", "Valor Contrato (US$)", "n"], ["saldo", "Saldo (sc)", "n"], ["prev_carga", "Prev. Carga", "d"], ["embarque", "Embarque", "d"]],
+      ["valor_usd", "Valor Contrato (US$)", "n"], ["saldo", "Saldo (sc)", "n"], ["prev_carga", "Prev. Carga", "d"], ["embarque", "Embarque", "d"],
+      // painel de diferenciais médios: por data de inclusão ou por mês de embarque (EOM Ship)
+      ["inclusao", "Data de Inclusão", "d"], ["eom_ship", "EOM Ship", "d"]],
     // realizadas (com BL) e as que ainda têm saldo a embarcar
     aberto: (r) => !!r.data_bl || r.saldo > 0,
   },
@@ -397,7 +399,7 @@ export async function renderPosition(link, alvo, ctx) {
   }
   const painel = {
     "portal:position-overview": painelOverview, "portal:position-physical": painelFisica, "portal:position-contracts": painelContratos,
-    "portal:position-sales": painelVendas, "portal:position-purchases": painelCompras,
+    "portal:position-sales": painelVendas, "portal:position-purchases": painelCompras, "portal:position-diffs": painelDiffs,
   }[link];
   if (!painel) { alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Unknown Position view</h3></div>`; return; }
   alvo.innerHTML = `<div class="pos">${topo}<div id="posCorpo"></div></div>`;
@@ -1220,4 +1222,154 @@ function painelCompras(alvo, carga, ctx) {
       r._pos = posicaoSafra(r.emissao, r.safra);
     },
   });
+}
+
+// =====================================================================
+// DIFERENCIAIS MÉDIOS DAS EXPORTAÇÕES
+// Média do diferencial de venda (ponderada pelas sacas) por mês e por
+// qualidade, contando o mês pela Data de Inclusão do contrato ou pelo
+// EOM Ship (mês de embarque). Mesmos dados do card Export Sales.
+// =====================================================================
+const mesIso = (iso) => (iso ? iso.slice(0, 7) : null);           // "2026-10-15" → "2026-10"
+const somaMes = (ym, n) => { const [y, m] = ym.split("-").map(Number); return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7); };
+const mesesEntre = (de, ate) => { const out = []; for (let m = de; m <= ate && out.length < 60; m = somaMes(m, 1)) out.push(m); return out; };
+const rotMes = (ym) => fmtMes(`${ym}-01`);
+
+// barras = sacas (eixo da direita), linha = diferencial médio (eixo da esquerda)
+async function graficoDiffs(canvas, { rotulos, difs, sacas, unidade }) {
+  const Chart = await carregarChart();
+  const t = tema();
+  const rotDif = `${tr("Avg diff")} (${unidade})`;
+  const c = new Chart(canvas, {
+    data: {
+      labels: rotulos,
+      datasets: [
+        { type: "line", label: rotDif, data: difs, yAxisID: "y", borderColor: t.s1, backgroundColor: t.s1, borderWidth: 2,
+          pointRadius: 3, pointHoverRadius: 5, pointBorderColor: t.sup, pointBorderWidth: 2, tension: 0, spanGaps: true, order: 0 },
+        { type: "bar", label: tr("bags"), data: sacas, yAxisID: "y1", backgroundColor: t.grade, borderRadius: 3, maxBarThickness: 26, order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
+        y: { position: "left", grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 } },
+          title: { display: true, text: rotDif, color: t.muda, font: { size: 11 } } },
+        y1: { position: "right", grid: { display: false }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) },
+          title: { display: true, text: tr("bags (60 kg)"), color: t.muda, font: { size: 11 } } },
+      },
+      plugins: {
+        legend: { position: "top", align: "start", labels: { color: t.tinta2, boxWidth: 10, boxHeight: 10, padding: 14, font: { size: 12 } } },
+        tooltip: { callbacks: { label: (ctx) => (ctx.dataset.yAxisID === "y1"
+          ? ` ${fmtN(ctx.raw)} ${tr("bags")}` : ` ${rotDif}: ${ctx.raw == null ? "—" : fmtSinalDec(ctx.raw)}`) } },
+      },
+    },
+  });
+  graficos.push(c);
+}
+
+async function painelDiffs(alvo, carga, ctx) {
+  let dados;
+  try { dados = (await ctx.api.positionDetalhe(["vendas"])).vendas ?? []; }
+  catch (e) { alvo.innerHTML = `<div class="vazio">${icon("lock")}<h3>Export sale diffs unavailable</h3><p>${esc(e.message)}</p></div>`; return; }
+  // dados gravados antes de a Data de Inclusão e o EOM Ship serem lidos da planilha
+  if (!dados.some((r) => "eom_ship" in r)) {
+    alvo.innerHTML = `<p class="muted pos-nota pos-nota-bloco">${icon("info")} Upload the Position again to build this view — it needs the inclusion date and the EOM Ship from the spreadsheet.</p>`;
+    return;
+  }
+  for (const r of dados) {
+    const porTon = /TON/i.test(r.unidade ?? "");
+    r._sacas = r.saida > 0 ? r.saida : (r.sacas ?? 0);
+    const dif = difExportacao(r);
+    r._difClb = dif == null ? null : porTon ? dif * USDT_PARA_CLB : dif; // sempre em ¢/lb, como no card Export Sales
+    r._bolsa = norm(r.bolsa);
+  }
+
+  const hoje = mesIso(hojeIso());
+  let bolsa = "NY", base = "inclusao", agrupar = "padrao", eom = "";
+  const padraoPeriodo = (b) => (b === "inclusao" ? [somaMes(hoje, -11), hoje] : [somaMes(hoje, -5), somaMes(hoje, 6)]);
+  let [de, ate] = padraoPeriodo(base);
+
+  const desenhar = async () => {
+    limparGraficos();
+    const unidade = "¢/lb";
+
+    const daBolsa = dados.filter((r) => r._bolsa === bolsa);
+    const opcoesEom = [...new Set(daBolsa.map((r) => mesIso(r.eom_ship)).filter(Boolean))].sort();
+    if (eom && !opcoesEom.includes(eom)) eom = "";
+    const chaveGrupo = (r) => (agrupar === "grupo" ? r.grupo : r.padrao) ?? "—";
+
+    const noFiltro = daBolsa.filter((r) => !eom || mesIso(r.eom_ship) === eom);
+    const semData = noFiltro.filter((r) => !r[base]).length;
+    const linhas = noFiltro.filter((r) => { const m = mesIso(r[base]); return m && m >= de && m <= ate; })
+      .map((r) => ({ ...r, _dif: r._difClb, _valor: 0, _mes: mesIso(r[base]) }));
+    const comDif = linhas.filter((r) => r._dif != null);
+    const semDif = linhas.length - comDif.length;
+
+    const porMes = agregar(comDif, (r) => r._mes);
+    const porGrupo = agregar(comDif, chaveGrupo);
+    const porCelula = agregar(comDif, (r) => `${chaveGrupo(r)}\u0001${r._mes}`);
+    const tudo = total(comDif);
+    const grupos = [...porGrupo.entries()].sort((a, b) => b[1].sacas - a[1].sacas);
+    const meses = mesesEntre(de, ate).filter((m) => porMes.has(m));
+    const contratos = new Set(comDif.map((r) => r.contrato)).size;
+    const dif = (a) => (media(a, "dif") == null ? "—" : fmtSinalDec(media(a, "dif")));
+    const cel = (a, forte = false) => (a
+      ? `<td class="num ${forte ? "forte" : ""}" title="${esc(fmtN(a.sacas))} ${esc(tr("bags"))}">${dif(a)}<small>${fmtK(a.sacas)}</small></td>`
+      : `<td class="num"><span class="zero">–</span></td>`);
+    const porQualidade = agrupar === "padrao";
+    const rotBase = base === "inclusao" ? "Inclusion date" : "EOM Ship";
+
+    alvo.innerHTML = `
+    <div class="pos-filtros">
+      ${segmentos("segBolsa", [["NY", "NY (Arabica)"], ["LONDRES", "London (Robusta)"]], bolsa)}
+      ${segmentos("segBase", [["inclusao", "Inclusion date"], ["eom_ship", "EOM Ship"]], base)}
+      <label class="pos-mes"><span>From</span><input type="month" id="fDe" value="${de}"></label>
+      <label class="pos-mes"><span>To</span><input type="month" id="fAte" value="${ate}"></label>
+      <select id="fEom" aria-label="EOM Ship"><option value="">All EOM Ship</option>${opcoesEom.map((m) => `<option value="${m}" ${m === eom ? "selected" : ""}>EOM ${esc(rotMes(m))}</option>`).join("")}</select>
+      ${segmentos("segAgrupar", [["padrao", "Quality"], ["grupo", "Quality group"]], agrupar)}
+    </div>
+    <p class="muted pos-nota">${icon("info")} <span>${base === "inclusao" ? "Months counted by inclusion date." : "Months counted by EOM Ship."}</span> <span>Average weighted by bags; Conilon diffs ÷ 100.</span>${semDif ? ` <span>${fmtN(semDif)} rows without a diff left out.</span>` : ""}${semData ? ` <span>${fmtN(semData)} rows without a date left out.</span>` : ""}</p>
+    <div class="pos-kpis">
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Avg diff · ${unidade}</span><span class="pos-kpi-v">${dif(tudo)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Bags</span><span class="pos-kpi-v">${fmtN(tudo.sacas)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Contracts</span><span class="pos-kpi-v">${fmtN(contratos)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">${porQualidade ? "Qualities" : "Quality groups"}</span><span class="pos-kpi-v">${fmtN(grupos.length)}</span></div>
+    </div>
+
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>${base === "inclusao" ? "Avg diff by month · Inclusion date" : "Avg diff by month · EOM Ship"}</h2>
+        <p class="muted">Line: average sale diff. Bars: bags.</p></div>
+      ${meses.length ? `<div class="pos-grafico pos-grafico-sm"><canvas id="gDiffs" role="img" aria-label="Average diff by month"></canvas></div>`
+        : `<p class="vazio-td">No data for these filters.</p>`}
+    </section>
+
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>${porQualidade ? "Avg diff by quality and month" : "Avg diff by quality group and month"} · ${unidade}</h2>
+        <p class="muted">Each cell: average diff and, below, the bags. Hover a cell for the exact volume.</p></div>
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num pos-diffs">
+        <thead><tr><th>${porQualidade ? "Quality" : "Quality group"}</th>${meses.map((m) => `<th class="num">${esc(rotMes(m))}</th>`).join("")}<th class="num">Total</th></tr></thead>
+        <tbody>${grupos.length ? grupos.map(([g, a]) => `<tr><td>${esc(g)}</td>${meses.map((m) => cel(porCelula.get(`${g}\u0001${m}`))).join("")}${cel(a, true)}</tr>`).join("")
+          : `<tr><td colspan="${meses.length + 2}" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+        ${grupos.length ? `<tfoot><tr class="total"><th scope="row">Total</th>${meses.map((m) => cel(porMes.get(m))).join("")}${cel(tudo, true)}</tr></tfoot>` : ""}
+      </table></div>
+    </section>`;
+
+    ligarSegmentos(alvo, "segBolsa", (k) => { bolsa = k; eom = ""; desenhar(); });
+    ligarSegmentos(alvo, "segBase", (k) => { if (k === base) return; base = k; [de, ate] = padraoPeriodo(base); desenhar(); });
+    ligarSegmentos(alvo, "segAgrupar", (k) => { agrupar = k; desenhar(); });
+    $("#fEom", alvo).addEventListener("change", (e) => { eom = e.target.value; desenhar(); });
+    $("#fDe", alvo).addEventListener("change", (e) => { if (!e.target.value) return; de = e.target.value; if (de > ate) ate = de; desenhar(); });
+    $("#fAte", alvo).addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; desenhar(); });
+
+    if (meses.length) {
+      await graficoDiffs($("#gDiffs", alvo), {
+        rotulos: meses.map(rotMes), unidade,
+        difs: meses.map((m) => { const v = media(porMes.get(m), "dif"); return v == null ? null : arred(v); }),
+        sacas: meses.map((m) => arred(porMes.get(m).sacas)),
+      });
+    }
+  };
+  await desenhar();
 }
