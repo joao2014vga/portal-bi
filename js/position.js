@@ -8,6 +8,7 @@
 //   portal:position-physical   posição física por mês e por qualidade
 //   portal:position-contracts  contratos em aberto, contrato a contrato
 import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR } from "./ui.js";
+import { t as tr, LOCALE, IDIOMA } from "./i18n.js";
 
 const XLSX_URL = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
 const CHART_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/+esm";
@@ -272,9 +273,11 @@ export async function lerPlanilhaPosition(file) {
 // =====================================================================
 // FORMATAÇÃO E GRÁFICOS
 // =====================================================================
-const fmtN = (v, dec = 0) => (v == null ? "—" : Number(v).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }));
+const fmtN = (v, dec = 0) => (v == null ? "—" : Number(v).toLocaleString(LOCALE, { minimumFractionDigits: dec, maximumFractionDigits: dec }));
 const fmtSinal = (v) => (v > 0 ? "+" : "") + fmtN(v);
-const fmtMes = (iso) => (iso ? new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "2-digit" }).replace(" ", "-") : "—");
+// mês curto: "Dec-26" em inglês, "Dez/26" em português
+const MESES_CURTOS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtMes = (iso) => (iso ? `${tr(MESES_CURTOS[Number(iso.slice(5, 7)) - 1])}${IDIOMA === "pt" ? "/" : "-"}${iso.slice(2, 4)}` : "—");
 const fmtData = (iso) => (iso ? dataBR(iso + "T12:00:00") : "—");
 const fmtK = (v) => (Math.abs(v) >= 1000 ? `${fmtN(v / 1000, Math.abs(v) >= 10000 ? 0 : 1)}k` : fmtN(v));
 
@@ -304,10 +307,10 @@ async function graficoBarrasLinha(canvas, { meses, series, linha }) {
     data: {
       labels: meses.map(fmtMes),
       datasets: [
-        { type: "line", label: linha.rotulo, data: linha.dados, borderColor: t.tinta, backgroundColor: t.tinta, borderWidth: 2,
+        { type: "line", label: tr(linha.rotulo), data: linha.dados, borderColor: t.tinta, backgroundColor: t.tinta, borderWidth: 2,
           pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: t.tinta, pointBorderColor: t.sup, pointBorderWidth: 2, tension: 0, order: 0 },
         ...series.map((s, i) => ({
-          type: "bar", label: s.rotulo, data: s.dados, backgroundColor: cores[i], borderColor: t.sup, borderWidth: 1,
+          type: "bar", label: tr(s.rotulo), data: s.dados, backgroundColor: cores[i], borderColor: t.sup, borderWidth: 1,
           borderRadius: 3, borderSkipped: false, stack: "fisico", order: 1, maxBarThickness: 30,
         })),
       ],
@@ -319,11 +322,11 @@ async function graficoBarrasLinha(canvas, { meses, series, linha }) {
         x: { stacked: true, grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
         y: { stacked: true, grid: { color: t.grade }, border: { display: false },
           ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) },
-          title: { display: true, text: "bags (60 kg)", color: t.muda, font: { size: 11 } } },
+          title: { display: true, text: tr("bags (60 kg)"), color: t.muda, font: { size: 11 } } },
       },
       plugins: {
         legend: { position: "top", align: "start", labels: { color: t.tinta2, boxWidth: 10, boxHeight: 10, padding: 14, font: { size: 12 } } },
-        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)} bags` } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)} ${tr("bags")}` } },
       },
     },
   });
@@ -335,7 +338,7 @@ async function graficoLinha(canvas, { rotulos, dados, rotulo }) {
   const t = tema();
   const c = new Chart(canvas, {
     type: "line",
-    data: { labels: rotulos, datasets: [{ label: rotulo, data: dados, borderColor: t.s1, backgroundColor: t.s1, borderWidth: 2,
+    data: { labels: rotulos, datasets: [{ label: tr(rotulo), data: dados, borderColor: t.s1, backgroundColor: t.s1, borderWidth: 2,
       pointRadius: 3, pointHoverRadius: 5, pointBorderColor: t.sup, pointBorderWidth: 2, tension: 0 }] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
@@ -344,7 +347,7 @@ async function graficoLinha(canvas, { rotulos, dados, rotulo }) {
         x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
         y: { grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) } },
       },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${rotulo}: ${fmtN(ctx.raw)} bags` } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${tr(rotulo)}: ${fmtN(ctx.raw)} ${tr("bags")}` } } },
     },
   });
   graficos.push(c);
@@ -839,7 +842,7 @@ function posicaoSafra(iso, safra) {
   const [y, m] = iso.split("-").map(Number);
   return Math.max(-1, Math.min(12, (y - ini) * 12 + (m - MES_INICIO_SAFRA)));
 }
-const rotuloPosicao = (k) => (k < 0 ? "Earlier" : k > 11 ? "Later" : MESES_SAFRA[k]);
+const rotuloPosicao = (k) => tr(k < 0 ? "Earlier" : k > 11 ? "Later" : MESES_SAFRA[k]);
 
 // ---------------------------------------------------------------- cliente final (mesma regra do Power BI)
 function clienteFinal(r) {
@@ -925,11 +928,11 @@ async function graficoSafras(canvas, { rotulos, atual, anterior, rotAtual, rotAn
       scales: {
         x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
         y: { grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) },
-          title: { display: true, text: "bags (60 kg)", color: t.muda, font: { size: 11 } } },
+          title: { display: true, text: tr("bags (60 kg)"), color: t.muda, font: { size: 11 } } },
       },
       plugins: {
         legend: { position: "top", align: "start", labels: { color: t.tinta2, boxWidth: 10, boxHeight: 10, padding: 14, font: { size: 12 } } },
-        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)} bags` } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)} ${tr("bags")}` } },
       },
     },
   });
@@ -1046,7 +1049,7 @@ async function painelSafras(alvo, ctx, cfg) {
       rotulos: comDados.map(rotuloPosicao),
       atual: comDados.map((p) => arred(mA.get(p)?.sacas ?? 0)),
       anterior: comDados.map((p) => arred(mP.get(p)?.sacas ?? 0)),
-      rotAtual: safra, rotAnterior: `${ant ?? "Previous"}${periodo === "full crop" ? "" : ` (${periodo})`}`,
+      rotAtual: safra, rotAnterior: `${ant ?? tr("Previous")}${periodo === "full crop" ? "" : ` (${tr(periodo)})`}`,
     });
   };
   await desenhar();

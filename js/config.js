@@ -11,4 +11,7 @@ export const CONFIG = {
 
   NOME_PORTAL: "BI Portal",
   NOME_EMPRESA: "Brascof",
+
+  // Idioma das telas: "pt" (português) ou "en" (inglês). Ver js/i18n.js.
+  IDIOMA: "pt",
 };

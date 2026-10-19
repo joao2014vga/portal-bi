@@ -5,6 +5,7 @@ import {
   toLocalInput, fromLocalInput, statusAtualizacao, FREQ_LABEL, NIVEL_ICON, iniciais, saudacao, storage, tamanhoArquivo,
 } from "./ui.js";
 import { ehPainelPosition, renderPosition } from "./position.js";
+import { IDIOMA, ligarTraducao } from "./i18n.js";
 
 const app = $("#app");
 // arquivos: undefined = ainda não buscou; false = recurso não instalado no banco
@@ -28,13 +29,13 @@ function semCache(link) {
   return u.href;
 }
 
-// Relatórios do Power BI sempre em inglês (tela de login e interface),
+// Relatórios do Power BI no idioma do portal (tela de login e interface),
 // independente do idioma do navegador. Respeita um language= já no link.
 function powerBiEmIngles(link) {
   try {
     const u = new URL(link);
     if (!/(^|\.)powerbi\.com$/i.test(u.hostname) || u.searchParams.has("language")) return link;
-    u.searchParams.set("language", "en-US");
+    u.searchParams.set("language", IDIOMA === "pt" ? "pt-BR" : "en-US");
     return u.href;
   } catch { return link; }
 }
@@ -45,6 +46,7 @@ document.title = CONFIG.NOME_PORTAL;
 // INICIALIZAÇÃO E ROTAS
 // =====================================================================
 async function iniciar() {
+  ligarTraducao(); // telas em português quando CONFIG.IDIOMA = "pt"
   if (!location.hash.startsWith("#/")) history.replaceState(null, "", location.pathname + location.search + "#/");
 
   api.onAuth(async (evt) => {

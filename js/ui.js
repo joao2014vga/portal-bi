@@ -1,5 +1,7 @@
 // Utilidades de interface: escape, ícones, toast, modal, formatação.
 
+import { LOCALE } from "./i18n.js";
+
 export const esc = (v) =>
   String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -175,7 +177,7 @@ export function tamanhoArquivo(bytes) {
   if (bytes == null) return "";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024).toLocaleString(LOCALE, { maximumFractionDigits: 1 })} MB`;
 }
 
 export const NIVEL_ICON ={ info: "info", alerta: "alert", critico: "alert" };
