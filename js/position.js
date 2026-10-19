@@ -643,6 +643,12 @@ export function textoAlertaFixacao(detalhes) {
 
 // lotes: inteiro quando a fração é desprezível (somas como 2611.97 viram 2,612)
 const contratos = (n) => `${fmtN(n)} ${n === 1 ? "contract" : "contracts"}`;
+// Diferencial das vendas de exportação: no sistema o do Conilon vem multiplicado
+// por 100 (mesma correção do Power BI, "Diferencial Tratado")
+const difExportacao = (r) => (r.diferencial != null && norm(r.especie) === "CONILON" ? r.diferencial / 100 : r.diferencial);
+// O preço final (Vlr. Final) do Conilon vem igualmente ×100 — conferido contra o "Valor Contrato (US$)"
+const precoExportacao = (r) => (r.vlr_final != null && norm(r.especie) === "CONILON" ? r.vlr_final / 100 : r.vlr_final);
+
 const fmtLotes = (v) => (v == null ? "—" : Math.abs(v - Math.round(v)) < 0.05 ? fmtN(Math.round(v)) : fmtN(v, 1));
 
 // quem fixa, do ponto de vista da Brascof
@@ -731,6 +737,7 @@ async function painelContratos(alvo, carga, ctx) {
   for (const tipo of Object.keys(CAMPO_MES)) {
     for (const r of detalhes[tipo] ?? []) { r._fx = prazoFixacao(r, tipo); r._prazo = r._fx?.data ?? null; }
   }
+  for (const r of detalhes.expsales ?? []) { r.diferencial = difExportacao(r); r.vlr_final = precoExportacao(r); }
   const temLotes = (detalhes.purchases ?? []).some((r) => "lotes_a_fixar" in r);
   const alertas = alertasFixacao(detalhes);
   let aba = "purchases", busca = "", especie = "", qualidade = "", mes = "", fix = "", ordem = null;
@@ -1162,10 +1169,12 @@ function painelVendas(alvo, carga, ctx) {
     preparar(r) {
       const porTon = /TON/i.test(r.unidade ?? "");
       r._sacas = r.saida > 0 ? r.saida : (r.sacas ?? 0);
-      r._preco = r.vlr_final == null ? null : porTon ? r.vlr_final * USDT_PARA_CLB : r.vlr_final;
+      const preco = precoExportacao(r);
+      r._preco = preco == null ? null : porTon ? preco * USDT_PARA_CLB : preco;
       r._valor = r._preco != null ? (r._preco / 100) * r._sacas * LB_SACA : (r.valor_usd ?? 0);
       r._brl = r.ptax != null ? r._valor * r.ptax : null;
-      r._dif = r.diferencial == null ? null : porTon ? r.diferencial * USDT_PARA_CLB : r.diferencial;
+      const dif = difExportacao(r);
+      r._dif = dif == null ? null : porTon ? dif * USDT_PARA_CLB : dif;
       r._pos = posicaoSafra(r.data_bl, r.safra);
       r._cliente = clientePadronizado(r);
     },
