@@ -30,6 +30,12 @@ function traduzErro(msg = "") {
   return msg;
 }
 
+function erroPosition(msg = "") {
+  if (/bi_position|schema cache|does not exist|Could not find the function/i.test(msg)) return "Position is not set up yet: run section 7 of supabase/schema.sql in the Supabase SQL Editor.";
+  if (/Access denied/i.test(msg)) return "Only administrators and file managers can upload the Position.";
+  return traduzErro(msg);
+}
+
 // =====================================================================
 // IMPLEMENTAÇÃO SUPABASE
 // =====================================================================
@@ -176,6 +182,33 @@ async function criarApiSupabase() {
     // link temporário (1 min) que já baixa com o nome original
     async linkDownload(a) {
       return check(await sb.storage.from("bi-arquivos").createSignedUrl(a.caminho, 60, { download: a.nome_arquivo })).signedUrl;
+    },
+
+    // ----------------------------------------------------------- position (painéis nativos)
+    // última planilha publicada (null = nenhuma ainda)
+    async positionUltima() {
+      const { data, error } = await sb.from("bi_position_cargas").select("id, data_ref, nome_arquivo, enviado_por, resumo, created_at")
+        .order("data_ref", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(erroPosition(error.message));
+      return data;
+    },
+    // indicadores de cada dia (última publicação do dia), para os gráficos de evolução
+    async positionHistorico() {
+      const { data, error } = await sb.from("bi_position_cargas").select("id, data_ref, kpis:resumo->kpis").order("data_ref").order("id");
+      if (error) throw new Error(erroPosition(error.message));
+      const porDia = new Map(data.map((c) => [c.data_ref, c]));
+      return [...porDia.values()].slice(-120);
+    },
+    async positionDetalhe() {
+      const { data, error } = await sb.from("bi_position_detalhe").select("tipo, linhas");
+      if (error) throw new Error(erroPosition(error.message));
+      if (!data.length) throw new Error("You do not have access to the contract details.");
+      return Object.fromEntries(data.map((r) => [r.tipo, r.linhas]));
+    },
+    // grava resumo + contratos e marca os painéis como atualizados, tudo numa transação
+    async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes }) {
+      const { error } = await sb.rpc("bi_position_publicar", { p_data_ref: data_ref, p_nome: nome_arquivo, p_resumo: resumo, p_detalhes: detalhes });
+      if (error) throw new Error(erroPosition(error.message));
     },
 
     // ----------------------------------------------------------- notificações

@@ -4,6 +4,7 @@ import {
   esc, $, $$, icon, toast, modal, confirmar, tempoRelativo, dataBR, dataHoraBR,
   toLocalInput, fromLocalInput, statusAtualizacao, FREQ_LABEL, NIVEL_ICON, iniciais, saudacao, storage, tamanhoArquivo,
 } from "./ui.js";
+import { ehPainelPosition, renderPosition } from "./position.js";
 
 const app = $("#app");
 // arquivos: undefined = ainda não buscou; false = recurso não instalado no banco
@@ -484,6 +485,7 @@ async function telaDashboard(id) {
   const st = statusAtualizacao(d);
   const demo = d.link.startsWith("demo:");
   const sistema = ehSistema(d);
+  const nativo = ehPainelPosition(d.link); // painel desenhado pelo próprio portal (Position)
   await shell(`
     <div class="visor">
       <div class="visor-barra">
@@ -495,20 +497,21 @@ async function telaDashboard(id) {
         </div>
         <div class="visor-acoes">
           <button class="btn btn-ghost" id="telaCheia">${icon("expand")}<span>Full screen</span></button>
-          ${demo ? "" : `<a class="btn btn-ghost" href="${esc(powerBiEmIngles(d.link))}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}
+          ${demo || nativo ? "" : `<a class="btn btn-ghost" href="${esc(powerBiEmIngles(d.link))}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}
         </div>
       </div>
       ${d.nota ? `<div class="nota nota-${esc(d.nota_tipo)}">${icon(NIVEL_ICON[d.nota_tipo])}<span>${esc(d.nota)}</span></div>` : ""}
-      <div class="visor-frame" id="frame">
+      ${nativo ? `<div class="visor-frame visor-nativo" id="frame"></div>` : `<div class="visor-frame" id="frame">
         <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(sistema ? semCache(d.link) : powerBiEmIngles(d.link))}"`}
           allowfullscreen loading="eager"></iframe>
-      </div>
+      </div>`}
     </div>`, { banner: false, cheio: true, ativo: sistema ? `d${d.id}` : "" });
 
   $("#telaCheia").addEventListener("click", () => {
     const el = $("#frame");
     (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   });
+  if (nativo) await renderPosition(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), recarregar });
 }
 
 // Simula um relatório no modo demonstração
@@ -666,7 +669,7 @@ async function formDashboard(d, cats) {
       const titulo = f.titulo.value.trim();
       const link = f.link.value.trim();
       if (!titulo) throw new Error("Please enter a title.");
-      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:")) throw new Error("The link must start with https://");
+      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link)) throw new Error("The link must start with https://");
       const dados = {
         titulo, link,
         id: d.id,

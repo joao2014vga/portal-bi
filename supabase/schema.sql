@@ -251,6 +251,10 @@ returns trigger
 language plpgsql security definer set search_path = public
 as $$
 begin
+  -- a publicação do Position marca vários painéis de uma vez e avisa só por um
+  if coalesce(current_setting('bi.sem_notificacao', true), '') = '1' then
+    return new;
+  end if;
   if new.atualizado_em is not null
      and new.atualizado_em > coalesce(old.atualizado_em, '-infinity'::timestamptz)
      and new.atualizado_em > now() - interval '1 hour' then
@@ -428,7 +432,111 @@ create trigger bi_arquivos_notifica
   for each row execute function public.bi_notifica_arquivo();
 
 -- ---------------------------------------------------------------------
--- 7. PRIMEIRO ADMINISTRADOR
+-- 7. POSITION (painéis desenhados pelo próprio portal)
+-- O ADM ou File manager sobe a planilha diária "Brascof Position Overview";
+-- o portal lê no navegador e grava aqui, de uma vez, pela função
+-- bi_position_publicar. Os painéis são cadastrados em bi_dashboards com
+-- link "portal:position-..." e o acesso segue bi_acessos, como os demais.
+-- ---------------------------------------------------------------------
+-- Uma linha por publicação: resumo (posição por mês, física, variação) — fica
+-- o histórico para os gráficos de evolução
+create table if not exists public.bi_position_cargas (
+  id            bigint generated always as identity primary key,
+  data_ref      date not null,                     -- "updated as of" da planilha
+  nome_arquivo  text not null,
+  resumo        jsonb not null,
+  enviado_por   text,
+  created_by    uuid default auth.uid() references public.bi_perfis (id) on delete set null,
+  created_at    timestamptz not null default now()
+);
+create index if not exists bi_position_cargas_data_idx on public.bi_position_cargas (data_ref desc, id desc);
+
+-- Contratos em aberto da última publicação (substituídos a cada upload)
+create table if not exists public.bi_position_detalhe (
+  tipo        text primary key,                    -- purchases | expsales | intsales | inventory
+  carga_id    bigint references public.bi_position_cargas (id) on delete cascade,
+  linhas      jsonb not null,
+  updated_at  timestamptz not null default now()
+);
+
+-- Usuário vê algum painel ativo cujo link contém `trecho`? (ADM vê todos)
+create or replace function public.bi_ve_painel(trecho text)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select public.bi_is_admin() or (public.bi_is_ativo() and exists (
+    select 1 from public.bi_acessos a join public.bi_dashboards d on d.id = a.dashboard_id
+    where a.user_id = auth.uid() and d.ativo and d.link ilike '%' || trecho || '%'
+  ));
+$$;
+
+alter table public.bi_position_cargas  enable row level security;
+alter table public.bi_position_detalhe enable row level security;
+
+-- Resumo: quem vê qualquer painel do Position. Contratos: só quem vê "Open Contracts".
+drop policy if exists bi_position_cargas_select on public.bi_position_cargas;
+create policy bi_position_cargas_select on public.bi_position_cargas for select to authenticated
+  using (public.bi_ve_painel('portal:position-') or public.bi_gerencia_arquivos());
+
+drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
+create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated
+  using (public.bi_ve_painel('portal:position-contracts') or public.bi_gerencia_arquivos());
+-- (gravação só pela função abaixo)
+
+create or replace function public.bi_position_publicar(p_data_ref date, p_nome text, p_resumo jsonb, p_detalhes jsonb)
+returns bigint
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id bigint;
+  v_tipo text;
+begin
+  if not public.bi_gerencia_arquivos() then
+    raise exception 'Access denied';
+  end if;
+  insert into public.bi_position_cargas (data_ref, nome_arquivo, resumo, enviado_por)
+  values (p_data_ref, p_nome, p_resumo,
+          (select nullif(split_part(nome, ' ', 1), '') from public.bi_perfis where id = auth.uid()))
+  returning id into v_id;
+
+  for v_tipo in select jsonb_object_keys(p_detalhes) loop
+    insert into public.bi_position_detalhe (tipo, carga_id, linhas, updated_at)
+    values (v_tipo, v_id, p_detalhes -> v_tipo, now())
+    on conflict (tipo) do update set carga_id = excluded.carga_id, linhas = excluded.linhas, updated_at = now();
+  end loop;
+
+  -- marca os painéis como atualizados; só o Overview gera notificação
+  perform set_config('bi.sem_notificacao', '1', true);
+  update public.bi_dashboards set atualizado_em = now()
+   where link like 'portal:position-%' and link <> 'portal:position-overview';
+  perform set_config('bi.sem_notificacao', '', true);
+  update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-overview';
+  return v_id;
+end;
+$$;
+
+revoke all on function public.bi_position_publicar(date, text, jsonb, jsonb) from public, anon;
+grant execute on function public.bi_position_publicar(date, text, jsonb, jsonb) to authenticated;
+
+-- Categoria "Position" e os três painéis (só cria o que ainda não existe;
+-- depois libere o acesso de cada usuário na Administração)
+insert into public.bi_categorias (nome, ordem)
+select 'Position', 0
+where not exists (select 1 from public.bi_categorias where nome = 'Position');
+
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select c.id, v.titulo, v.descricao, v.link, 'diaria', true, v.ordem
+from public.bi_categorias c,
+     (values
+       ('Position Overview', 'Net position by term month and change vs the previous position — Arabica, Robusta, Exportable and Low Grade.', 'portal:position-overview', 1),
+       ('Physical Position', 'Physical position by month and running balance by quality.', 'portal:position-physical', 2),
+       ('Open Contracts', 'Open purchases, export and domestic sales, and inventory, contract by contract.', 'portal:position-contracts', 3)
+     ) as v (titulo, descricao, link, ordem)
+where c.nome = 'Position'
+  and not exists (select 1 from public.bi_dashboards d where d.link = v.link);
+
+-- ---------------------------------------------------------------------
+-- 8. PRIMEIRO ADMINISTRADOR
 -- Use um usuário que já exista em Authentication > Users (pode ser o
 -- mesmo login que você usa nos outros sistemas). Troque o e-mail e rode:
 --

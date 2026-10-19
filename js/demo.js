@@ -19,6 +19,7 @@ function seed() {
       { id: 1, nome: "Comercial", ordem: 1 },
       { id: 2, nome: "Financeiro", ordem: 2 },
       { id: 3, nome: "Operações", ordem: 3 },
+      { id: 4, nome: "Position", ordem: 0 },
     ],
     dashboards: [
       { id: 11, categoria_id: 1, titulo: "Vendas Diárias", descricao: "Faturamento por vendedor, região e mix de produtos, comparado à meta do mês.", link: "demo:vendas", nota: null, nota_tipo: "info", atualizado_em: h(3), frequencia: "diaria", ativo: true, ordem: 1 },
@@ -26,10 +27,13 @@ function seed() {
       { id: 21, categoria_id: 2, titulo: "Fluxo de Caixa", descricao: "Entradas e saídas realizadas e projetadas para os próximos 90 dias.", link: "demo:caixa", nota: "Dados de setembro em fechamento contábil — valores podem mudar.", nota_tipo: "alerta", atualizado_em: h(5), frequencia: "diaria", ativo: true, ordem: 1 },
       { id: 22, categoria_id: 2, titulo: "DRE Gerencial", descricao: "Resultado mensal por centro de custo.", link: "demo:dre", nota: null, nota_tipo: "info", atualizado_em: h(24 * 12), frequencia: "mensal", ativo: true, ordem: 2 },
       { id: 31, categoria_id: 3, titulo: "Estoque e Giro", descricao: "Posição de estoque por armazém, cobertura em dias e itens parados.", link: "demo:estoque", nota: null, nota_tipo: "info", atualizado_em: h(0.5), frequencia: "horaria", ativo: true, ordem: 1 },
+      { id: 41, categoria_id: 4, titulo: "Position Overview", descricao: "Net position by term month and change vs the previous position.", link: "portal:position-overview", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 1 },
+      { id: 42, categoria_id: 4, titulo: "Physical Position", descricao: "Physical position by month and running balance by quality.", link: "portal:position-physical", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 2 },
+      { id: 43, categoria_id: 4, titulo: "Open Contracts", descricao: "Open purchases, export and domestic sales, and inventory, contract by contract.", link: "portal:position-contracts", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 3 },
       { id: 32, categoria_id: 3, titulo: "Logística de Entregas", descricao: "OTIF, prazo médio e ocorrências por transportadora.", link: "demo:logistica", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "semanal", ativo: true, ordem: 2 },
     ],
     acessos: [
-      ["u2", 11], ["u2", 12], ["u2", 31],
+      ["u2", 11], ["u2", 12], ["u2", 31], ["u2", 41], ["u2", 42],
       ["u3", 21], ["u3", 22],
     ],
     avisos: [
@@ -209,6 +213,27 @@ export function criarDemo() {
     async acessosDoArquivo(id) { return (db.arqAcessos ?? []).filter(([, x]) => x === id).map(([u]) => u); },
     async contagemAcessosArquivos() { return (db.arqAcessos ?? []).map(([u, a]) => ({ user_id: u, arquivo_id: a })); },
     async linkDownload(a) { return a.caminho; },
+
+    // Position: guardado no navegador (só para demonstração)
+    async positionUltima() {
+      const c = db.position?.cargas ?? [];
+      return c.length ? structuredClone(c[c.length - 1]) : null;
+    },
+    async positionHistorico() {
+      const porDia = new Map((db.position?.cargas ?? []).map((c) => [c.data_ref, { id: c.id, data_ref: c.data_ref, kpis: c.resumo.kpis }]));
+      return structuredClone([...porDia.values()]);
+    },
+    async positionDetalhe() { return structuredClone(db.position?.detalhe ?? {}); },
+    async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes }) {
+      exigeArquivos();
+      db.position ??= { cargas: [], detalhe: {} };
+      const agora = new Date().toISOString();
+      db.position.cargas.push({ id: novoId(), data_ref, nome_arquivo, enviado_por: eu().nome.split(" ")[0], resumo, created_at: agora });
+      db.position.cargas.sort((a, b) => a.data_ref.localeCompare(b.data_ref) || a.id - b.id);
+      db.position.detalhe = detalhes;
+      db.dashboards.filter((d) => d.link.startsWith("portal:position-")).forEach((d) => { d.atualizado_em = agora; });
+      salvar();
+    },
 
     async notificacoes() {
       const visiveis = (await this.dashboards()).map((d) => d.id);
