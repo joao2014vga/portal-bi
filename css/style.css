@@ -394,6 +394,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-card-h-linha { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .pos-grafico { position: relative; height: 300px; }
 .pos-nota { font-size: 12.5px; }
+.pos-nota-bloco { padding: 20px 16px; }
 .pos-grafico-sm { height: 220px; }
 .pos-duas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .pos-card > .tabela, .pos-card .pos-tabela { box-shadow: none; }

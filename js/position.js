@@ -1122,6 +1122,10 @@ function tabelaRanking(atual, anterior, tA, dif, dDif, cfg, ranking) {
 
 // Qualidade e, logo abaixo, as peneiras dela com o % dentro da qualidade
 function tabelaPeneiras(atual, anterior, tA, dif, dDif, cfg) {
+  // dados gravados antes da coluna Peneira existir no upload
+  if (atual.length && !atual.some((r) => "peneira" in r)) {
+    return `<p class="muted pos-nota pos-nota-bloco">${icon("info")} Upload the Position again to see the screens — the data on the portal was saved before screens were read from the spreadsheet.</p>`;
+  }
   const chaveQ = (r) => r.padrao ?? "—";
   const chaveS = (r) => `${chaveQ(r)}\u0001${r.peneira ?? "—"}`;
   const qA = agregar(atual, chaveQ), qP = agregar(anterior, chaveQ);

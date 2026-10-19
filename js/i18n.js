@@ -260,6 +260,8 @@ const PT = {
   "No data for these filters.": "Sem dados para esses filtros.", "full crop": "safra completa",
   "same period, before the crop year": "mesmo período, antes do ano-safra", "Compared with {n}/{n}": "Comparado com {n}/{n}",
   "Earlier": "Antes", "Later": "Depois", "(no client)": "(sem cliente)",
+  "Upload the Position again to see the screens — the data on the portal was saved before screens were read from the spreadsheet.":
+    "Envie a posição de novo para ver as peneiras — os dados do portal foram gravados antes de as peneiras serem lidas da planilha.",
   "Search contract…": "Buscar contrato…", "Quality / screen": "Qualidade / peneira", "Report by quality / screen": "Por qualidade / peneira",
   "% of total": "% do total", "% of quality": "% da qualidade", "Revenue R$": "Receita R$", "Revenue R$ · PTAX D-1": "Receita R$ · PTAX D-1",
   "Avg PTAX": "PTAX média",
