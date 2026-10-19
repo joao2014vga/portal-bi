@@ -224,7 +224,7 @@ export function criarDemo() {
       return structuredClone([...porDia.values()]);
     },
     async positionDetalhe() { return structuredClone(db.position?.detalhe ?? {}); },
-    async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes }) {
+    async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       exigeArquivos();
       db.position ??= { cargas: [], detalhe: {} };
       const agora = new Date().toISOString();
@@ -232,6 +232,12 @@ export function criarDemo() {
       db.position.cargas.sort((a, b) => a.data_ref.localeCompare(b.data_ref) || a.id - b.id);
       db.position.detalhe = detalhes;
       db.dashboards.filter((d) => d.link.startsWith("portal:position-")).forEach((d) => { d.atualizado_em = agora; });
+      const contratos = db.dashboards.find((d) => d.link === "portal:position-contracts");
+      if (alerta && contratos) {
+        const n = { id: novoId(), dashboard_id: contratos.id, arquivo_id: null, titulo: "Fixation alert", mensagem: alerta, autor: db.sessao, created_at: agora };
+        (db.notificacoes ??= []).unshift(n);
+        ouvintesNotif.forEach((cb) => cb(structuredClone(n)));
+      }
       salvar();
     },
 

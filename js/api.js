@@ -206,8 +206,8 @@ async function criarApiSupabase() {
       return Object.fromEntries(data.map((r) => [r.tipo, r.linhas]));
     },
     // grava resumo + contratos e marca os painéis como atualizados, tudo numa transação
-    async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes }) {
-      const { error } = await sb.rpc("bi_position_publicar", { p_data_ref: data_ref, p_nome: nome_arquivo, p_resumo: resumo, p_detalhes: detalhes });
+    async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
+      const { error } = await sb.rpc("bi_position_publicar", { p_data_ref: data_ref, p_nome: nome_arquivo, p_resumo: resumo, p_detalhes: detalhes, p_alerta: alerta });
       if (error) throw new Error(erroPosition(error.message));
     },
 

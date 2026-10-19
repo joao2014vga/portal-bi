@@ -360,7 +360,9 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 /* ---------------------------------------------------------------- Position (painéis nativos) */
 .visor-nativo { overflow: auto; }
 .visor-nativo:fullscreen { background: var(--bg); }
-.pos { padding: 18px 24px 40px; display: flex; flex-direction: column; gap: 16px; }
+.pos, #posCorpo { display: flex; flex-direction: column; gap: 16px; }
+.pos { padding: 18px 24px 40px; }
+#posCorpo { gap: 12px; }
 .pos-carregando { display: flex; align-items: center; gap: 10px; padding: 40px 24px; color: var(--texto-2); }
 .pos-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .pos-data { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--texto-2); font-size: 13.5px; }
@@ -408,6 +410,26 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .tabela-num .zero { color: var(--texto-3); }
 .tabela-num .forte { font-weight: 600; }
 .tabela-num tfoot td, .tabela-num tfoot th, .tabela-num tr.total > * { background: var(--sup-2); font-weight: 600; border-top: 1px solid var(--borda); border-bottom: 0; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--texto); }
+/* fixação: indicadores, aviso e prazo por contrato (cor de status sempre com ícone e texto) */
+.pos-kpis-fix { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.pos-kpi-sm .pos-kpi-v { font-size: 20px; }
+.pos-kpi-critico { border-color: color-mix(in srgb, var(--critico) 55%, var(--borda)); }
+.pos-kpi-critico .pos-kpi-t { color: var(--critico); }
+.pos-kpi-alerta { border-color: color-mix(in srgb, var(--alerta) 55%, var(--borda)); }
+.pos-kpi-alerta .pos-kpi-t { color: var(--alerta); }
+.pos-alerta { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; background: var(--critico-bg); color: var(--critico); font-size: 13.5px; }
+.pos-alerta > .ic { margin-top: 1px; }
+.pos-alerta strong { font-weight: 600; }
+.pos-alerta-links { display: inline-flex; gap: 12px; margin-left: 10px; flex-wrap: wrap; }
+.pos-alerta .link { color: inherit; text-decoration: underline; font-size: 13.5px; }
+.fx { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 12px; font-weight: 500; color: var(--texto-3); }
+.fx .ic { width: 13px; height: 13px; }
+.fx-critico { color: var(--critico); }
+.fx-alerta { color: var(--alerta); }
+.fx-neutro { color: var(--texto-2); }
+.tabela tr.linha-alerta td:first-child { box-shadow: inset 3px 0 0 var(--critico); }
+.pos-nota .ic { width: 14px; height: 14px; vertical-align: -2px; }
+
 .pos-resumo { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13.5px; color: var(--texto-2); }
 .pos-resumo strong { color: var(--texto); font-variant-numeric: tabular-nums; }
 .ordenar { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
@@ -424,7 +446,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 
 @media (max-width: 900px) {
   .pos { padding: 14px 12px 32px; }
-  .pos-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pos-kpis, .pos-kpis-fix { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pos-duas { grid-template-columns: 1fr; }
   .pos-kpi-v { font-size: 22px; }
 }

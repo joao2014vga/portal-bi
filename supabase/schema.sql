@@ -483,7 +483,12 @@ create policy bi_position_detalhe_select on public.bi_position_detalhe for selec
   using (public.bi_ve_painel('portal:position-contracts') or public.bi_gerencia_arquivos());
 -- (gravação só pela função abaixo)
 
-create or replace function public.bi_position_publicar(p_data_ref date, p_nome text, p_resumo jsonb, p_detalhes jsonb)
+-- versão antiga (sem o alerta de fixação)
+drop function if exists public.bi_position_publicar(date, text, jsonb, jsonb);
+
+-- p_alerta: texto do alerta de fixação (contratos vencidos ou a vencer); vira
+-- notificação para quem vê o painel Open Contracts
+create or replace function public.bi_position_publicar(p_data_ref date, p_nome text, p_resumo jsonb, p_detalhes jsonb, p_alerta text default null)
 returns bigint
 language plpgsql security definer set search_path = public
 as $$
@@ -511,12 +516,17 @@ begin
    where link like 'portal:position-%' and link <> 'portal:position-overview';
   perform set_config('bi.sem_notificacao', '', true);
   update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-overview';
+
+  if nullif(trim(p_alerta), '') is not null then
+    insert into public.bi_notificacoes (dashboard_id, titulo, mensagem)
+    select id, 'Fixation alert', left(p_alerta, 300) from public.bi_dashboards where link = 'portal:position-contracts';
+  end if;
   return v_id;
 end;
 $$;
 
-revoke all on function public.bi_position_publicar(date, text, jsonb, jsonb) from public, anon;
-grant execute on function public.bi_position_publicar(date, text, jsonb, jsonb) to authenticated;
+revoke all on function public.bi_position_publicar(date, text, jsonb, jsonb, text) from public, anon;
+grant execute on function public.bi_position_publicar(date, text, jsonb, jsonb, text) to authenticated;
 
 -- Categoria "Position" e os três painéis (só cria o que ainda não existe;
 -- depois libere o acesso de cada usuário na Administração)

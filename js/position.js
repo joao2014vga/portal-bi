@@ -171,13 +171,15 @@ const DETALHES = {
       ["emissao", "Emissão", "d"], ["prev_entrega", "Prev. de Entrega", "d"], ["a_entregar", "A Entregar BC", "n"],
       ["padrao", "Padrão"], ["bebida", "Bebida"], ["preco", "Média Final (R$)", "n"], ["a_pagar", "A Pagar (R$)", "n"],
       ["status_fix", "Status Fixação"], ["bolsa", "Bolsa"], ["mes_bolsa", "Mês Bolsa", "d"], ["diferencial", "Diferencial", "n"],
-      ["a_fixar", "Qtd, a Fixar", "n"], ["certificador", "Certificador"], ["especie", "Espécie"], ["safra", "Safra"]],
+      ["a_fixar", "Qtd, a Fixar", "n"], ["fixador", "Fixador"], ["lotes", "Qtd. Lotes", "n"], ["lotes_fixados", "Lotes Fixado", "n"],
+      ["lotes_a_fixar", "Lotes a Fixar", "n"], ["certificador", "Certificador"], ["especie", "Espécie"], ["safra", "Safra"]],
     aberto: (r) => r.a_entregar > 0 || r.a_fixar > 0 || r.a_pagar > 1,
   },
   expsales: {
     aba: ABAS.expsales,
     cols: [["contrato", "Contrato"], ["importador", "Importador"], ["embarque", "Embarque", "d"], ["sacas", "Sacas", "n"],
       ["a_fixar", "Qtd. a Fixar (sc)", "n"], ["status_fix", "Status Fixação"], ["bolsa", "Bolsa"], ["fixar_mes", "Fixar Mês", "d"],
+      ["fixador", "Opção de Fixação"], ["lotes", "Qtd. Lotes", "n"], ["lotes_fixados", "Lotes Fixado", "n"], ["lotes_a_fixar", "Lotes a Fixar", "n"],
       ["diferencial", "Diferencial", "n"], ["vlr_final", "Vlr. Final", "n"], ["unidade", "Unidade"], ["padrao", "Padrão"],
       ["prev_carga", "Prev. Carga", "d"], ["saldo", "Saldo (sc)", "n"], ["certificacao", "Certificação"], ["incoterm", "Incoterm"],
       ["especie", "Espécie"], ["safra", "Safras"]],
@@ -187,7 +189,9 @@ const DETALHES = {
     aba: ABAS.intsales,
     cols: [["contrato", "Contrato"], ["cliente", "Cliente"], ["emissao", "Emissão", "d"], ["sacas", "Sacas Total", "n"],
       ["a_entregar", "A Entregar(Sc)", "n"], ["preco", "Unitário R$", "n"], ["a_receber", "A Receber (R$)", "n"],
-      ["status_fix", "Status Fixação"], ["bolsa", "Bolsa"], ["a_fixar", "Qtd, a Fixar", "n"], ["padrao", "Padrão"],
+      ["status_fix", "Status Fixação"], ["bolsa", "Bolsa"], ["fixar_mes", "Fixar Mês", "d"], ["a_fixar", "Qtd, a Fixar", "n"],
+      ["fixador", "Fixador"], ["lotes", "Qtd. Lotes", "n"], ["lotes_fixados", "Lotes Fixado", "n"], ["lotes_a_fixar", "Lotes a Fixar", "n"],
+      ["padrao", "Padrão"],
       ["prev_embarque", "Prev. Embarque", "d"], ["modalidade", "Modalidade CTR"], ["especie", "Espécie"], ["safra", "Safra"]],
     aberto: (r) => r.a_entregar > 0 || r.a_fixar > 0 || r.a_receber > 1,
   },
@@ -387,7 +391,8 @@ function ligarUpload(alvo, ctx) {
       const file = f.arquivo.files[0];
       if (!file) throw new Error("Please choose the spreadsheet.");
       const lida = await lerPlanilhaPosition(file);
-      await ctx.api.publicarPosition({ ...lida, nome_arquivo: file.name });
+      // contratos vencidos ou a vencer em 15 dias viram notificação para quem vê o Open Contracts
+      await ctx.api.publicarPosition({ ...lida, nome_arquivo: file.name, alerta: textoAlertaFixacao(lida.detalhes) });
       toast(`Position of ${fmtData(lida.data_ref)} published.`);
       ctx.recarregar();
     },
@@ -552,26 +557,90 @@ async function painelFisica(alvo, carga) {
 }
 
 // ---------------------------------------------------------------- Contracts
+// Prazo de fixação = First Notice Day (FND) estimado do mês da bolsa:
+// N dias úteis antes do 1º dia útil do mês (feriados não considerados).
+// NY (Coffee "C"): 7 dias úteis · Londres (Robusta): 4 · outras bolsas: 1º dia útil do mês.
+const DIAS_FND = { NY: 7, "NEW YORK": 7, LONDRES: 4, LONDON: 4, LDN: 4 };
+const ALERTA_DIAS = 15, AVISO_DIAS = 30;
+
+function primeiroAviso(mesIso, bolsa) {
+  const d = new Date(`${mesIso.slice(0, 7)}-01T12:00:00Z`);
+  const util = () => d.getUTCDay() % 6 !== 0;
+  while (!util()) d.setUTCDate(d.getUTCDate() + 1);
+  for (let n = DIAS_FND[norm(bolsa)] ?? 0; n > 0;) { d.setUTCDate(d.getUTCDate() - 1); if (util()) n--; }
+  return d.toISOString().slice(0, 10);
+}
+const hojeIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const diasAte = (iso) => Math.round((new Date(iso + "T12:00:00") - new Date(hojeIso() + "T12:00:00")) / 864e5);
+
+// mês da bolsa de cada tipo de contrato
+const CAMPO_MES = { purchases: "mes_bolsa", expsales: "fixar_mes", intsales: "fixar_mes" };
+
+// Situação de fixação de um contrato com lotes a fixar (null quando não há o que fixar)
+function prazoFixacao(r, tipo) {
+  if (!(r.lotes_a_fixar > 0) || !r[CAMPO_MES[tipo]]) return null;
+  const data = primeiroAviso(r[CAMPO_MES[tipo]], r.bolsa);
+  const dias = diasAte(data);
+  return { data, dias, nivel: dias < 0 ? "vencido" : dias <= ALERTA_DIAS ? "urgente" : dias <= AVISO_DIAS ? "breve" : "ok" };
+}
+
+// Contratos/lotes vencidos, em até 15 e em até 30 dias, somando compras e vendas
+export function alertasFixacao(detalhes) {
+  const r = { vencido: { c: 0, l: 0, tipos: {} }, urgente: { c: 0, l: 0, tipos: {} }, breve: { c: 0, l: 0, tipos: {} } };
+  for (const tipo of Object.keys(CAMPO_MES)) {
+    for (const linha of detalhes[tipo] ?? []) {
+      const p = prazoFixacao(linha, tipo);
+      if (!p || !r[p.nivel]) continue;
+      r[p.nivel].c++; r[p.nivel].l += linha.lotes_a_fixar;
+      r[p.nivel].tipos[tipo] = (r[p.nivel].tipos[tipo] ?? 0) + 1;
+    }
+  }
+  return r;
+}
+
+// Texto da notificação do upload (null quando não há nada vencido ou em até 15 dias)
+export function textoAlertaFixacao(detalhes) {
+  const a = alertasFixacao(detalhes);
+  const partes = [];
+  if (a.vencido.c) partes.push(`${a.vencido.c} ${a.vencido.c === 1 ? "contract" : "contracts"} (${fmtLotes(a.vencido.l)} lots) past the first notice day`);
+  if (a.urgente.c) partes.push(`${a.urgente.c} ${a.urgente.c === 1 ? "contract" : "contracts"} (${fmtLotes(a.urgente.l)} lots) due within ${ALERTA_DIAS} days`);
+  return partes.length ? `Lots to fix: ${partes.join(" · ")}` : null;
+}
+
+// lotes: inteiro quando a fração é desprezível (somas como 2611.97 viram 2,612)
+const contratos = (n) => `${fmtN(n)} ${n === 1 ? "contract" : "contracts"}`;
+const fmtLotes = (v) => (v == null ? "—" : Math.abs(v - Math.round(v)) < 0.05 ? fmtN(Math.round(v)) : fmtN(v, 1));
+
+// quem fixa, do ponto de vista da Brascof
+const QUEM_FIXA = {
+  purchases: { COMPRADOR: "Brascof", VENDEDOR: "Supplier" },
+  expsales: { EXPORTADOR: "Brascof", IMPORTADOR: "Importer" },
+  intsales: { VENDEDOR: "Brascof", COMPRADOR: "Client" },
+};
+
+const COLS_FIX = [["fixador", "Fixed by", "quem"], ["lotes", "Lots", "l"], ["lotes_fixados", "Lots fixed", "l"],
+  ["lotes_a_fixar", "Lots to fix", "l"], ["_prazo", "Fix by (FND)", "fx"]];
+
 const TABELAS = {
   purchases: {
     titulo: "Purchases", saldo: ["a_entregar", "To deliver"],
     cols: [["contrato", "Contract"], ["fornecedor", "Supplier"], ["padrao", "Quality"], ["especie", "Species"], ["modalidade", "Type"],
-      ["sacas", "Bags", "n"], ["a_entregar", "To deliver", "n"], ["prev_entrega", "Delivery", "d"], ["status_fix", "Fixation"],
-      ["bolsa", "Exchange"], ["mes_bolsa", "Month", "m"], ["diferencial", "Diff", "n2"], ["a_fixar", "To fix", "n"],
+      ["sacas", "Bags", "n"], ["a_entregar", "To deliver", "n"], ["prev_entrega", "Delivery", "d"], ["bolsa", "Exchange"],
+      ["mes_bolsa", "Month", "m"], ["diferencial", "Diff", "n2"], ...COLS_FIX,
       ["preco", "Price R$/bag", "n2"], ["a_pagar", "To pay R$", "n"], ["certificador", "Certificate"]],
   },
   expsales: {
     titulo: "Export sales", saldo: ["saldo", "To ship"],
     cols: [["contrato", "Contract"], ["importador", "Importer"], ["padrao", "Quality"], ["especie", "Species"], ["sacas", "Bags", "n"],
-      ["saldo", "To ship", "n"], ["prev_carga", "Est. loading", "d"], ["embarque", "Shipment", "m"], ["status_fix", "Fixation"],
-      ["bolsa", "Exchange"], ["fixar_mes", "Fix month", "m"], ["diferencial", "Diff", "n2"], ["a_fixar", "To fix", "n"],
+      ["saldo", "To ship", "n"], ["prev_carga", "Est. loading", "d"], ["embarque", "Shipment", "m"], ["bolsa", "Exchange"],
+      ["fixar_mes", "Month", "m"], ["diferencial", "Diff", "n2"], ...COLS_FIX,
       ["vlr_final", "Final price", "n2"], ["unidade", "Unit"], ["incoterm", "Incoterm"], ["certificacao", "Certificate"]],
   },
   intsales: {
     titulo: "Domestic sales", saldo: ["a_entregar", "To deliver"],
     cols: [["contrato", "Contract"], ["cliente", "Client"], ["padrao", "Quality"], ["especie", "Species"], ["modalidade", "Type"],
-      ["sacas", "Bags", "n"], ["a_entregar", "To deliver", "n"], ["prev_embarque", "Est. shipment", "d"], ["status_fix", "Fixation"],
-      ["bolsa", "Exchange"], ["a_fixar", "To fix", "n"], ["preco", "Price R$/bag", "n2"], ["a_receber", "To receive R$", "n"]],
+      ["sacas", "Bags", "n"], ["a_entregar", "To deliver", "n"], ["prev_embarque", "Est. shipment", "d"], ["bolsa", "Exchange"],
+      ["fixar_mes", "Month", "m"], ...COLS_FIX, ["preco", "Price R$/bag", "n2"], ["a_receber", "To receive R$", "n"]],
   },
   inventory: {
     titulo: "Inventory", saldo: ["sacas", "Bags"],
@@ -581,21 +650,70 @@ const TABELAS = {
   },
 };
 
-const fmtCel = (v, tipo) => (v == null ? "—" : tipo === "n" ? fmtN(v) : tipo === "n2" ? fmtN(v, 2) : tipo === "d" ? fmtData(v) : tipo === "m" ? fmtMes(v) : v);
+const NIVEL_FX = {
+  vencido: ["critico", "alert", (d) => `${-d} d overdue`],
+  urgente: ["alerta", "alert", (d) => (d === 0 ? "today" : `in ${d} d`)],
+  breve: ["neutro", "clock", (d) => `in ${d} d`],
+  ok: ["", "", (d) => `in ${d} d`],
+};
+
+function celula(r, k, tipo, aba) {
+  const v = r[k];
+  if (tipo === "fx") {
+    const p = r._fx;
+    if (!p) return `<td>—</td>`;
+    const [cls, ic, rot] = NIVEL_FX[p.nivel];
+    return `<td class="nowrap">${esc(fmtData(p.data))} <span class="fx ${cls ? `fx-${cls}` : ""}">${ic ? icon(ic) : ""}${esc(rot(p.dias))}</span></td>`;
+  }
+  if (tipo === "quem") {
+    const quem = QUEM_FIXA[aba]?.[norm(v)];
+    return `<td title="${esc(v ?? "")}">${esc(quem ?? v ?? "—")}</td>`;
+  }
+  const numerico = tipo === "n" || tipo === "n2" || tipo === "l";
+  const txt = v == null ? "—" : tipo === "n" ? fmtN(v) : tipo === "n2" ? fmtN(v, 2) : tipo === "l" ? fmtLotes(v)
+    : tipo === "d" ? fmtData(v) : tipo === "m" ? fmtMes(v) : v;
+  return `<td class="${numerico ? "num" : ""} ${numerico && v < 0 ? "neg" : ""}">${esc(txt)}</td>`;
+}
+
+const FILTROS_FIX = [["", "All contracts"], ["afixar", "With lots to fix"], ["alerta", `Overdue or due within ${ALERTA_DIAS} days`],
+  ["breve", `Due within ${AVISO_DIAS} days`], ["fixados", "Fully fixed"]];
+
+function passaFiltroFix(r, filtro) {
+  const p = r._fx;
+  if (!filtro) return true;
+  if (filtro === "afixar") return r.lotes_a_fixar > 0;
+  if (filtro === "alerta") return p && (p.nivel === "vencido" || p.nivel === "urgente");
+  if (filtro === "breve") return p && p.nivel !== "ok";
+  if (filtro === "vencido" || filtro === "urgente") return p?.nivel === filtro;
+  if (filtro === "fixados") return r.lotes > 0 && !(r.lotes_a_fixar > 0);
+  return true;
+}
 
 async function painelContratos(alvo, carga, ctx) {
   let detalhes;
   try { detalhes = await ctx.api.positionDetalhe(); }
   catch (e) { alvo.innerHTML = `<div class="vazio">${icon("lock")}<h3>Contracts unavailable</h3><p>${esc(e.message)}</p></div>`; return; }
-  let aba = "purchases", busca = "", especie = "", qualidade = "", ordem = null;
+  // prazo de fixação calculado uma vez por linha (a data de hoje muda o alerta, não o upload)
+  for (const tipo of Object.keys(CAMPO_MES)) {
+    for (const r of detalhes[tipo] ?? []) { r._fx = prazoFixacao(r, tipo); r._prazo = r._fx?.data ?? null; }
+  }
+  const temLotes = (detalhes.purchases ?? []).some((r) => "lotes_a_fixar" in r);
+  const alertas = alertasFixacao(detalhes);
+  let aba = "purchases", busca = "", especie = "", qualidade = "", mes = "", fix = "", ordem = null;
 
   const desenhar = () => {
     const def = TABELAS[aba];
     const todas = detalhes[aba] ?? [];
+    const campoMes = CAMPO_MES[aba];
+    const ehFix = !!campoMes && temLotes;
     const qualidades = [...new Set(todas.map((r) => r.padrao).filter(Boolean))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+    const meses = campoMes ? [...new Set(todas.map((r) => r[campoMes]?.slice(0, 7)).filter(Boolean))].sort() : [];
     const t = busca.toLowerCase();
-    let linhas = todas.filter((r) => (!especie || norm(r.especie) === especie) && (!qualidade || r.padrao === qualidade)
+    // linhas com os filtros comuns (sem o de fixação): base dos indicadores
+    const base = todas.filter((r) => (!especie || norm(r.especie) === especie) && (!qualidade || r.padrao === qualidade)
+      && (!mes || r[campoMes]?.slice(0, 7) === mes)
       && (!t || def.cols.some(([k]) => String(r[k] ?? "").toLowerCase().includes(t))));
+    let linhas = ehFix ? base.filter((r) => passaFiltroFix(r, fix)) : base;
     if (ordem) {
       const [k, dir] = ordem;
       linhas = [...linhas].sort((a, b) => {
@@ -604,35 +722,72 @@ async function painelContratos(alvo, carga, ctx) {
         return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), "en", { numeric: true })) * dir;
       });
     }
-    const soma = (k) => linhas.reduce((s, r) => s + (r[k] ?? 0), 0);
+    const soma = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
     const [kSaldo, rotSaldo] = def.saldo;
 
+    // indicadores de fixação (sobre as linhas já filtradas por espécie, qualidade, mês e busca)
+    const comLotes = base.filter((r) => r.lotes > 0);
+    const aFixar = base.filter((r) => r.lotes_a_fixar > 0);
+    const lotesAFixar = soma(aFixar, "lotes_a_fixar"), lotesFixados = soma(comLotes, "lotes_fixados");
+    const pct = lotesAFixar + lotesFixados ? Math.round((lotesFixados / (lotesAFixar + lotesFixados)) * 100) : null;
+    const nivel = (n) => base.filter((r) => r._fx?.nivel === n);
+    const [vencidos, urgentes, breves] = ["vencido", "urgente", "breve"].map(nivel);
+    const tile = (chave, titulo, valor, sub, cls = "") => `<button type="button" class="pos-kpi pos-kpi-sm ${cls} ${fix === chave ? "on" : ""}" data-fix="${chave}" aria-pressed="${fix === chave}">
+      <span class="pos-kpi-t">${titulo}</span><span class="pos-kpi-v">${valor}</span><span class="pos-kpi-s">${sub}</span></button>`;
+    const lotesDe = (rows) => fmtLotes(soma(rows, "lotes_a_fixar"));
+
+    const totalAlerta = alertas.vencido.c + alertas.urgente.c;
+    const NOMES = { purchases: "purchases", expsales: "export sales", intsales: "domestic sales" };
+    const porTipo = Object.keys(CAMPO_MES).map((k) => [k, (alertas.vencido.tipos[k] ?? 0) + (alertas.urgente.tipos[k] ?? 0)]).filter(([, n]) => n);
+
     alvo.innerHTML = `
+    ${temLotes && totalAlerta ? `<div class="pos-alerta" role="alert">${icon("alert")}
+      <div><strong>Fixation alert:</strong>
+        ${alertas.vencido.c ? `${alertas.vencido.c} ${alertas.vencido.c === 1 ? "contract" : "contracts"} (${fmtLotes(alertas.vencido.l)} lots) past the first notice day` : ""}
+        ${alertas.vencido.c && alertas.urgente.c ? " · " : ""}
+        ${alertas.urgente.c ? `${alertas.urgente.c} ${alertas.urgente.c === 1 ? "contract" : "contracts"} (${fmtLotes(alertas.urgente.l)} lots) due within ${ALERTA_DIAS} days` : ""}
+        <span class="pos-alerta-links">${porTipo.map(([k, n]) => `<button type="button" class="link" data-ver-alerta="${k}">${n} in ${NOMES[k]}</button>`).join("")}</span>
+      </div></div>` : ""}
     <div class="pos-filtros">
       ${segmentos("segAba", Object.entries(TABELAS).map(([k, d]) => [k, `${d.titulo} (${(detalhes[k] ?? []).length})`]), aba)}
       <label class="busca sm">${icon("search")}<input type="search" id="fBusca" placeholder="Search contract, supplier…" value="${esc(busca)}"></label>
       <select id="fEspecie" aria-label="Species"><option value="">All species</option>
         <option value="ARABICA" ${especie === "ARABICA" ? "selected" : ""}>Arabica</option><option value="CONILON" ${especie === "CONILON" ? "selected" : ""}>Conilon</option></select>
       <select id="fQual" aria-label="Quality"><option value="">All qualities</option>${qualidades.map((q) => `<option ${q === qualidade ? "selected" : ""}>${esc(q)}</option>`).join("")}</select>
+      ${campoMes ? `<select id="fMes" aria-label="Exchange month"><option value="">All months</option>${meses.map((m) => `<option value="${m}" ${m === mes ? "selected" : ""}>${fmtMes(m + "-01")}</option>`).join("")}</select>` : ""}
+      ${ehFix ? `<select id="fFix" aria-label="Fixation">${FILTROS_FIX.map(([k, t2]) => `<option value="${k}" ${k === fix ? "selected" : ""}>${t2}</option>`).join("")}</select>` : ""}
     </div>
+    ${ehFix ? `<div class="pos-kpis pos-kpis-fix">
+      ${tile("afixar", "To fix", `${fmtLotes(lotesAFixar)} lots`, `${contratos(aFixar.length)} · ${fmtN(soma(aFixar, "a_fixar"))} bags`)}
+      ${tile("fixados", "Fixed", `${fmtLotes(lotesFixados)} lots`, pct == null ? "No lots in these contracts" : `${pct}% of the lots fixed`)}
+      ${tile("vencido", "Past first notice day", `${contratos(vencidos.length)}`, `${lotesDe(vencidos)} lots to fix`, vencidos.length ? "pos-kpi-critico" : "")}
+      ${tile("urgente", `Due within ${ALERTA_DIAS} days`, `${contratos(urgentes.length)}`, `${lotesDe(urgentes)} lots to fix`, urgentes.length ? "pos-kpi-alerta" : "")}
+      ${tile("breve", `Due in ${ALERTA_DIAS + 1}–${AVISO_DIAS} days`, `${contratos(breves.length)}`, `${lotesDe(breves)} lots to fix`)}
+    </div>
+    <p class="muted pos-nota">Fix by = estimated first notice day of the exchange month: NY 7 and London 4 business days before the first business day of the month (holidays not counted). Counts are for the filters above.</p>`
+      : campoMes && !temLotes ? `<p class="muted pos-nota">${icon("info")} Upload the Position again to see the fixation indicators and alerts.</p>` : ""}
     <div class="pos-resumo">
       <span><strong>${fmtN(linhas.length)}</strong> ${aba === "inventory" ? "lots" : "contracts"}</span>
-      <span><strong>${fmtN(soma(kSaldo))}</strong> bags ${rotSaldo.toLowerCase()}</span>
-      ${def.cols.some(([k]) => k === "a_fixar") ? `<span><strong>${fmtN(soma("a_fixar"))}</strong> bags to fix</span>` : ""}
+      <span><strong>${fmtN(soma(linhas, kSaldo))}</strong> bags ${rotSaldo.toLowerCase()}</span>
       <span class="muted">${aba === "inventory" ? "All lots in stock." : "Open contracts only (to deliver/ship, to fix or to pay/receive)."}</span>
     </div>
     <div class="tabela-wrap pos-tabela pos-contratos"><table class="tabela tabela-num">
-      <thead><tr>${def.cols.map(([k, rot, tipo]) => `<th class="${tipo?.startsWith("n") ? "num" : ""}"><button type="button" class="ordenar" data-ordem="${k}">${esc(rot)}${ordem?.[0] === k ? (ordem[1] > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("")}</tr></thead>
-      <tbody>${linhas.length ? linhas.map((r) => `<tr>${def.cols.map(([k, , tipo]) =>
-        `<td class="${tipo?.startsWith("n") ? "num" : ""} ${tipo?.startsWith("n") && r[k] < 0 ? "neg" : ""}">${esc(fmtCel(r[k], tipo))}</td>`).join("")}</tr>`).join("")
+      <thead><tr>${def.cols.map(([k, rot, tipo]) => `<th class="${["n", "n2", "l"].includes(tipo) ? "num" : ""}"><button type="button" class="ordenar" data-ordem="${k}">${esc(rot)}${ordem?.[0] === k ? (ordem[1] > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("")}</tr></thead>
+      <tbody>${linhas.length ? linhas.map((r) => `<tr class="${r._fx?.nivel === "vencido" || r._fx?.nivel === "urgente" ? "linha-alerta" : ""}">${def.cols.map(([k, , tipo]) => celula(r, k, tipo, aba)).join("")}</tr>`).join("")
         : `<tr><td colspan="${def.cols.length}" class="vazio-td">No contracts match these filters.</td></tr>`}</tbody>
     </table></div>`;
 
-    ligarSegmentos(alvo, "segAba", (k) => { aba = k; qualidade = ""; busca = ""; ordem = null; desenhar(); });
+    ligarSegmentos(alvo, "segAba", (k) => { aba = k; qualidade = ""; busca = ""; mes = ""; fix = ""; ordem = null; desenhar(); });
     const fb = $("#fBusca", alvo);
     fb.addEventListener("input", () => { busca = fb.value; desenhar(); $("#fBusca", alvo).focus(); $("#fBusca", alvo).setSelectionRange(busca.length, busca.length); });
     $("#fEspecie", alvo).addEventListener("change", (e) => { especie = e.target.value; desenhar(); });
     $("#fQual", alvo).addEventListener("change", (e) => { qualidade = e.target.value; desenhar(); });
+    $("#fMes", alvo)?.addEventListener("change", (e) => { mes = e.target.value; desenhar(); });
+    $("#fFix", alvo)?.addEventListener("change", (e) => { fix = e.target.value; desenhar(); });
+    $$("[data-fix]", alvo).forEach((b) => b.addEventListener("click", () => { fix = fix === b.dataset.fix ? "" : b.dataset.fix; desenhar(); }));
+    $$("[data-ver-alerta]", alvo).forEach((b) => b.addEventListener("click", () => {
+      aba = b.dataset.verAlerta; fix = "alerta"; busca = ""; qualidade = ""; mes = ""; ordem = ["_prazo", 1]; desenhar();
+    }));
     $$("[data-ordem]", alvo).forEach((b) => b.addEventListener("click", () => {
       const k = b.dataset.ordem;
       ordem = ordem?.[0] === k ? (ordem[1] > 0 ? [k, -1] : null) : [k, 1];
