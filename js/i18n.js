@@ -333,6 +333,13 @@ const PT = {
 
   // ---------------------------------------------------------------- Posição física (matriz por padrão)
   "ACCUMULATED NET POSITION BY STANDARD – 60 KG BAGS": "POSIÇÃO LÍQUIDA ACUMULADA POR PADRÃO – SACAS DE 60 KG",
+  "− 1 month": "− 1 mês", "+ 1 month": "+ 1 mês", "Species": "Espécie", "From month": "Mês inicial", "To month": "Mês final",
+  "Upload the Position again to see Conilon by standard.": "Envie a posição de novo para ver o Conilon por padrão.",
+  "No data by standard in this Position.": "Esta posição não tem dados por padrão.",
+  "Conilon is calculated by the portal from the base sheets (the spreadsheet only builds this matrix for Arabica): purchase breakage goes to BC16, inventory in 60 kg bags, sales by EOM Ship.":
+    "O Conilon é calculado pelo portal a partir das abas base (a planilha só monta esta matriz para a Arábica): a quebra das compras vai para o BC16, o estoque em sacas de 60 kg e as vendas pelo EOM Ship.",
+  "Inventory, purchases and sales (export + domestic) of each month, and the running net physical position.":
+    "Estoque, compras e vendas (exportação + internas) de cada mês, e a posição física líquida acumulada.",
   "Domestic Sales": "Vendas Internas", "MONTH": "MÊS", "Expand": "Expandir", "Collapse": "Recolher", "Components": "Componentes",
   "Upload the Position again to choose the components — this data was saved before they were read separately.":
     "Envie a posição de novo para escolher os componentes — estes dados foram gravados antes de serem lidos separadamente.",

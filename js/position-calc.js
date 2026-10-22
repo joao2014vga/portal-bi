@@ -142,6 +142,53 @@ function lerComponentesQualidade(g) {
   return out.meses && Object.keys(out.q).length ? out : null;
 }
 
+// Componentes por padrão calculados direto das abas base, com as regras das fórmulas
+// da aba Physical Position (SUMIFS por espécie, padrão e mês de EOM; só os meses da
+// lista). A planilha só monta a matriz da Arábica; o Conilon sai daqui:
+//  - compras: parte exportável no padrão do contrato, quebra no "Low Grades Code" (BC16);
+//  - estoque: sacas de 60 kg dos lotes (a planilha não separa catado/consumo no Conilon);
+//  - vendas de exportação e internas: saldo pelo EOM Ship.
+// soExportavel reproduz a parte exportável da Arábica (usada para conferir com a planilha).
+const FORNECEDOR_PROPRIO = "AMERICAN COFFEE CORPORATION";
+export function componentesPorEspecie(gAba, meses, especie, { soExportavel = false } = {}) {
+  const idxMes = new Map(meses.map((m, i) => [m.slice(0, 7), i]));
+  const mesDe = (v) => (num(v) == null ? null : idxMes.get(serialIso(v).slice(0, 7)) ?? null);
+  const daEspecie = (v) => norm(v) === norm(especie);
+  const q = {};
+  const soma = (padrao, comp, i, v) => {
+    const p = String(padrao ?? "").trim();
+    if (!p || i == null || !v) return;
+    q[p] ??= Object.fromEntries(COMPONENTES.map((k) => [k, meses.map(() => 0)]));
+    q[p][comp][i] += v;
+  };
+  // percorre a aba pelas colunas pedidas (pelo título); aba sem alguma delas fica de fora
+  const ler = (aba, cols, fn) => {
+    const g = gAba(aba) ?? [];
+    const cab = (g[0] ?? []).map(norm);
+    const ix = cols.map((c) => cab.indexOf(norm(c)));
+    if (ix.some((i) => i < 0)) return;
+    for (const r of g.slice(1)) if (!vazia(r)) fn(...ix.map((i) => r[i]));
+  };
+  const v0 = (v) => num(v) ?? 0;
+  ler(ABAS.inventory, ["Espécie", "Padrão", "EXP", "Sacas 60kg"], (e, p, exp, total) => {
+    if (daEspecie(e)) soma(p, "inventory", 0, v0(soExportavel ? exp : total));
+  });
+  ler(ABAS.purchases, ["Fornecedor", "Padrão", "Espécie", "EOM Ship/Paym", "EXP Bags Balance", "LG Bags Balance", "Low Grades Code"], (f, p, e, m, exp, lg, cod) => {
+    if (!daEspecie(e) || norm(f) === FORNECEDOR_PROPRIO) return;
+    const i = mesDe(m);
+    soma(p, "purchases", i, v0(exp));
+    if (!soExportavel) soma(cod, "purchases", i, v0(lg));
+  });
+  ler(ABAS.expsales, ["Padrão", "Espécie", "Quality Group", "EOM Ship", "Balance bags"], (p, e, grupo, m, v) => {
+    if (daEspecie(e) && (!soExportavel || norm(grupo) === "EXP")) soma(p, "exp_sales", mesDe(m), -v0(v));
+  });
+  ler(ABAS.intsales, ["Padrão", "Espécie", "Quality Group", "EOM Ship", "A Entregar(Sc)"], (p, e, grupo, m, v) => {
+    if (daEspecie(e) && (!soExportavel || norm(grupo) === "EXP")) soma(p, "domestic_sales", mesDe(m), -v0(v));
+  });
+  for (const comps of Object.values(q)) for (const k of COMPONENTES) comps[k] = comps[k].map(arred);
+  return Object.keys(q).length ? { meses, q } : null;
+}
+
 // Variation: Previous → movimentos do dia → posição atual, por grupo
 const NOMES_VARIACAO = { ARABICA: "arabica", CONILON: "robusta", EXP: "exportable", "LOW GRADE": "lowgrade" };
 export function lerVariacao(g) {
@@ -259,6 +306,12 @@ export function montarPosition(gAba) {
     variacao: lerVariacao(gAba(ABAS.variacao)),
     kpis: Object.fromEntries(Object.entries(termm).map(([k, b]) => [k, { diff: b.total.net_diff, outright: b.total.net_outright }])),
   };
+  // matriz por padrão do Conilon (a planilha só tem a da Arábica); nunca impede o resto
+  try {
+    const meses = resumo.fisica.componentes?.meses;
+    const conilon = meses && componentesPorEspecie(gAba, meses, "CONILON");
+    if (conilon) resumo.fisica.conilon = conilon;
+  } catch (e) { /* segue sem o Conilon */ }
   const detalhes = Object.fromEntries(Object.entries(DETALHES).map(([k, def]) => [k, lerDetalhe(gAba(def.aba), def)]));
   return { data_ref: serialIso(serial), resumo, detalhes };
 }
