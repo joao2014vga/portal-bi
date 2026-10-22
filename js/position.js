@@ -204,7 +204,11 @@ export async function renderPosition(link, alvo, ctx) {
     return;
   }
   // a mesma API, presa à fonte que está na tela
-  const api = { ...ctx.api, positionDetalhe: (tipos) => ctx.api.positionDetalhe(tipos, fonte), positionHistorico: () => ctx.api.positionHistorico(fonte) };
+  const api = {
+    ...ctx.api, positionDetalhe: (tipos) => ctx.api.positionDetalhe(tipos, fonte), positionHistorico: () => ctx.api.positionHistorico(fonte),
+    // dados que só existem pela API (logística), qualquer que seja a fonte na tela
+    positionDetalheApi: (tipos) => ctx.api.positionDetalhe(tipos, "api"),
+  };
   const c = { ...ctx, api, fonte, oficial };
   const topo = barraTopo(carga, c);
   if (!carga) {
@@ -606,9 +610,26 @@ async function painelContratos(alvo, carga, ctx) {
   for (const r of detalhes.expsales ?? []) { r.diferencial = difExportacao(r); r.vlr_final = precoExportacao(r); }
   const temLotes = (detalhes.purchases ?? []).some((r) => "lotes_a_fixar" in r);
   const alertas = alertasFixacao(detalhes);
+  // estufados / aguardando embarque: vem da sincronização com o Digisul (null = ainda não há)
+  const logistica = await ctx.api.positionDetalheApi?.(["logistica"]).then((d) => d.logistica ?? null).catch(() => null);
   let aba = "purchases", busca = "", especie = "", qualidade = "", mes = "", fix = "", ordem = null;
+  const abas = () => [...Object.entries(TABELAS).map(([k, d]) => [k, `${d.titulo} (${(detalhes[k] ?? []).length})`]),
+    ...(logistica ? [["logistica", `Stuffed / awaiting shipment (${logistica.length})`]] : [])];
 
   const desenhar = () => {
+    if (aba === "logistica") {
+      alvo.innerHTML = painelLogistica(logistica, { busca, especie, ordem }, abas());
+      ligarSegmentos(alvo, "segAba", (k) => { aba = k; qualidade = ""; busca = ""; mes = ""; fix = ""; ordem = null; desenhar(); });
+      const fb = $("#fBusca", alvo);
+      fb.addEventListener("input", () => { busca = fb.value; desenhar(); $("#fBusca", alvo).focus(); $("#fBusca", alvo).setSelectionRange(busca.length, busca.length); });
+      $("#fEspecie", alvo).addEventListener("change", (e) => { especie = e.target.value; desenhar(); });
+      $$("[data-ordem]", alvo).forEach((b) => b.addEventListener("click", () => {
+        const k = b.dataset.ordem;
+        ordem = ordem?.[0] === k ? (ordem[1] > 0 ? [k, -1] : null) : [k, 1];
+        desenhar();
+      }));
+      return;
+    }
     const def = TABELAS[aba];
     const todas = detalhes[aba] ?? [];
     const campoMes = CAMPO_MES[aba];
@@ -656,7 +677,7 @@ async function painelContratos(alvo, carga, ctx) {
         <span class="pos-alerta-links">${porTipo.map(([k, n]) => `<button type="button" class="link" data-ver-alerta="${k}">${n} in ${NOMES[k]}</button>`).join("")}</span>
       </div></div>` : ""}
     <div class="pos-filtros">
-      ${segmentos("segAba", Object.entries(TABELAS).map(([k, d]) => [k, `${d.titulo} (${(detalhes[k] ?? []).length})`]), aba)}
+      ${segmentos("segAba", abas(), aba)}
       <label class="busca sm">${icon("search")}<input type="search" id="fBusca" placeholder="Search contract, supplier…" value="${esc(busca)}"></label>
       <select id="fEspecie" aria-label="Species"><option value="">All species</option>
         <option value="ARABICA" ${especie === "ARABICA" ? "selected" : ""}>Arabica</option><option value="CONILON" ${especie === "CONILON" ? "selected" : ""}>Conilon</option></select>
@@ -702,6 +723,65 @@ async function painelContratos(alvo, carga, ctx) {
     }));
   };
   desenhar();
+}
+
+// Exportações estufadas ou com NF emitida e ainda sem saída no Digisul, pelo ETD
+// (saída do Brasil). ETD já passado sem saída = falta dar a saída no sistema.
+const COLS_LOGISTICA = [["contrato", "Contract"], ["importador", "Importer"], ["padrao", "Quality"], ["especie", "Species"],
+  ["sacas", "Bags", "n"], ["_status", "Status"], ["cheio", "Full container", "d"], ["etd", "ETD", "d"], ["navio", "Vessel"],
+  ["estufagem", "Stuffing site"], ["terminal", "Terminal"], ["containers", "Containers", "n"]];
+
+function painelLogistica(todas, { busca, especie, ordem }, abas) {
+  const hoje = hojeIso();
+  const t = busca.toLowerCase();
+  let linhas = todas.map((r) => ({
+    ...r,
+    _status: r.cheio && r.cheio <= hoje ? "Stuffed" : "Invoice issued",
+    _nivel: r.etd && r.etd < hoje ? "vencido" : r.etd === hoje ? "hoje" : "",
+  })).filter((r) => (!especie || norm(r.especie) === especie)
+    && (!t || COLS_LOGISTICA.some(([k]) => String(r[k] ?? "").toLowerCase().includes(t))));
+  const [k, dir] = ordem ?? ["etd", 1];
+  linhas.sort((a, b) => {
+    const x = a[k], y = b[k];
+    if (x == null) return 1; if (y == null) return -1;
+    return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), "en", { numeric: true })) * dir;
+  });
+  const soma = (rows) => rows.reduce((s, r) => s + (r.sacas ?? 0), 0);
+  const vencidos = linhas.filter((r) => r._nivel === "vencido"), hojeL = linhas.filter((r) => r._nivel === "hoje");
+  const arabica = linhas.filter((r) => norm(r.especie) === "ARABICA"), conilon = linhas.filter((r) => norm(r.especie) === "CONILON");
+  const estufados = linhas.filter((r) => r._status === "Stuffed");
+  const celulaLog = (r, col, tipo) => {
+    const v = r[col];
+    if (col === "cheio" && v && r.etd && v > r.etd) {
+      return `<td class="num" title="${esc(tr("Full container date is after the ETD"))}">${icon("alert")} ${esc(fmtData(v))}</td>`;
+    }
+    if (tipo === "n") return `<td class="num">${v == null ? "—" : fmtN(v)}</td>`;
+    if (tipo === "d") return `<td class="num">${esc(fmtData(v))}</td>`;
+    if (col === "_status") return `<td><span class="pill">${esc(v)}</span></td>`;
+    return `<td>${esc(v ?? "—")}</td>`;
+  };
+  const tile = (titulo, valor, sub, cls = "") => `<div class="pos-kpi pos-kpi-sm pos-kpi-est ${cls}">
+    <span class="pos-kpi-t">${titulo}</span><span class="pos-kpi-v">${valor}</span><span class="pos-kpi-s">${sub}</span></div>`;
+  return `
+    <div class="pos-filtros">
+      ${segmentos("segAba", abas, "logistica")}
+      <label class="busca sm">${icon("search")}<input type="search" id="fBusca" placeholder="Search contract, vessel…" value="${esc(busca)}"></label>
+      <select id="fEspecie" aria-label="Species"><option value="">All species</option>
+        <option value="ARABICA" ${especie === "ARABICA" ? "selected" : ""}>Arabica</option><option value="CONILON" ${especie === "CONILON" ? "selected" : ""}>Conilon</option></select>
+    </div>
+    <div class="pos-kpis pos-kpis-fix">
+      ${tile("Awaiting shipment", `${fmtN(soma(linhas))} bags`, contratos(linhas.length))}
+      ${tile("Stuffed (full container delivered)", `${fmtN(soma(estufados))} bags`, contratos(estufados.length))}
+      ${tile("ETD passed, no exit in Digisul", `${fmtN(soma(vencidos))} bags`, contratos(vencidos.length), vencidos.length ? "pos-kpi-critico" : "")}
+      ${tile("ETD today", `${fmtN(soma(hojeL))} bags`, contratos(hojeL.length), hojeL.length ? "pos-kpi-alerta" : "")}
+      ${tile("Arabica · Conilon", `${fmtN(soma(arabica))} · ${fmtN(soma(conilon))}`, "bags")}
+    </div>
+    <p class="muted pos-nota">${icon("info")} <span>Export contracts with bags still to ship in Digisul and a full container delivered or an export invoice issued, by ETD (departure from Brazil). From the Digisul API, updated every 2 hours.</span></p>
+    <div class="tabela-wrap pos-tabela pos-contratos"><table class="tabela tabela-num">
+      <thead><tr>${COLS_LOGISTICA.map(([c, rot, tipo]) => `<th class="${["n", "d"].includes(tipo) ? "num" : ""}"><button type="button" class="ordenar" data-ordem="${c}">${esc(rot)}${k === c && ordem ? (dir > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("")}</tr></thead>
+      <tbody>${linhas.length ? linhas.map((r) => `<tr class="${r._nivel === "vencido" ? "linha-alerta" : ""}">${COLS_LOGISTICA.map(([c, , tipo]) => celulaLog(r, c, tipo)).join("")}</tr>`).join("")
+        : `<tr><td colspan="${COLS_LOGISTICA.length}" class="vazio-td">No contracts match these filters.</td></tr>`}</tbody>
+    </table></div>`;
 }
 
 // =====================================================================

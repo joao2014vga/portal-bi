@@ -198,6 +198,15 @@ const PT = {
   "Net outright over time": "Posição outright ao longo do tempo",
   "The history builds up with each daily upload — this chart appears from the second Position onwards.":
     "O histórico se forma a cada envio diário — este gráfico aparece a partir da segunda posição.",
+  // ---------------------------------------------------------------- Estufados / aguardando embarque
+  "Stuffed / awaiting shipment ({n})": "Estufado / aguardando embarque ({n})", "Stuffed": "Estufado", "Invoice issued": "NF emitida",
+  "Full container": "Contêiner cheio", "ETD": "ETD", "Vessel": "Navio", "Stuffing site": "Local de estufagem", "Terminal": "Terminal",
+  "Containers": "Contêineres", "Awaiting shipment": "Aguardando embarque", "Stuffed (full container delivered)": "Estufado (contêiner cheio entregue)",
+  "ETD passed, no exit in Digisul": "ETD vencido, sem saída no Digisul", "ETD today": "ETD hoje",
+  "Search contract, vessel…": "Buscar contrato, navio…", "Full container date is after the ETD": "A data do contêiner cheio é depois do ETD",
+  "Export contracts with bags still to ship in Digisul and a full container delivered or an export invoice issued, by ETD (departure from Brazil). From the Digisul API, updated every 2 hours.":
+    "Contratos de exportação com saldo ainda sem saída no Digisul e contêiner cheio entregue ou NF de exportação emitida, pelo ETD (saída do Brasil). Vem da API do Digisul, atualizada de 2 em 2 horas.",
+
   // ---------------------------------------------------------------- Position pela API do Digisul
   "Spreadsheet": "Planilha", "Digisul API": "API do Digisul", "official": "oficial", "Update now": "Atualizar agora", "Updating…": "Atualizando…",
   "No Digisul update yet": "Nenhuma atualização do Digisul ainda",
