@@ -454,20 +454,103 @@ function linhaTermM(rotulo, m, total = false) {
 }
 
 // ---------------------------------------------------------------- Physical
+// Matriz "posição líquida acumulada por padrão" no layout do Power BI: grupos de
+// qualidade recolhíveis (FC, GC, Grinders, LG), totais por grupo e a segmentação
+// dos componentes (vendas internas, vendas de exportação, estoque, compras).
+const COMPS_FISICA = [["domestic_sales", "Domestic sales"], ["exp_sales", "Export sales"], ["inventory", "Inventory"], ["purchases", "Purchases"]];
+const SINAL_COMP = { inventory: "+", purchases: "+", exp_sales: "–", domestic_sales: "–" };
+const NOME_COMP = { inventory: "Inventory", purchases: "Purchases", exp_sales: "Export Sales", domestic_sales: "Domestic Sales" };
+const MESES_LONGOS = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleString(LOCALE, { month: "long" }).toUpperCase());
+const mesLongo = (iso) => `${MESES_LONGOS[Number(iso.slice(5, 7)) - 1]}-${iso.slice(2, 4)}`;
+// número como no Power BI: negativo entre parênteses, zero vazio
+const numPbi = (v) => (Math.abs(v) < 0.5 ? "" : v < 0 ? `(${fmtN(-v)})` : fmtN(v));
+
+// grupos a partir do cabeçalho da planilha: qualidades seguidas do nome do grupo (… BC3, FC, BC4 …)
+function gruposDaPlanilha(colunas, temQualidade) {
+  const grupos = [];
+  let atual = [];
+  for (const c of colunas) {
+    if (norm(c) === "TOTAL") break;
+    if (temQualidade(c)) atual.push(c);
+    else { grupos.push({ nome: c, qualidades: atual }); atual = []; }
+  }
+  if (atual.length) grupos.push({ nome: "Other", qualidades: atual });
+  return grupos;
+}
+
+function matrizPorPadrao(f, estado) {
+  const comp = f.componentes;
+  const q = f.qualidades;
+  if (!comp && !q) return "";
+  // componentes ligados (nenhum = todos, como no Power BI)
+  const ligados = estado.comps.size ? COMPS_FISICA.map(([k]) => k).filter((k) => estado.comps.has(k)) : COMPS_FISICA.map(([k]) => k);
+  const meses = comp ? comp.meses : q.com.map((l) => l.mes);
+  // acumulado mês a mês de cada qualidade
+  const acumulado = {};
+  if (comp) {
+    for (const [nome, v] of Object.entries(comp.q)) {
+      let s = 0;
+      acumulado[nome] = meses.map((_, i) => (s += ligados.reduce((t, k) => t + (v[k][i] ?? 0), 0)));
+    }
+  } else {
+    // dados antigos: só a matriz pronta da planilha (todos os componentes)
+    q.colunas.forEach((c, j) => { acumulado[c] = q.com.map((l) => l.v[j]); });
+  }
+  const temQualidade = (c) => c in acumulado && (!comp || c in comp.q);
+  const grupos = gruposDaPlanilha(q?.colunas ?? Object.keys(acumulado), temQualidade)
+    .map((g) => ({ ...g, qualidades: g.qualidades.filter((c) => acumulado[c].some((v) => Math.abs(v) >= 0.5)) }))
+    .filter((g) => g.qualidades.length);
+  const totGrupo = (g, i) => g.qualidades.reduce((s, c) => s + acumulado[c][i], 0);
+  // como no Power BI: a partir do mês da posição (os meses anteriores já estão no acumulado)
+  const inicio = Math.max(0, meses.findIndex((m) => m.slice(0, 7) >= estado.mesRef));
+  const classe = (v) => (Math.abs(v) < 0.5 ? "nil" : v > 0 ? "long" : "short");
+  const formula = Object.keys(NOME_COMP).filter((k) => ligados.includes(k)).map((k, i) => `${i === 0 && SINAL_COMP[k] === "+" ? "" : ` ${SINAL_COMP[k]} `}${tr(NOME_COMP[k])}`).join("").trim();
+
+  return `<section class="pos-card pbi-fisica">
+    <div class="pbi-topo">
+      <div class="pbi-titulo"><strong>${esc(tr("ACCUMULATED NET POSITION BY STANDARD – 60 KG BAGS"))}</strong> <span>${esc(formula)}</span></div>
+      <div class="pbi-seg" role="group" aria-label="Components">${COMPS_FISICA.map(([k, rot]) =>
+        `<button type="button" data-comp="${k}" class="${estado.comps.has(k) ? "on" : ""}" aria-pressed="${estado.comps.has(k)}" ${comp ? "" : "disabled"}>${esc(tr(rot).toUpperCase())}</button>`).join("")}</div>
+      <div class="pbi-legenda"><span><i class="long"></i>LONG</span><span><i class="short"></i>SHORT</span><span><i class="nil"></i>NIL</span></div>
+    </div>
+    ${comp ? "" : `<p class="muted pos-nota">${icon("info")} Upload the Position again to choose the components — this data was saved before they were read separately.</p>`}
+    <div class="tabela-wrap pbi-wrap"><table class="pbi-matriz">
+      <thead>
+        <tr><th class="pbi-canto">${esc(tr("ARÁBICA"))}</th>${grupos.map((g) => {
+          const fechado = estado.recolhidos.has(g.nome);
+          return `<th class="pbi-grupo" colspan="${fechado ? 1 : g.qualidades.length + 1}"><button type="button" data-grupo="${esc(g.nome)}" aria-expanded="${!fechado}" title="${fechado ? "Expand" : "Collapse"}">${fechado ? "⊞" : "⊟"}</button> ${esc(g.nome)}</th>`;
+        }).join("")}<th class="pbi-total" rowspan="2">Total</th></tr>
+        <tr><th class="pbi-canto">${esc(tr("MONTH"))}</th>${grupos.map((g) => (estado.recolhidos.has(g.nome) ? `<th class="pbi-tot">Total</th>`
+          : `${g.qualidades.map((c) => `<th>${esc(c)}</th>`).join("")}<th class="pbi-tot">Total</th>`)).join("")}</tr>
+      </thead>
+      <tbody>${meses.map((m, i) => {
+        if (i < inicio) return "";
+        let geral = 0;
+        const cels = grupos.map((g) => {
+          const t = totGrupo(g, i);
+          geral += t;
+          const qs = estado.recolhidos.has(g.nome) ? "" : g.qualidades.map((c) => { const v = acumulado[c][i]; return `<td class="${v < -0.5 ? "neg" : ""}">${numPbi(v)}</td>`; }).join("");
+          return `${qs}<td class="pbi-tot ${classe(t)}">${numPbi(t)}</td>`;
+        }).join("");
+        return `<tr><th scope="row">${esc(mesLongo(m))}</th>${cels}<td class="pbi-total ${classe(geral)}">${numPbi(geral)}</td></tr>`;
+      }).join("")}</tbody>
+    </table></div>
+  </section>`;
+}
+
 async function painelFisica(alvo, carga) {
   const f = carga.resumo.fisica;
   const grupos = ["exportable", "lowgrade"].filter((k) => f[k]);
   let grupo = grupos[0];
-  let matriz = "com";
+  // segmentação começa com os quatro componentes ligados
+  const estado = { comps: new Set(COMPS_FISICA.map(([k]) => k)), recolhidos: new Set(), mesRef: String(carga.data_ref ?? "").slice(0, 7) };
 
   const desenhar = async () => {
     limparGraficos();
     const b = f[grupo];
-    const q = f.qualidades;
-    const linhasQ = q?.[matriz] ?? [];
-    const maxAbs = Math.max(1, ...linhasQ.flatMap((l) => l.v.slice(0, -1).map(Math.abs)));
 
     alvo.innerHTML = `
+    ${matrizPorPadrao(f, estado)}
     <div class="pos-filtros">${segmentos("segGrupo", grupos.map((k) => [k, NOME_GRUPO[k]]), grupo)}</div>
     <section class="pos-card">
       <div class="pos-card-h"><h2>Physical position by month · ${NOME_GRUPO[grupo]}</h2>
@@ -478,25 +561,19 @@ async function painelFisica(alvo, carga) {
         <tbody>${b.meses.map((m) => `<tr><td>${fmtMes(m.mes)}</td>${celNum(m.inventory)}${celNum(m.purchases)}${celNum(m.exp_sales)}${celNum(m.domestic_sales)}${celNum(m.net, { forte: true })}</tr>`).join("")}</tbody>
         ${b.total ? `<tfoot><tr class="total"><th scope="row">Total</th>${celNum(b.total.inventory, { forte: true })}${celNum(b.total.purchases, { forte: true })}${celNum(b.total.exp_sales, { forte: true })}${celNum(b.total.domestic_sales, { forte: true })}${celNum(b.total.net, { forte: true })}</tr></tfoot>` : ""}
       </table></div>
-    </section>
-
-    ${q ? `<section class="pos-card">
-      <div class="pos-card-h pos-card-h-linha"><div><h2>Running position by quality</h2>
-        <p class="muted">Cumulative balance per month for each quality. <span class="pos-legenda"><i class="pos-pos"></i>long</span><span class="pos-legenda"><i class="pos-neg"></i>short</span></p></div>
-        ${segmentos("segMatriz", [["com", "Including purchases"], ["sem", "Without purchases"]], matriz)}</div>
-      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num pos-matriz">
-        <thead><tr><th>Month</th>${q.colunas.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
-        <tbody>${linhasQ.map((l) => `<tr><td>${fmtMes(l.mes)}</td>${l.v.map((v, i) => {
-          const total = i === l.v.length - 1;
-          const a = total ? 0 : Math.min(1, Math.abs(v) / maxAbs);
-          const fundo = total || !v ? "" : `style="--a:${(0.08 + a * 0.5).toFixed(2)}"`;
-          return `<td class="num ${total ? "forte" : v > 0 ? "cel-pos" : v < 0 ? "cel-neg" : ""}" ${fundo}>${v === 0 ? `<span class="zero">–</span>` : fmtN(v)}</td>`;
-        }).join("")}</tr>`).join("")}</tbody>
-      </table></div>
-    </section>` : ""}`;
+    </section>`;
 
     ligarSegmentos(alvo, "segGrupo", (k) => { grupo = k; desenhar(); });
-    ligarSegmentos(alvo, "segMatriz", (k) => { matriz = k; desenhar(); });
+    $$("[data-comp]", alvo).forEach((b2) => b2.addEventListener("click", () => {
+      const k = b2.dataset.comp;
+      if (estado.comps.has(k)) estado.comps.delete(k); else estado.comps.add(k);
+      desenhar();
+    }));
+    $$("[data-grupo]", alvo).forEach((b2) => b2.addEventListener("click", () => {
+      const g = b2.dataset.grupo;
+      if (estado.recolhidos.has(g)) estado.recolhidos.delete(g); else estado.recolhidos.add(g);
+      desenhar();
+    }));
     await graficoBarrasLinha($("#gFis", alvo), {
       meses: b.meses.map((m) => m.mes),
       series: [

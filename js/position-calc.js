@@ -111,7 +111,35 @@ export function lerFisica(g) {
       out.qualidades = { colunas: g[iH].slice(ini1, fim1 + 1).map((x) => String(x).trim()), com: ler(ini1, fim1), sem: ler(ini2, fim2) };
     }
   }
+  const comp = lerComponentesQualidade(g);
+  if (comp) out.componentes = comp;
   return out;
+}
+
+// Blocos por qualidade (Arábica) da aba Physical Position: a cada bloco, a qualidade
+// exportável na coluna B e a de low grade na G, com estoque (só no 1º mês), compras,
+// vendas de exportação e vendas internas por mês. A matriz por qualidade é o
+// acumulado desses quatro; guardá-los separados permite escolher quais entram.
+// Devolve { meses: [iso], q: { BCSW: { inventory: [], purchases: [], exp_sales: [], domestic_sales: [] } } }
+const COMPONENTES = ["inventory", "purchases", "exp_sales", "domestic_sales"];
+function lerComponentesQualidade(g) {
+  const out = { meses: null, q: {} };
+  for (let i = 0; i + 2 < g.length; i++) {
+    const l = g[i], sub = g[i + 1] ?? [];
+    if (norm(l[0]) !== "ARABICA" || !String(l[1] ?? "").trim() || norm(sub[1]) !== "INVENTORY" || !/^EXPORTABLE/.test(norm(sub[0]))) continue;
+    const lados = [[1, String(l[1]).trim()], [6, String(l[6] ?? "").trim()]].filter(([, q]) => q && !out.q[q]);
+    const meses = [];
+    const vals = Object.fromEntries(lados.map(([, q]) => [q, Object.fromEntries(COMPONENTES.map((k) => [k, []]))]));
+    for (let k = i + 2; k < g.length && num(g[k][0]) != null; k++) {
+      meses.push(serialIso(g[k][0]));
+      for (const [c, q] of lados) COMPONENTES.forEach((comp, j) => vals[q][comp].push(arred(num(g[k][c + j]) ?? 0)));
+    }
+    if (!meses.length) continue;
+    out.meses ??= meses;
+    if (meses.length !== out.meses.length) continue; // bloco fora do padrão: fica de fora
+    Object.assign(out.q, vals);
+  }
+  return out.meses && Object.keys(out.q).length ? out : null;
 }
 
 // Variation: Previous → movimentos do dia → posição atual, por grupo

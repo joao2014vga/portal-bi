@@ -331,6 +331,12 @@ const PT = {
   "Jul": "Jul", "Aug": "Ago", "Sep": "Set", "Oct": "Out", "Nov": "Nov", "Dec": "Dez", "Jan": "Jan", "Feb": "Fev", "Mar": "Mar",
   "Apr": "Abr", "May": "Mai", "Jun": "Jun",
 
+  // ---------------------------------------------------------------- Posição física (matriz por padrão)
+  "ACCUMULATED NET POSITION BY STANDARD – 60 KG BAGS": "POSIÇÃO LÍQUIDA ACUMULADA POR PADRÃO – SACAS DE 60 KG",
+  "Domestic Sales": "Vendas Internas", "MONTH": "MÊS", "Expand": "Expandir", "Collapse": "Recolher", "Components": "Componentes",
+  "Upload the Position again to choose the components — this data was saved before they were read separately.":
+    "Envie a posição de novo para escolher os componentes — estes dados foram gravados antes de serem lidos separadamente.",
+
   // ---------------------------------------------------------------- Diferenciais médios das exportações
   "Avg diff": "Diferencial médio", "Inclusion date": "Data de inclusão", "EOM Ship": "EOM Ship", "From": "De", "To": "Até",
   "All EOM Ship": "Todos os EOM Ship", "Qualities": "Qualidades", "Quality groups": "Grupos de qualidade",

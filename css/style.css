@@ -468,6 +468,36 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-legenda i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .pos-legenda .pos-pos { background: color-mix(in srgb, var(--div-pos) 45%, transparent); }
 .pos-legenda .pos-neg { background: color-mix(in srgb, var(--div-neg) 45%, transparent); }
+/* Posição física: matriz "net position by standard" no layout do Power BI */
+.pbi-fisica { --pbi-long: #1e8a4c; --pbi-short: #c62828; --pbi-nil: #c9d3cd; }
+.pbi-topo { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.pbi-titulo { flex: 1; min-width: 260px; font-size: 13px; color: var(--texto-2); letter-spacing: .02em; }
+.pbi-titulo strong { font-weight: 500; color: var(--texto-2); text-transform: uppercase; }
+.pbi-seg { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.pbi-seg button { border: 1px solid var(--borda); background: var(--sup); color: var(--texto-2); font: 500 11.5px var(--fonte); letter-spacing: .04em;
+  padding: 8px 18px; min-width: 120px; border-radius: 6px; cursor: pointer; box-shadow: var(--sombra); }
+.pbi-seg button:hover:not(:disabled) { border-color: var(--brand); color: var(--texto); }
+.pbi-seg button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.pbi-seg button:disabled { opacity: .5; cursor: not-allowed; }
+.pbi-legenda { display: inline-flex; gap: 12px; font-size: 12px; color: var(--texto-2); }
+.pbi-legenda span { display: inline-flex; align-items: center; gap: 5px; }
+.pbi-legenda i { width: 11px; height: 11px; display: inline-block; }
+.pbi-legenda i.long { background: var(--pbi-long); } .pbi-legenda i.short { background: var(--pbi-short); } .pbi-legenda i.nil { background: var(--pbi-nil); }
+.pbi-wrap { border: 0; }
+.pbi-matriz { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.pbi-matriz thead th { background: var(--topo-bg); color: #fff; font-weight: 700; text-align: left; padding: 8px 10px; white-space: nowrap;
+  border-left: 1px solid rgba(255, 255, 255, .12); position: sticky; top: 0; }
+.pbi-matriz thead tr:first-child th { font-size: 15px; }
+.pbi-matriz thead tr + tr th { top: 38px; }
+.pbi-matriz .pbi-grupo button { background: none; border: 0; color: #fff; font-size: 15px; cursor: pointer; padding: 0 4px 0 0; line-height: 1; }
+.pbi-matriz tbody th { text-align: left; font-weight: 700; padding: 7px 10px; white-space: nowrap; border-right: 1px solid var(--borda); }
+.pbi-matriz tbody td { text-align: right; padding: 7px 10px; white-space: nowrap; }
+.pbi-matriz tbody td.neg { color: var(--pbi-short); }
+.pbi-matriz td.pbi-tot, .pbi-matriz td.pbi-total { font-weight: 700; }
+.pbi-matriz td.long { color: var(--pbi-long); background: color-mix(in srgb, var(--pbi-long) 12%, transparent); }
+.pbi-matriz td.short { color: var(--pbi-short); background: color-mix(in srgb, var(--pbi-short) 12%, transparent); }
+.pbi-matriz td.nil { color: var(--texto-3); }
+.pbi-matriz tbody tr:hover td, .pbi-matriz tbody tr:hover th { filter: brightness(.97); }
 
 @media (max-width: 900px) {
   .pos { padding: 14px 12px 32px; }
