@@ -724,19 +724,48 @@ $$;
 revoke all on function public.bi_position_definir_fonte(text) from public, anon;
 grant execute on function public.bi_position_definir_fonte(text) to authenticated;
 
--- Agendamento: de 2 em 2 horas, das 7h às 19h (horário de Brasília), de segunda a sexta.
--- Rode à parte, depois de ativar as extensões pg_cron e pg_net (Database > Extensions)
--- e de cadastrar POSITION_CRON_SECRET na Vercel — troque <SEGREDO> pelo mesmo valor:
---
---   select cron.schedule('position-sync', '0 10,12,14,16,18,20,22 * * 1-5', $$
---     select net.http_post(
---       url := 'https://brascof-api.vercel.app/api/position-sync',
---       headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', '<SEGREDO>'),
---       body := '{}'::jsonb,
---       timeout_milliseconds := 60000);
---   $$);
---
--- Para conferir as execuções: select * from cron.job_run_details order by start_time desc limit 10;
+-- (o agendamento está na seção 10)
+
+-- ---------------------------------------------------------------------
+-- 10. AGENDAMENTO DA ATUALIZAÇÃO PELO DIGISUL
+-- De 2 em 2 horas, das 7h às 19h (horário de Brasília), de segunda a sexta.
+-- O Supabase chama a brascof-api com um segredo gerado aqui mesmo e guardado
+-- no Vault; a brascof-api confere o segredo pela função abaixo. Ninguém
+-- precisa copiar senha. Pré-requisito: seção 9. Pode rodar de novo à vontade.
+-- ---------------------------------------------------------------------
+create extension if not exists pg_cron;
+create extension if not exists pg_net with schema extensions;
+
+do $$
+begin
+  if not exists (select 1 from vault.secrets where name = 'position_cron_secret') then
+    perform vault.create_secret(gen_random_uuid()::text || gen_random_uuid()::text, 'position_cron_secret',
+                                'Chamada agendada da brascof-api /api/position-sync');
+  end if;
+end $$;
+
+-- A brascof-api (chave service_role) pergunta se o segredo recebido confere
+create or replace function public.bi_position_confere_cron(p_segredo text)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (select 1 from vault.decrypted_secrets where name = 'position_cron_secret' and decrypted_secret = p_segredo);
+$$;
+revoke all on function public.bi_position_confere_cron(text) from public, anon, authenticated;
+grant execute on function public.bi_position_confere_cron(text) to service_role;
+
+select cron.schedule('position-sync', '0 10,12,14,16,18,20,22 * * 1-5', $job$
+  select net.http_post(
+    url := 'https://brascof-api.vercel.app/api/position-sync',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret',
+      (select decrypted_secret from vault.decrypted_secrets where name = 'position_cron_secret')),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000);
+$job$);
+
+-- Para conferir as execuções:
+--   select * from cron.job_run_details order by start_time desc limit 10;
+--   select status_code, content::text from net._http_response order by created desc limit 5;
 
 -- ---------------------------------------------------------------------
 -- 8. PRIMEIRO ADMINISTRADOR
