@@ -217,11 +217,13 @@ export function criarDemo() {
     async linkDownload(a) { return a.caminho; },
 
     // Position: guardado no navegador (só para demonstração)
-    async positionUltima() {
+    // (a sincronização com o Digisul não existe na demonstração: só há a fonte "planilha")
+    async positionUltima(fonte = "planilha") {
       const c = db.position?.cargas ?? [];
-      return c.length ? structuredClone(c[c.length - 1]) : null;
+      return fonte === "planilha" && c.length ? structuredClone(c[c.length - 1]) : null;
     },
-    async positionHistorico() {
+    async positionHistorico(fonte = "planilha") {
+      if (fonte !== "planilha") return [];
       const porDia = new Map((db.position?.cargas ?? []).map((c) => [c.data_ref, { id: c.id, data_ref: c.data_ref, kpis: c.resumo.kpis }]));
       return structuredClone([...porDia.values()]);
     },
@@ -229,6 +231,12 @@ export function criarDemo() {
       const d = db.position?.detalhe ?? {};
       return structuredClone(Object.fromEntries(tipos.filter((t) => d[t]).map((t) => [t, d[t]])));
     },
+    async positionFonte() { return "planilha"; },
+    async definirFontePosition() { throw new Error("Not available in demo mode."); },
+    async positionModeloInfo() { return null; },
+    async positionModelo() { return null; },
+    async salvarPositionModelo() { exigeArquivos(); },
+    async sincronizarPosition() { throw new Error("The Digisul update is not available in demo mode."); },
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       exigeArquivos();
       db.position ??= { cargas: [], detalhe: {} };

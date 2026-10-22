@@ -513,7 +513,7 @@ async function telaDashboard(id) {
     const el = $("#frame");
     (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   });
-  if (nativo) await renderPosition(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), recarregar });
+  if (nativo) await renderPosition(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), admin: !!estado.perfil?.is_admin, recarregar });
 }
 
 // Simula um relatório no modo demonstração

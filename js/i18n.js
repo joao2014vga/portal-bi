@@ -198,6 +198,38 @@ const PT = {
   "Net outright over time": "Posição outright ao longo do tempo",
   "The history builds up with each daily upload — this chart appears from the second Position onwards.":
     "O histórico se forma a cada envio diário — este gráfico aparece a partir da segunda posição.",
+  // ---------------------------------------------------------------- Position pela API do Digisul
+  "Spreadsheet": "Planilha", "Digisul API": "API do Digisul", "official": "oficial", "Update now": "Atualizar agora", "Updating…": "Atualizando…",
+  "No Digisul update yet": "Nenhuma atualização do Digisul ainda",
+  "Click “Update now” to build these views from Digisul. The spreadsheet must have been uploaded once (its formulas and futures are used).":
+    "Clique em “Atualizar agora” para montar estas visões a partir do Digisul. A planilha precisa ter sido enviada uma vez (as fórmulas e os futuros dela são usados).",
+  "Futures are not in Digisul: when only the futures changed, a file with just the": "Os futuros não estão no Digisul: quando só os futuros mudarem, basta um arquivo apenas com a aba",
+  "sheet is enough.": ".",
+  "Position of {n}/{n}/{n} updated from Digisul.": "Posição de {n}/{n}/{n} atualizada pelo Digisul.",
+  "Position updated from Digisul.": "Posição atualizada pelo Digisul.",
+  "Futures updated: {n} trades. Recalculating from Digisul…": "Futuros atualizados: {n} operações. Recalculando pelo Digisul…",
+  "Upload the full Position spreadsheet once before sending only the futures.": "Envie a planilha completa da posição uma vez antes de mandar só os futuros.",
+  "Spreadsheet × Digisul API": "Planilha × API do Digisul",
+  "Check while both sources run in parallel. Differences come from what changed in Digisul between the spreadsheet extraction and the API update.":
+    "Conferência enquanto as duas fontes rodam em paralelo. As diferenças vêm do que mudou no Digisul entre a extração da planilha e a atualização pela API.",
+  "No spreadsheet uploaded yet.": "Nenhuma planilha enviada ainda.", "No Digisul update yet — click “Update now”.": "Nenhuma atualização do Digisul ainda — clique em “Atualizar agora”.",
+  "The spreadsheet formulas and futures have not been saved yet — upload the full spreadsheet once.":
+    "As fórmulas e os futuros da planilha ainda não foram guardados — envie a planilha completa uma vez.",
+  "Official source:": "Fonte oficial:", "Official source: Spreadsheet.": "Fonte oficial: Planilha.", "Official source: Digisul API.": "Fonte oficial: API do Digisul.",
+  "Make Digisul API the official source": "Tornar a API do Digisul a fonte oficial", "Make Spreadsheet the official source": "Tornar a planilha a fonte oficial",
+  "Official Position source": "Fonte oficial da posição", "Use Digisul API": "Usar a API do Digisul", "Use Spreadsheet": "Usar a planilha",
+  "Everyone will see the Position from": "Todos verão a posição pela",
+  ", updated every {n} hours on business days. Keep uploading the spreadsheet (or just the OpenFutures sheet) when futures change.":
+    ", atualizada a cada {n} horas nos dias úteis. Continue enviando a planilha (ou só a aba OpenFutures) quando os futuros mudarem.",
+  ". The views will only change when the spreadsheet is uploaded.": ". As visões só mudam quando a planilha for enviada.",
+  "The Digisul update is not set up yet: run section 9 of supabase/schema.sql in the Supabase SQL Editor.":
+    "A atualização pelo Digisul ainda não está configurada: rode a seção 9 do supabase/schema.sql no SQL Editor do Supabase.",
+  "Unable to reach the update service. Please try again.": "Não foi possível falar com o serviço de atualização. Tente novamente.",
+  "The update failed ({n}).": "A atualização falhou ({n}).", "The Digisul update is not available in demo mode.": "A atualização pelo Digisul não existe no modo demonstração.",
+  "Upload the Position spreadsheet once in the portal: its formulas and futures are needed.":
+    "Envie a planilha da posição uma vez no portal: as fórmulas e os futuros dela são necessários.",
+  "Only portal administrators and file managers can do this.": "Só administradores e gestores de arquivos do portal podem fazer isso.",
+  "Sign in to the BI Portal first.": "Entre no Portal BI primeiro.",
   "New Purchases": "Novas compras", "New Int Sales": "Novas vendas internas", "New Exp Sales": "Novas vendas de exportação",
   "Fix Purchases": "Fixação de compras", "Fix Int Sales": "Fixação de vendas internas", "Fix Exp Sales": "Fixação de vendas de exportação",
   "Guias": "Guias",
@@ -344,6 +376,11 @@ const ESPECIAIS = [
   [/^(Good morning|Good afternoon|Good evening), (.+)$/, (m) => `${PT[m[1]]}, ${m[2]}`],
   [/^Welcome, (.+)$/, (m) => `Bem-vindo(a), ${m[1]}`],
   [/^· uploaded (.+?)(?: by (.+))?$/, (m) => `· enviada ${tempo(m[1])}${m[2] ? ` por ${m[2]}` : ""}`],
+  [/^· updated from Digisul (.+?)( \(manual\))?$/, (m) => `· atualizada pelo Digisul ${tempo(m[1])}${m[2] ? " (manual)" : ""}`],
+  [/^Formulas and futures \(([\d.,]+) trades\) from (.+), uploaded (.+?)(?: by (.+))?\.$/,
+    (m) => `Fórmulas e futuros (${m[1]} operações) de ${m[2]}, enviados ${tempo(m[3])}${m[4] ? ` por ${m[4]}` : ""}.`],
+  [/^The Digisul update could not read this spreadsheet's formulas: (.+)$/,
+    (m) => `A atualização pelo Digisul não conseguiu ler as fórmulas desta planilha: ${traduzirTexto(m[1]) ?? m[1]}`],
   [/^Temporary password set for (.+)\. Share it with the user\.$/, (m) => `Senha provisória definida para ${m[1]}. Repasse-a ao usuário.`],
   [/^User created\. Share the temporary password with (.+)\.$/, (m) => `Usuário criado. Repasse a senha provisória para ${m[1]}.`],
   [/^(.+) already had an account: access granted with their existing password\.$/, (m) => `${m[1]} já tinha conta: acesso liberado com a senha atual.`],

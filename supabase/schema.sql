@@ -556,6 +556,189 @@ where c.nome = 'Position'
   and not exists (select 1 from public.bi_dashboards d where d.link = v.link);
 
 -- ---------------------------------------------------------------------
+-- 9. POSITION PELA API DO DIGISUL
+-- A sincronização (brascof-api, /api/position-sync) busca as consultas do
+-- Digisul, executa as fórmulas da planilha (o "modelo", guardado a cada
+-- upload) e grava aqui com fonte = 'api'. A planilha continua gravando com
+-- fonte = 'planilha'; bi_config.position_fonte diz qual das duas os painéis
+-- mostram. Pré-requisito: seção 7.
+-- ---------------------------------------------------------------------
+alter table public.bi_position_cargas add column if not exists fonte text not null default 'planilha';
+alter table public.bi_position_cargas drop constraint if exists bi_position_cargas_fonte_check;
+alter table public.bi_position_cargas add constraint bi_position_cargas_fonte_check check (fonte in ('planilha', 'api'));
+-- a API grava várias vezes por dia: fica só a última de cada dia
+create unique index if not exists bi_position_cargas_api_dia on public.bi_position_cargas (data_ref) where fonte = 'api';
+
+alter table public.bi_position_detalhe add column if not exists fonte text not null default 'planilha';
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'bi_position_detalhe_pkey'
+             and array_length(conkey, 1) = 1) then
+    alter table public.bi_position_detalhe drop constraint bi_position_detalhe_pkey;
+    alter table public.bi_position_detalhe add primary key (fonte, tipo);
+  end if;
+end $$;
+
+-- Modelo da planilha (fórmulas das abas de resumo, títulos das abas base, tabela
+-- List) + as operações de futuros da aba OpenFutures, que não existem na API.
+create table if not exists public.bi_position_modelo (
+  id            int primary key default 1 check (id = 1),
+  modelo        jsonb not null,
+  nome_arquivo  text,
+  enviado_por   text,
+  atualizado_em timestamptz not null default now()
+);
+alter table public.bi_position_modelo enable row level security;
+drop policy if exists bi_position_modelo_select on public.bi_position_modelo;
+create policy bi_position_modelo_select on public.bi_position_modelo for select to authenticated
+  using (public.bi_gerencia_arquivos());
+
+-- Configurações simples do portal (chave → valor)
+create table if not exists public.bi_config (
+  chave         text primary key,
+  valor         jsonb not null,
+  atualizado_em timestamptz not null default now()
+);
+alter table public.bi_config enable row level security;
+drop policy if exists bi_config_select on public.bi_config;
+create policy bi_config_select on public.bi_config for select to authenticated using (public.bi_is_ativo());
+insert into public.bi_config (chave, valor) values ('position_fonte', '"planilha"') on conflict (chave) do nothing;
+
+-- Upload da planilha: igual ao anterior, agora gravando os contratos com fonte = 'planilha'
+create or replace function public.bi_position_publicar(p_data_ref date, p_nome text, p_resumo jsonb, p_detalhes jsonb, p_alerta text default null)
+returns bigint
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id bigint;
+  v_tipo text;
+begin
+  if not public.bi_gerencia_arquivos() then
+    raise exception 'Access denied';
+  end if;
+  insert into public.bi_position_cargas (data_ref, nome_arquivo, resumo, enviado_por)
+  values (p_data_ref, p_nome, p_resumo,
+          (select nullif(split_part(nome, ' ', 1), '') from public.bi_perfis where id = auth.uid()))
+  returning id into v_id;
+
+  for v_tipo in select jsonb_object_keys(p_detalhes) loop
+    insert into public.bi_position_detalhe (fonte, tipo, carga_id, linhas, updated_at)
+    values ('planilha', v_tipo, v_id, p_detalhes -> v_tipo, now())
+    on conflict (fonte, tipo) do update set carga_id = excluded.carga_id, linhas = excluded.linhas, updated_at = now();
+  end loop;
+
+  -- painéis e notificações só acompanham a fonte que está valendo
+  if (select valor #>> '{}' from public.bi_config where chave = 'position_fonte') is distinct from 'api' then
+    perform set_config('bi.sem_notificacao', '1', true);
+    update public.bi_dashboards set atualizado_em = now()
+     where link like 'portal:position-%' and link <> 'portal:position-overview';
+    perform set_config('bi.sem_notificacao', '', true);
+    update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-overview';
+
+    if nullif(trim(p_alerta), '') is not null then
+      insert into public.bi_notificacoes (dashboard_id, titulo, mensagem)
+      select id, 'Fixation alert', left(p_alerta, 300) from public.bi_dashboards where link = 'portal:position-contracts';
+    end if;
+  end if;
+  return v_id;
+end;
+$$;
+
+-- Modelo e futuros: gravados a cada upload da planilha
+create or replace function public.bi_position_salvar_modelo(p_modelo jsonb, p_nome text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.bi_gerencia_arquivos() then
+    raise exception 'Access denied';
+  end if;
+  insert into public.bi_position_modelo (id, modelo, nome_arquivo, enviado_por, atualizado_em)
+  values (1, p_modelo, p_nome, (select nullif(split_part(nome, ' ', 1), '') from public.bi_perfis where id = auth.uid()), now())
+  on conflict (id) do update set modelo = excluded.modelo, nome_arquivo = excluded.nome_arquivo,
+    enviado_por = excluded.enviado_por, atualizado_em = now();
+end;
+$$;
+revoke all on function public.bi_position_salvar_modelo(jsonb, text) from public, anon;
+grant execute on function public.bi_position_salvar_modelo(jsonb, text) to authenticated;
+
+-- Resultado da API: só o servidor (chave service_role) grava. Uma carga por dia,
+-- atualizada a cada sincronização; notifica só quando a API é a fonte oficial,
+-- e no máximo uma vez por dia.
+create or replace function public.bi_position_publicar_api(p_data_ref date, p_resumo jsonb, p_detalhes jsonb, p_origem text, p_alerta text default null)
+returns bigint
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id bigint;
+  v_tipo text;
+  v_novo_dia boolean;
+begin
+  v_novo_dia := not exists (select 1 from public.bi_position_cargas where fonte = 'api' and data_ref = p_data_ref);
+  insert into public.bi_position_cargas (data_ref, nome_arquivo, resumo, enviado_por, fonte, created_by)
+  values (p_data_ref, 'Digisul API', p_resumo, p_origem, 'api', null)
+  on conflict (data_ref) where fonte = 'api'
+  do update set resumo = excluded.resumo, enviado_por = excluded.enviado_por, created_at = now()
+  returning id into v_id;
+
+  for v_tipo in select jsonb_object_keys(p_detalhes) loop
+    insert into public.bi_position_detalhe (fonte, tipo, carga_id, linhas, updated_at)
+    values ('api', v_tipo, v_id, p_detalhes -> v_tipo, now())
+    on conflict (fonte, tipo) do update set carga_id = excluded.carga_id, linhas = excluded.linhas, updated_at = now();
+  end loop;
+
+  if (select valor #>> '{}' from public.bi_config where chave = 'position_fonte') = 'api' then
+    perform set_config('bi.sem_notificacao', '1', true);
+    update public.bi_dashboards set atualizado_em = now() where link like 'portal:position-%';
+    perform set_config('bi.sem_notificacao', '', true);
+    if v_novo_dia then
+      update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-overview';
+      if nullif(trim(p_alerta), '') is not null then
+        insert into public.bi_notificacoes (dashboard_id, titulo, mensagem)
+        select id, 'Fixation alert', left(p_alerta, 300) from public.bi_dashboards where link = 'portal:position-contracts';
+      end if;
+    end if;
+  end if;
+  return v_id;
+end;
+$$;
+revoke all on function public.bi_position_publicar_api(date, jsonb, jsonb, text, text) from public, anon, authenticated;
+grant execute on function public.bi_position_publicar_api(date, jsonb, jsonb, text, text) to service_role;
+
+-- Qual fonte os painéis mostram (só ADM troca)
+create or replace function public.bi_position_definir_fonte(p_fonte text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.bi_is_admin() then
+    raise exception 'Access denied';
+  end if;
+  if p_fonte not in ('planilha', 'api') then
+    raise exception 'Invalid source';
+  end if;
+  insert into public.bi_config (chave, valor, atualizado_em) values ('position_fonte', to_jsonb(p_fonte), now())
+  on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();
+end;
+$$;
+revoke all on function public.bi_position_definir_fonte(text) from public, anon;
+grant execute on function public.bi_position_definir_fonte(text) to authenticated;
+
+-- Agendamento: de 2 em 2 horas, das 7h às 19h (horário de Brasília), de segunda a sexta.
+-- Rode à parte, depois de ativar as extensões pg_cron e pg_net (Database > Extensions)
+-- e de cadastrar POSITION_CRON_SECRET na Vercel — troque <SEGREDO> pelo mesmo valor:
+--
+--   select cron.schedule('position-sync', '0 10,12,14,16,18,20,22 * * 1-5', $$
+--     select net.http_post(
+--       url := 'https://brascof-api.vercel.app/api/position-sync',
+--       headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', '<SEGREDO>'),
+--       body := '{}'::jsonb,
+--       timeout_milliseconds := 60000);
+--   $$);
+--
+-- Para conferir as execuções: select * from cron.job_run_details order by start_time desc limit 10;
+
+-- ---------------------------------------------------------------------
 -- 8. PRIMEIRO ADMINISTRADOR
 -- Use um usuário que já exista em Authentication > Users (pode ser o
 -- mesmo login que você usa nos outros sistemas). Troque o e-mail e rode:

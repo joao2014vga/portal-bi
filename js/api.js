@@ -30,7 +30,11 @@ function traduzErro(msg = "") {
   return msg;
 }
 
+// coluna "fonte" ainda não existe (seção 9 do schema não rodada)
+const semColunaFonte = (error) => /fonte/i.test(error?.message ?? "") && /does not exist|column/i.test(error.message);
+
 function erroPosition(msg = "") {
+  if (/bi_position_modelo|bi_config|salvar_modelo|definir_fonte|publicar_api/i.test(msg)) return "The Digisul update is not set up yet: run section 9 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/bi_position|schema cache|does not exist|Could not find the function/i.test(msg)) return "Position is not set up yet: run section 7 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/Access denied/i.test(msg)) return "Only administrators and file managers can upload the Position.";
   return traduzErro(msg);
@@ -185,26 +189,86 @@ async function criarApiSupabase() {
     },
 
     // ----------------------------------------------------------- position (painéis nativos)
-    // última planilha publicada (null = nenhuma ainda)
-    async positionUltima() {
-      const { data, error } = await sb.from("bi_position_cargas").select("id, data_ref, nome_arquivo, enviado_por, resumo, created_at")
-        .order("data_ref", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
+    // fonte: "planilha" (upload) ou "api" (sincronização com o Digisul). Sem a seção 9
+    // do schema ainda não existe a coluna "fonte" e tudo é planilha.
+    // última publicação da fonte (null = nenhuma ainda)
+    async positionUltima(fonte = "planilha") {
+      const consulta = (comFonte) => {
+        let q = sb.from("bi_position_cargas").select("id, data_ref, nome_arquivo, enviado_por, resumo, created_at");
+        if (comFonte) q = q.eq("fonte", fonte);
+        return q.order("data_ref", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
+      };
+      let { data, error } = await consulta(true);
+      if (error && semColunaFonte(error)) {
+        if (fonte === "api") return null;
+        ({ data, error } = await consulta(false));
+      }
       if (error) throw new Error(erroPosition(error.message));
       return data;
     },
     // indicadores de cada dia (última publicação do dia), para os gráficos de evolução
-    async positionHistorico() {
-      const { data, error } = await sb.from("bi_position_cargas").select("id, data_ref, kpis:resumo->kpis").order("data_ref").order("id");
+    async positionHistorico(fonte = "planilha") {
+      const consulta = (comFonte) => {
+        let q = sb.from("bi_position_cargas").select("id, data_ref, kpis:resumo->kpis");
+        if (comFonte) q = q.eq("fonte", fonte);
+        return q.order("data_ref").order("id");
+      };
+      let { data, error } = await consulta(true);
+      if (error && semColunaFonte(error)) ({ data, error } = fonte === "api" ? { data: [], error: null } : await consulta(false));
       if (error) throw new Error(erroPosition(error.message));
       const porDia = new Map(data.map((c) => [c.data_ref, c]));
       return [...porDia.values()].slice(-120);
     },
     // tipos: purchases | expsales | intsales | inventory (Open Contracts), vendas | compras (crop over crop)
-    async positionDetalhe(tipos) {
-      const { data, error } = await sb.from("bi_position_detalhe").select("tipo, linhas").in("tipo", tipos);
+    async positionDetalhe(tipos, fonte = "planilha") {
+      const consulta = (comFonte) => {
+        let q = sb.from("bi_position_detalhe").select("tipo, linhas").in("tipo", tipos);
+        if (comFonte) q = q.eq("fonte", fonte);
+        return q;
+      };
+      let { data, error } = await consulta(true);
+      if (error && semColunaFonte(error) && fonte !== "api") ({ data, error } = await consulta(false));
       if (error) throw new Error(erroPosition(error.message));
       if (!data.length) throw new Error("No data available — you may not have access, or the Position needs to be uploaded again.");
       return Object.fromEntries(data.map((r) => [r.tipo, r.linhas]));
+    },
+    // qual fonte os painéis mostram (configurada pelo ADM)
+    async positionFonte() {
+      const { data, error } = await sb.from("bi_config").select("valor").eq("chave", "position_fonte").maybeSingle();
+      return !error && data?.valor === "api" ? "api" : "planilha";
+    },
+    async definirFontePosition(fonte) {
+      const { error } = await sb.rpc("bi_position_definir_fonte", { p_fonte: fonte });
+      if (error) throw new Error(erroPosition(error.message));
+    },
+    // quando e de qual arquivo vieram as fórmulas e os futuros usados pela API (null = ainda não há)
+    async positionModeloInfo() {
+      const { data, error } = await sb.from("bi_position_modelo").select("atualizado_em, nome_arquivo, enviado_por, futuros:modelo->futuros")
+        .eq("id", 1).maybeSingle();
+      if (error || !data) return null;
+      return { ...data, futuros: data.futuros?.length ?? 0 };
+    },
+    async positionModelo() {
+      const { data, error } = await sb.from("bi_position_modelo").select("modelo").eq("id", 1).maybeSingle();
+      if (error) throw new Error(erroPosition(error.message));
+      return data?.modelo ?? null;
+    },
+    async salvarPositionModelo(modelo, nome_arquivo) {
+      const { error } = await sb.rpc("bi_position_salvar_modelo", { p_modelo: modelo, p_nome: nome_arquivo });
+      if (error) throw new Error(erroPosition(error.message));
+    },
+    // pede ao servidor (brascof-api) para buscar o Digisul e recalcular agora
+    async sincronizarPosition() {
+      const { data: { session } } = await sb.auth.getSession();
+      let res;
+      try {
+        res = await fetch(`${CONFIG.API_BRASCOF}/api/position-sync`, { method: "POST", headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
+      } catch {
+        throw new Error("Unable to reach the update service. Please try again.");
+      }
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `The update failed (${res.status}).`);
+      return j;
     },
     // grava resumo + contratos e marca os painéis como atualizados, tudo numa transação
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {

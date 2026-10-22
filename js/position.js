@@ -2,12 +2,18 @@
 // "Brascof Position Overview" (.xlsm). O upload lê a planilha no próprio
 // navegador (sem macros), extrai os resumos e os contratos em aberto e grava
 // tudo no Supabase de uma vez (função bi_position_publicar).
+// Os mesmos painéis podem vir do Digisul (fonte "api"): o servidor brascof-api
+// recalcula com position-calc.js e grava pela função bi_position_publicar_api.
 //
 // Painéis (link cadastrado em bi_dashboards):
 //   portal:position-overview   posição por mês de vencimento + variação do dia
 //   portal:position-physical   posição física por mês e por qualidade
 //   portal:position-contracts  contratos em aberto, contrato a contrato
 import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR } from "./ui.js";
+import {
+  ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
+  prazoFixacao, alertasFixacao, textoAlertaFixacao, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS,
+} from "./position-calc.js";
 import { t as tr, LOCALE, IDIOMA } from "./i18n.js";
 
 const XLSX_URL = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
@@ -16,20 +22,8 @@ const CHART_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/+esm";
 export const ehPainelPosition = (link) => /^portal:position-/.test(link ?? "");
 
 // =====================================================================
-// LEITURA DA PLANILHA
+// LEITURA DA PLANILHA (o cálculo e as regras ficam em position-calc.js)
 // =====================================================================
-const ABAS = {
-  termm: "Position Overview TermM", fisica: "Physical Position", variacao: "Variation",
-  purchases: "Purchases", expsales: "ExpSales", intsales: "IntSales", inventory: "Inventory",
-};
-
-const norm = (v) => String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
-const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
-const arred = (v) => Math.round(v * 100) / 100;
-const vazia = (l) => l.every((v) => v == null || String(v).trim() === "");
-// datas do Excel chegam como número de série (dias desde 30/12/1899)
-const serialIso = (n) => new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 864e5).toISOString().slice(0, 10);
-
 let xlsxPromise;
 function carregarXlsx() {
   xlsxPromise ??= new Promise((ok, falha) => {
@@ -59,227 +53,36 @@ function grade(XLSX, ws) {
   return linhas;
 }
 
-// Blocos achados pelo título (não pela linha), para aguentar linhas inseridas.
-const GRUPOS = [["arabica", /^ARABICA/], ["robusta", /^ROBUSTA/], ["exportable", /^EXPORTABLE/], ["lowgrade", /^LOW GRADE/]];
-
-// Position Overview TermM: colunas B..R de cada bloco
-const COLS_TERMM = ["cash", "purchases", "purchases_fixed", "purchases_ptbf", "inventory", "sales", "exp_sales", "exp_fixed",
-  "exp_ptbf", "int_sales", "int_fixed", "int_ptbf", "futures", "futures_ptbf", "switch_exp", "net_diff", "net_outright"];
-
-function lerTermM(g) {
-  const out = {};
-  g.forEach((l, i) => {
-    const grupo = GRUPOS.find(([, re]) => re.test(norm(l[0])))?.[0];
-    if (!grupo || out[grupo] || norm(l[1]) !== "CASH") return;
-    const h = l.map(norm);
-    if (h[2] !== "PURCHASES" || h[5] !== "INVENTORY" || h[6] !== "SALES" || h[7] !== "EXP SALES" || h[10] !== "INT SALES"
-      || h[13] !== "FUTURES" || !h[16].startsWith("NET DIFF") || !h[17].startsWith("NET OUTRIGHT")) {
-      throw new Error(`"${ABAS.termm}": unexpected columns in the ${l[0]} block.`);
-    }
-    const linha = (r) => Object.fromEntries(COLS_TERMM.map((k, j) => [k, arred(num(r[j + 1]) ?? 0)]));
-    const meses = [];
-    let total = null;
-    for (let k = i + 1; k < g.length; k++) {
-      const r = g[k];
-      if (vazia(r)) { if (meses.length) break; continue; }
-      if (num(r[0]) != null) { meses.push({ mes: serialIso(r[0]), ...linha(r) }); continue; }
-      if (num(r[1]) != null) total = linha(r);
-      break;
-    }
-    if (!total) throw new Error(`"${ABAS.termm}": total row of the ${l[0]} block not found.`);
-    out[grupo] = { meses, total };
-  });
-  for (const [k] of GRUPOS) if (!out[k]) throw new Error(`"${ABAS.termm}": block "${k}" not found.`);
-  return out;
-}
-
-// Physical Position: blocos Exportable / Low Grade por mês + matriz mês × qualidade
-function lerFisica(g) {
-  const out = {};
-  g.forEach((l, i) => {
-    const grupo = /^EXPORTABLE/.test(norm(l[0])) ? "exportable" : /^LOW GRADE/.test(norm(l[0])) ? "lowgrade" : null;
-    if (!grupo || out[grupo] || norm(l[1]) !== "INVENTORY") return;
-    const h = l.map(norm);
-    if (h[2] !== "PURCHASES" || h[3] !== "EXP SALES" || !h[4].startsWith("DOMESTIC") || h[5] !== "NET") {
-      throw new Error(`"${ABAS.fisica}": unexpected columns in the ${l[0]} block.`);
-    }
-    const linha = (r) => ({
-      inventory: arred(num(r[1]) ?? 0), purchases: arred(num(r[2]) ?? 0), exp_sales: arred(num(r[3]) ?? 0),
-      domestic_sales: arred(num(r[4]) ?? 0), net: arred(num(r[5]) ?? 0),
-    });
-    const meses = [];
-    let total = null;
-    for (let k = i + 1; k < g.length; k++) {
-      const r = g[k];
-      if (vazia(r.slice(0, 6))) { if (meses.length) break; continue; }
-      if (num(r[0]) != null) { meses.push({ mes: serialIso(r[0]), ...linha(r) }); continue; }
-      if (norm(r[0]) === "TOTAL") total = linha(r);
-      break;
-    }
-    out[grupo] = { meses, total };
-  });
-  if (!out.exportable) throw new Error(`"${ABAS.fisica}": EXPORTABLE block not found.`);
-
-  // matriz por qualidade: duas tabelas lado a lado (com e sem compras), cada uma de BCSW até TOTAL
-  const iH = g.findIndex((l) => l.filter((v) => norm(v) === "BCSW").length >= 2);
-  if (iH >= 0) {
-    const h = g[iH].map(norm);
-    const ini1 = h.indexOf("BCSW"), fim1 = h.indexOf("TOTAL", ini1);
-    const ini2 = h.indexOf("BCSW", fim1), fim2 = h.indexOf("TOTAL", ini2);
-    if (ini1 > 0 && fim1 > ini1 && ini2 > fim1 && fim2 - ini2 === fim1 - ini1) {
-      const ler = (ini, fim) => {
-        const linhas = [];
-        for (let k = iH + 1; k < g.length; k++) {
-          const m = num(g[k][ini - 1]);
-          if (m == null) { if (linhas.length) break; continue; }
-          linhas.push({ mes: serialIso(m), v: g[k].slice(ini, fim + 1).map((x) => arred(num(x) ?? 0)) });
-        }
-        return linhas;
-      };
-      out.qualidades = { colunas: g[iH].slice(ini1, fim1 + 1).map((x) => String(x).trim()), com: ler(ini1, fim1), sem: ler(ini2, fim2) };
-    }
-  }
-  return out;
-}
-
-// Variation: Previous → movimentos do dia → posição atual, por grupo
-function lerVariacao(g) {
-  const nomes = { ARABICA: "arabica", CONILON: "robusta", EXP: "exportable", "LOW GRADE": "lowgrade" };
-  const out = {};
-  for (let i = 0; i < g.length; i++) {
-    for (let c = 0; c < g[i].length; c++) {
-      const chave = nomes[norm(g[i][c])];
-      if (!chave || out[chave] || !norm(g[i][c + 1]).startsWith("NET DIFF")) continue;
-      const itens = [];
-      let total = null;
-      for (let k = i + 1; k < g.length; k++) {
-        const r = g[k], rot = String(r[c] ?? "").trim(), d = num(r[c + 1]), o = num(r[c + 2]);
-        if (rot) { if (d != null || o != null) itens.push({ rotulo: rot, diff: arred(d ?? 0), outright: arred(o ?? 0) }); continue; }
-        if (d != null || o != null) total = { diff: arred(d ?? 0), outright: arred(o ?? 0) };
-        break;
-      }
-      if (total && itens.length) out[chave] = { itens, total };
-    }
-  }
-  return out;
-}
-
-// Contratos: só as colunas usadas no portal, e só o que está em aberto
-const DETALHES = {
-  purchases: {
-    aba: ABAS.purchases,
-    cols: [["contrato", "Contrato"], ["fornecedor", "Fornecedor"], ["modalidade", "Modalidade CTR"], ["sacas", "Sacas Total", "n"],
-      ["emissao", "Emissão", "d"], ["prev_entrega", "Prev. de Entrega", "d"], ["a_entregar", "A Entregar BC", "n"],
-      ["padrao", "Padrão"], ["bebida", "Bebida"], ["preco", "Média Final (R$)", "n"], ["a_pagar", "A Pagar (R$)", "n"],
-      ["status_fix", "Status Fixação"], ["bolsa", "Bolsa"], ["mes_bolsa", "Mês Bolsa", "d"], ["diferencial", "Diferencial", "n"],
-      ["a_fixar", "Qtd, a Fixar", "n"], ["fixador", "Fixador"], ["lotes", "Qtd. Lotes", "n"], ["lotes_fixados", "Lotes Fixado", "n"],
-      ["lotes_a_fixar", "Lotes a Fixar", "n"], ["certificador", "Certificador"], ["especie", "Espécie"], ["safra", "Safra"]],
-    aberto: (r) => r.a_entregar > 0 || r.a_fixar > 0 || r.a_pagar > 1,
-  },
-  expsales: {
-    aba: ABAS.expsales,
-    cols: [["contrato", "Contrato"], ["importador", "Importador"], ["embarque", "Embarque", "d"], ["sacas", "Sacas", "n"],
-      ["a_fixar", "Qtd. a Fixar (sc)", "n"], ["status_fix", "Status Fixação"], ["bolsa", "Bolsa"], ["fixar_mes", "Fixar Mês", "d"],
-      ["fixador", "Opção de Fixação"], ["lotes", "Qtd. Lotes", "n"], ["lotes_fixados", "Lotes Fixado", "n"], ["lotes_a_fixar", "Lotes a Fixar", "n"],
-      ["diferencial", "Diferencial", "n"], ["vlr_final", "Vlr. Final", "n"], ["unidade", "Unidade"], ["padrao", "Padrão"],
-      ["prev_carga", "Prev. Carga", "d"], ["saldo", "Saldo (sc)", "n"], ["certificacao", "Certificação"], ["incoterm", "Incoterm"],
-      ["especie", "Espécie"], ["safra", "Safras"]],
-    aberto: (r) => r.saldo > 0 || r.a_fixar > 0,
-  },
-  intsales: {
-    aba: ABAS.intsales,
-    cols: [["contrato", "Contrato"], ["cliente", "Cliente"], ["emissao", "Emissão", "d"], ["sacas", "Sacas Total", "n"],
-      ["a_entregar", "A Entregar(Sc)", "n"], ["preco", "Unitário R$", "n"], ["a_receber", "A Receber (R$)", "n"],
-      ["status_fix", "Status Fixação"], ["bolsa", "Bolsa"], ["fixar_mes", "Fixar Mês", "d"], ["a_fixar", "Qtd, a Fixar", "n"],
-      ["fixador", "Fixador"], ["lotes", "Qtd. Lotes", "n"], ["lotes_fixados", "Lotes Fixado", "n"], ["lotes_a_fixar", "Lotes a Fixar", "n"],
-      ["padrao", "Padrão"],
-      ["prev_embarque", "Prev. Embarque", "d"], ["modalidade", "Modalidade CTR"], ["especie", "Espécie"], ["safra", "Safra"]],
-    aberto: (r) => r.a_entregar > 0 || r.a_fixar > 0 || r.a_receber > 1,
-  },
-  // histórico para os cards "crop over crop": vendas realizadas (com BL) e todas as compras
-  vendas: {
-    aba: ABAS.expsales,
-    cols: [["contrato", "Contrato"], ["alertas", "Alertas"], ["referencia", "Referência"], ["sacas", "Sacas", "n"], ["saida", "Saída (sc)", "n"],
-      ["data_bl", "Data BL", "d"], ["safra", "Safras"], ["padrao", "Padrão"], ["peneira", "Peneira"], ["grupo", "Quality Group"], ["especie", "Espécie"],
-      ["bolsa", "Bolsa"], ["unidade", "Unidade"], ["diferencial", "Diferencial", "n"], ["vlr_final", "Vlr. Final", "n"],
-      ["valor_usd", "Valor Contrato (US$)", "n"], ["saldo", "Saldo (sc)", "n"], ["prev_carga", "Prev. Carga", "d"], ["embarque", "Embarque", "d"],
-      // painel de diferenciais médios: por data de inclusão ou por mês de embarque (EOM Ship)
-      ["inclusao", "Data de Inclusão", "d"], ["eom_ship", "EOM Ship", "d"]],
-    // realizadas (com BL) e as que ainda têm saldo a embarcar
-    aberto: (r) => !!r.data_bl || r.saldo > 0,
-  },
-  compras: {
-    aba: ABAS.purchases,
-    cols: [["contrato", "Contrato"], ["fornecedor", "Fornecedor"], ["emissao", "Emissão", "d"], ["safra", "Safra"], ["sacas", "Sacas Total", "n"],
-      ["padrao", "Padrão"], ["especie", "Espécie"], ["bolsa", "Bolsa"], ["modalidade", "Modalidade CTR"], ["diferencial", "Diferencial", "n"],
-      ["preco", "Média Final (R$)", "n"], ["valor", "Valor Final (R$)", "n"]],
-    aberto: (r) => !!r.safra && r.sacas > 0,
-  },
-  inventory: {
-    aba: ABAS.inventory,
-    cols: [["lote", "Lote/Guia"], ["tipo", "Tipo"], ["sacas", "Sacas 60kg", "n"], ["padrao", "Padrão"], ["bebida", "Bebida"],
-      ["peneiras", "Peneiras"], ["especie", "Espécie"], ["safra", "Safra"], ["armazem", "Armazém"], ["filial", "Filial"],
-      ["certificador", "Certificador"], ["custo", "Custo R$", "n"], ["entrada", "Data Entrada", "d"], ["contrato", "Contrato"]],
-    aberto: () => true,
-  },
-};
-
-function lerDetalhe(g, def) {
-  const cab = (g[0] ?? []).map(norm);
-  const idx = def.cols.map(([k, titulo, tipo]) => {
-    const i = cab.indexOf(norm(titulo));
-    if (i < 0) throw new Error(`"${def.aba}": column "${titulo}" not found.`);
-    return [k, i, tipo];
-  });
-  const linhas = [];
-  for (const r of g.slice(1)) {
-    if (vazia(r) || String(r[idx[0][1]] ?? "").trim() === "") continue;
-    const o = {};
-    for (const [k, i, tipo] of idx) {
-      const v = r[i];
-      o[k] = tipo === "n" ? (num(v) == null ? null : arred(v))
-        : tipo === "d" ? (num(v) == null ? null : serialIso(v))
-        : (v == null || String(v).trim() === "" ? null : String(v).trim());
-    }
-    if (def.aberto(o)) linhas.push(o);
-  }
-  return linhas;
-}
-
+// Lê a planilha no navegador (sem macros): resumo e contratos com os valores
+// calculados pelo Excel e, junto, o modelo das fórmulas + futuros que a
+// sincronização pela API usa. Uma planilha só com a aba OpenFutures atualiza só os futuros.
 export async function lerPlanilhaPosition(file) {
   const XLSX = await carregarXlsx();
   const wb = XLSX.read(await file.arrayBuffer(), {
-    type: "array", sheets: Object.values(ABAS), cellFormula: false, cellHTML: false, cellText: false, cellStyles: false,
+    type: "array", sheets: [...Object.values(ABAS), "OpenFutures", "List"], cellFormula: true, cellHTML: false, cellText: false, cellStyles: false,
   });
+  if (!wb.Sheets[ABAS.termm] && wb.Sheets.OpenFutures) return { futuros: extrairFuturos(XLSX, wb) };
   const faltam = Object.values(ABAS).filter((n) => !wb.Sheets[n]);
   if (faltam.length) throw new Error(`Sheet(s) not found: ${faltam.join(", ")}. Is this the Position Overview spreadsheet?`);
-  const g = (k) => grade(XLSX, wb.Sheets[ABAS[k]]);
-
-  const gTermM = g("termm");
-  const serial = num(gTermM[0]?.[0]);
-  if (serial == null) throw new Error(`"${ABAS.termm}": the "updated as of" date in cell A1 was not found.`);
-  const termm = lerTermM(gTermM);
-  const resumo = {
-    versao: 1,
-    termm,
-    fisica: lerFisica(g("fisica")),
-    variacao: lerVariacao(g("variacao")),
-    kpis: Object.fromEntries(Object.entries(termm).map(([k, b]) => [k, { diff: b.total.net_diff, outright: b.total.net_outright }])),
-  };
   // cada aba vira matriz uma vez só (vendas e expsales, por exemplo, usam a mesma)
   const grades = new Map();
   const gAba = (nome) => (grades.has(nome) ? grades.get(nome) : grades.set(nome, grade(XLSX, wb.Sheets[nome])).get(nome));
-  const detalhes = Object.fromEntries(Object.entries(DETALHES).map(([k, def]) => [k, lerDetalhe(gAba(def.aba), def)]));
-  // receita em R$: PTAX de compra D-1 de cada embarque (se o Banco Central não responder, segue sem)
+  const { data_ref, resumo, detalhes } = montarPosition(gAba);
   const avisos = [];
+  let modelo = null;
+  try { modelo = extrairModelo(XLSX, wb); }
+  catch (e) { avisos.push(`The Digisul update could not read this spreadsheet's formulas: ${e.message}`); }
+  // receita em R$: PTAX de compra D-1 de cada embarque (se o Banco Central não responder, segue sem)
   try {
     const semPtax = await aplicarPtax(detalhes.vendas);
     if (semPtax) avisos.push(`${semPtax} shipments without PTAX.`);
   } catch {
     avisos.push("PTAX could not be loaded from the Central Bank — revenue in R$ will be missing for this upload.");
   }
-  return { data_ref: serialIso(serial), resumo, detalhes, avisos };
+  return { data_ref, resumo, detalhes, modelo, avisos };
 }
+
+const hojeIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 // =====================================================================
 // FORMATAÇÃO E GRÁFICOS
@@ -380,21 +183,36 @@ const celNum = (v, { forte = false } = {}) =>
 // PAINÉIS
 // =====================================================================
 // Ponto de entrada: monta o painel `link` dentro de `alvo`.
-// ctx = { api, gerente (pode publicar), recarregar }
+// ctx = { api, gerente (pode publicar), admin, recarregar }
+// Fonte dos números: a oficial (bi_config) para todos; quem publica pode alternar
+// entre planilha e API nesta sessão do navegador, para conferir as duas.
+const CHAVE_FONTE = "bi-position-fonte";
+const fonteVista = () => { try { return sessionStorage.getItem(CHAVE_FONTE); } catch { return null; } };
+const guardarFonteVista = (f) => { try { sessionStorage.setItem(CHAVE_FONTE, f); } catch { /* sem armazenamento: fica a oficial */ } };
+const NOME_FONTE = { planilha: "Spreadsheet", api: "Digisul API" };
+
 export async function renderPosition(link, alvo, ctx) {
   limparGraficos();
   alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading Position…</div>`;
-  let carga;
-  try { carga = await ctx.api.positionUltima(); }
-  catch (e) {
+  let carga, oficial, fonte;
+  try {
+    oficial = await ctx.api.positionFonte();
+    fonte = (ctx.gerente && fonteVista()) || oficial;
+    carga = await ctx.api.positionUltima(fonte);
+  } catch (e) {
     alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Position data is not available</h3><p>${esc(e.message)}</p></div>`;
     return;
   }
-  const topo = barraTopo(carga, ctx);
+  // a mesma API, presa à fonte que está na tela
+  const api = { ...ctx.api, positionDetalhe: (tipos) => ctx.api.positionDetalhe(tipos, fonte), positionHistorico: () => ctx.api.positionHistorico(fonte) };
+  const c = { ...ctx, api, fonte, oficial };
+  const topo = barraTopo(carga, c);
   if (!carga) {
-    alvo.innerHTML = `<div class="pos">${topo}<div class="vazio">${icon("chart")}<h3>No Position uploaded yet</h3>
-      <p>${ctx.gerente ? "Upload the daily Position Overview spreadsheet to build these views." : "The BI team has not published the Position yet."}</p></div></div>`;
-    ligarUpload(alvo, ctx);
+    alvo.innerHTML = `<div class="pos">${topo}<div class="vazio">${icon("chart")}<h3>${fonte === "api" ? "No Digisul update yet" : "No Position uploaded yet"}</h3>
+      <p>${!ctx.gerente ? "The BI team has not published the Position yet."
+        : fonte === "api" ? "Click “Update now” to build these views from Digisul. The spreadsheet must have been uploaded once (its formulas and futures are used)."
+        : "Upload the daily Position Overview spreadsheet to build these views."}</p></div></div>`;
+    ligarTopo(alvo, c);
     return;
   }
   const painel = {
@@ -403,34 +221,77 @@ export async function renderPosition(link, alvo, ctx) {
   }[link];
   if (!painel) { alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Unknown Position view</h3></div>`; return; }
   alvo.innerHTML = `<div class="pos">${topo}<div id="posCorpo"></div></div>`;
-  ligarUpload(alvo, ctx);
-  await painel($("#posCorpo", alvo), carga, ctx);
+  ligarTopo(alvo, c);
+  await painel($("#posCorpo", alvo), carga, c);
 }
 
 function barraTopo(carga, ctx) {
+  const api = ctx.fonte === "api";
+  const quando = !carga ? "" : api
+    ? `updated from Digisul ${tempoRelativo(carga.created_at)}${carga.enviado_por === "Manual" ? " (manual)" : ""}`
+    : `uploaded ${tempoRelativo(carga.created_at)}${carga.enviado_por ? ` by ${carga.enviado_por}` : ""}`;
   return `<div class="pos-topo">
     <div class="pos-data">${icon("clock")}${carga
-      ? `<span>Position as of <strong>${esc(fmtData(carga.data_ref))}</strong> · uploaded ${esc(tempoRelativo(carga.created_at))}${carga.enviado_por ? ` by ${esc(carga.enviado_por)}` : ""}</span>`
-      : `<span>No Position uploaded yet</span>`}<span class="muted">· all figures in 60 kg bags</span></div>
-    ${ctx.gerente ? `<button class="btn btn-primary" id="posUpload">${icon("upload")}<span>Upload Position</span></button>` : ""}
+      ? `<span>Position as of <strong>${esc(fmtData(carga.data_ref))}</strong> · ${esc(quando)}</span>`
+      : `<span>${api ? "No Digisul update yet" : "No Position uploaded yet"}</span>`}<span class="muted">· all figures in 60 kg bags</span></div>
+    ${ctx.gerente ? `<div class="pos-acoes">
+      ${segmentos("posFonte", Object.entries(NOME_FONTE).map(([k, n]) => [k, k === ctx.oficial ? `${n} · official` : n]), ctx.fonte)}
+      <button class="btn" id="posSync" title="Fetch Digisul and recalculate now">${icon("refresh")}<span>Update now</span></button>
+      <button class="btn btn-primary" id="posUpload">${icon("upload")}<span>Upload Position</span></button>
+    </div>` : ""}
   </div>`;
 }
 
-function ligarUpload(alvo, ctx) {
+function ligarTopo(alvo, ctx) {
+  ligarSegmentos(alvo, "posFonte", (f) => { guardarFonteVista(f); ctx.recarregar(); });
+  $("#posSync", alvo)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget;
+    b.disabled = true;
+    b.querySelector("span").textContent = "Updating…";
+    try {
+      const r = await ctx.api.sincronizarPosition();
+      toast(`Position of ${fmtData(r.data_ref)} updated from Digisul.`);
+      (r.avisos ?? []).forEach((a) => toast(a, "erro"));
+      guardarFonteVista("api");
+      ctx.recarregar();
+    } catch (e) {
+      toast(e.message, "erro");
+      b.disabled = false;
+      b.querySelector("span").textContent = "Update now";
+    }
+  });
   $("#posUpload", alvo)?.addEventListener("click", () => modal({
     titulo: "Upload Position",
     botao: "Read and publish",
     corpo: `<p class="muted">Choose the daily <strong>Brascof Position Overview</strong> spreadsheet (.xlsm or .xlsx).
       It is read in your browser — macros are never run — and the Position views are updated for everyone with access.</p>
+      <p class="muted">Futures are not in Digisul: when only the futures changed, a file with just the <strong>OpenFutures</strong> sheet is enough.</p>
       <label class="campo"><span>Spreadsheet *</span><input type="file" name="arquivo" accept=".xlsm,.xlsx" required></label>`,
     async onSubmit(f) {
       const file = f.arquivo.files[0];
       if (!file) throw new Error("Please choose the spreadsheet.");
       const lida = await lerPlanilhaPosition(file);
+      if (lida.futuros) {
+        // só a aba OpenFutures: troca os futuros do modelo e recalcula pela API
+        const modelo = await ctx.api.positionModelo();
+        if (!modelo) throw new Error("Upload the full Position spreadsheet once before sending only the futures.");
+        await ctx.api.salvarPositionModelo({ ...modelo, futuros: lida.futuros }, file.name);
+        toast(`Futures updated: ${fmtN(lida.futuros.length)} trades. Recalculating from Digisul…`);
+        await ctx.api.sincronizarPosition().then(() => toast("Position updated from Digisul.")).catch((e) => toast(e.message, "erro"));
+        ctx.recarregar();
+        return;
+      }
       // contratos vencidos ou a vencer em 15 dias viram notificação para quem vê o Open Contracts
-      await ctx.api.publicarPosition({ data_ref: lida.data_ref, resumo: lida.resumo, detalhes: lida.detalhes, nome_arquivo: file.name, alerta: textoAlertaFixacao(lida.detalhes) });
+      await ctx.api.publicarPosition({ data_ref: lida.data_ref, resumo: lida.resumo, detalhes: lida.detalhes, nome_arquivo: file.name, alerta: textoAlertaFixacao(lida.detalhes, fmtN) });
       toast(`Position of ${fmtData(lida.data_ref)} published.`);
       lida.avisos.forEach((a) => toast(a, "erro"));
+      // fórmulas e futuros desta planilha passam a valer para a atualização pelo Digisul
+      if (lida.modelo) {
+        try {
+          await ctx.api.salvarPositionModelo(lida.modelo, file.name);
+          ctx.api.sincronizarPosition().catch(() => { /* o agendamento tenta de novo */ });
+        } catch (e) { toast(e.message, "erro"); }
+      }
       ctx.recarregar();
     },
   }));
@@ -440,7 +301,12 @@ function ligarUpload(alvo, ctx) {
 async function painelOverview(alvo, carga, ctx) {
   const { termm, variacao, kpis } = carga.resumo;
   let grupo = "arabica";
-  const historico = await ctx.api.positionHistorico().catch(() => []);
+  // quem publica vê também a outra fonte, para conferir planilha × API
+  const [historico, outra, modeloInfo] = await Promise.all([
+    ctx.api.positionHistorico().catch(() => []),
+    ctx.gerente ? ctx.api.positionUltima(ctx.fonte === "api" ? "planilha" : "api").catch(() => null) : null,
+    ctx.gerente ? ctx.api.positionModeloInfo().catch(() => null) : null,
+  ]);
 
   const desenhar = async () => {
     limparGraficos();
@@ -507,9 +373,11 @@ async function painelOverview(alvo, carga, ctx) {
         ${hist.length >= 2 ? `<div class="pos-grafico pos-grafico-sm"><canvas id="gHist" role="img" aria-label="Net outright over time"></canvas></div>`
           : `<p class="muted">The history builds up with each daily upload — this chart appears from the second Position onwards.</p>`}
       </section>
-    </div>`;
+    </div>
+    ${ctx.gerente ? cardComparacao(grupo, carga, outra, modeloInfo, ctx) : ""}`;
 
     $$("[data-grupo]", alvo).forEach((el) => el.addEventListener("click", () => { grupo = el.dataset.grupo; desenhar(); }));
+    $("#posOficial", alvo)?.addEventListener("click", () => trocarFonteOficial(ctx));
     if (b.meses.length) {
       await graficoBarrasLinha($("#gMes", alvo), {
         meses: b.meses.map((m) => m.mes),
@@ -526,6 +394,51 @@ async function painelOverview(alvo, carga, ctx) {
     }
   };
   await desenhar();
+}
+
+// Planilha × API lado a lado (fase em paralelo, antes de desligar o upload diário)
+const LINHAS_COMPARACAO = [["purchases", "Purchases"], ["inventory", "Inventory"], ["exp_sales", "Exp sales"], ["int_sales", "Int sales"],
+  ["futures", "Futures"], ["net_diff", "Net diff position"], ["net_outright", "Net outright"]];
+
+function cardComparacao(grupo, carga, outra, info, ctx) {
+  const [pl, ap] = ctx.fonte === "api" ? [outra, carga] : [carga, outra];
+  const total = (c, k) => c?.resumo?.termm?.[grupo]?.total?.[k] ?? null;
+  const quando = (c) => (c ? `${fmtData(c.data_ref)} · ${tempoRelativo(c.created_at)}` : "—");
+  const outraFonte = ctx.oficial === "api" ? "planilha" : "api";
+  return `<section class="pos-card">
+    <div class="pos-card-h"><h2>Spreadsheet × Digisul API · ${NOME_GRUPO[grupo]}</h2>
+      <p class="muted">Check while both sources run in parallel. Differences come from what changed in Digisul between the spreadsheet extraction and the API update.</p></div>
+    ${pl && ap ? `<div class="tabela-wrap"><table class="tabela tabela-num">
+      <thead><tr><th></th><th>Spreadsheet <span class="muted">${esc(quando(pl))}</span></th><th>Digisul API <span class="muted">${esc(quando(ap))}</span></th><th>Difference</th></tr></thead>
+      <tbody>${LINHAS_COMPARACAO.map(([k, rot]) => {
+        const a = total(pl, k), b = total(ap, k);
+        return `<tr><td>${rot}</td>${celNum(a)}${celNum(b)}${celNum(a != null && b != null ? arred(b - a) : null)}</tr>`;
+      }).join("")}</tbody>
+    </table></div>`
+      : `<p class="muted">${ap ? "No spreadsheet uploaded yet." : "No Digisul update yet — click “Update now”."}</p>`}
+    <p class="muted pos-nota">${info
+      ? `Formulas and futures (${fmtN(info.futuros)} trades) from ${esc(info.nome_arquivo ?? "—")}, uploaded ${esc(tempoRelativo(info.atualizado_em))}${info.enviado_por ? ` by ${esc(info.enviado_por)}` : ""}.`
+      : "The spreadsheet formulas and futures have not been saved yet — upload the full spreadsheet once."}</p>
+    <p class="muted pos-nota">Official source: <strong>${NOME_FONTE[ctx.oficial]}</strong></p>
+    ${ctx.admin ? `<div><button type="button" class="btn" id="posOficial">${icon("check")}<span>Make ${NOME_FONTE[outraFonte]} the official source</span></button></div>` : ""}
+  </section>`;
+}
+
+function trocarFonteOficial(ctx) {
+  const nova = ctx.oficial === "api" ? "planilha" : "api";
+  modal({
+    titulo: "Official Position source",
+    botao: `Use ${NOME_FONTE[nova]}`,
+    corpo: `<p>Everyone will see the Position from <strong>${NOME_FONTE[nova]}</strong>${nova === "api"
+      ? ", updated every 2 hours on business days. Keep uploading the spreadsheet (or just the OpenFutures sheet) when futures change."
+      : ". The views will only change when the spreadsheet is uploaded."}</p>`,
+    async onSubmit() {
+      await ctx.api.definirFontePosition(nova);
+      guardarFonteVista(nova);
+      toast(`Official source: ${NOME_FONTE[nova]}.`);
+      ctx.recarregar();
+    },
+  });
 }
 
 function linhaTermM(rotulo, m, total = false) {
@@ -594,56 +507,6 @@ async function painelFisica(alvo, carga) {
 }
 
 // ---------------------------------------------------------------- Contracts
-// Prazo de fixação = First Notice Day (FND) estimado do mês da bolsa:
-// N dias úteis antes do 1º dia útil do mês (feriados não considerados).
-// NY (Coffee "C"): 7 dias úteis · Londres (Robusta): 4 · outras bolsas: 1º dia útil do mês.
-const DIAS_FND = { NY: 7, "NEW YORK": 7, LONDRES: 4, LONDON: 4, LDN: 4 };
-const ALERTA_DIAS = 15, AVISO_DIAS = 30;
-
-function primeiroAviso(mesIso, bolsa) {
-  const d = new Date(`${mesIso.slice(0, 7)}-01T12:00:00Z`);
-  const util = () => d.getUTCDay() % 6 !== 0;
-  while (!util()) d.setUTCDate(d.getUTCDate() + 1);
-  for (let n = DIAS_FND[norm(bolsa)] ?? 0; n > 0;) { d.setUTCDate(d.getUTCDate() - 1); if (util()) n--; }
-  return d.toISOString().slice(0, 10);
-}
-const hojeIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-const diasAte = (iso) => Math.round((new Date(iso + "T12:00:00") - new Date(hojeIso() + "T12:00:00")) / 864e5);
-
-// mês da bolsa de cada tipo de contrato
-const CAMPO_MES = { purchases: "mes_bolsa", expsales: "fixar_mes", intsales: "fixar_mes" };
-
-// Situação de fixação de um contrato com lotes a fixar (null quando não há o que fixar)
-function prazoFixacao(r, tipo) {
-  if (!(r.lotes_a_fixar > 0) || !r[CAMPO_MES[tipo]]) return null;
-  const data = primeiroAviso(r[CAMPO_MES[tipo]], r.bolsa);
-  const dias = diasAte(data);
-  return { data, dias, nivel: dias < 0 ? "vencido" : dias <= ALERTA_DIAS ? "urgente" : dias <= AVISO_DIAS ? "breve" : "ok" };
-}
-
-// Contratos/lotes vencidos, em até 15 e em até 30 dias, somando compras e vendas
-export function alertasFixacao(detalhes) {
-  const r = { vencido: { c: 0, l: 0, tipos: {} }, urgente: { c: 0, l: 0, tipos: {} }, breve: { c: 0, l: 0, tipos: {} } };
-  for (const tipo of Object.keys(CAMPO_MES)) {
-    for (const linha of detalhes[tipo] ?? []) {
-      const p = prazoFixacao(linha, tipo);
-      if (!p || !r[p.nivel]) continue;
-      r[p.nivel].c++; r[p.nivel].l += linha.lotes_a_fixar;
-      r[p.nivel].tipos[tipo] = (r[p.nivel].tipos[tipo] ?? 0) + 1;
-    }
-  }
-  return r;
-}
-
-// Texto da notificação do upload (null quando não há nada vencido ou em até 15 dias)
-export function textoAlertaFixacao(detalhes) {
-  const a = alertasFixacao(detalhes);
-  const partes = [];
-  if (a.vencido.c) partes.push(`${a.vencido.c} ${a.vencido.c === 1 ? "contract" : "contracts"} (${fmtLotes(a.vencido.l)} lots) past the first notice day`);
-  if (a.urgente.c) partes.push(`${a.urgente.c} ${a.urgente.c === 1 ? "contract" : "contracts"} (${fmtLotes(a.urgente.l)} lots) due within ${ALERTA_DIAS} days`);
-  return partes.length ? `Lots to fix: ${partes.join(" · ")}` : null;
-}
-
 // lotes: inteiro quando a fração é desprezível (somas como 2611.97 viram 2,612)
 const contratos = (n) => `${fmtN(n)} ${n === 1 ? "contract" : "contracts"}`;
 // Diferencial das vendas de exportação: no sistema o do Conilon vem multiplicado
@@ -895,34 +758,6 @@ function clientePadronizado(r) {
     if (typeof teste === "function" ? teste(c) : teste.some((t) => c.includes(t))) return nome;
   }
   return bruto;
-}
-
-// ---------------------------------------------------------------- PTAX do Banco Central
-// Receita em R$ das vendas = receita US$ × PTAX de compra do dia útil anterior ao BL
-// (D-1, a mesma referência da tela de Payments). Buscada uma vez, no upload.
-const PTAX_URL = (ini, fim) => "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo("
-  + `dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@dataInicial='${ini}'&@dataFinalCotacao='${fim}'`
-  + "&$top=10000&$format=json&$select=cotacaoCompra,dataHoraCotacao";
-const dataBcb = (iso) => `${iso.slice(5, 7)}-${iso.slice(8, 10)}-${iso.slice(0, 4)}`;
-
-async function aplicarPtax(vendas) {
-  const datas = vendas.map((r) => r.data_bl).filter(Boolean).sort();
-  if (!datas.length) return 0;
-  const ini = new Date(`${datas[0]}T12:00:00Z`);
-  ini.setUTCDate(ini.getUTCDate() - 10);
-  const res = await fetch(PTAX_URL(dataBcb(ini.toISOString().slice(0, 10)), dataBcb(hojeIso())));
-  if (!res.ok) throw new Error(`PTAX ${res.status}`);
-  // uma cotação de fechamento por dia, em ordem de data
-  const cot = (await res.json()).value.map((c) => [c.dataHoraCotacao.slice(0, 10), c.cotacaoCompra]).sort((a, b) => a[0].localeCompare(b[0]));
-  let semPtax = 0;
-  for (const r of vendas) {
-    if (!r.data_bl) continue;
-    // última cotação estritamente antes da data do BL (busca binária)
-    let lo = 0, hi = cot.length - 1, achou = -1;
-    while (lo <= hi) { const m = (lo + hi) >> 1; if (cot[m][0] < r.data_bl) { achou = m; lo = m + 1; } else hi = m - 1; }
-    if (achou >= 0) { r.ptax = cot[achou][1]; r.ptax_data = cot[achou][0]; } else semPtax++;
-  }
-  return semPtax;
 }
 
 // ---------------------------------------------------------------- agregação
