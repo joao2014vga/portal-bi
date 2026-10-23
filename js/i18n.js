@@ -199,6 +199,11 @@ const PT = {
   "The history builds up with each daily upload — this chart appears from the second Position onwards.":
     "O histórico se forma a cada envio diário — este gráfico aparece a partir da segunda posição.",
   "⊞ opens the fixed and PTBF breakdown of purchases and sales.": "⊞ abre o detalhamento de fixado e PTBF das compras e das vendas.",
+  "By exchange month": "Por mês da bolsa", "Exchange month": "Mês da bolsa", "Sales (export + domestic)": "Vendas (exportação + internas)",
+  "Net to fix": "Saldo a fixar", "Export": "Exportação", "Domestic": "Interna",
+  "No open contracts for this exchange.": "Nenhum contrato em aberto nesta bolsa.",
+  "Open contracts by exchange month (purchases by \"Mês Bolsa\", sales by \"Fixar Mês\"). Sales are shown as positive quantities. Futures: net lots of the TermM (negative = sold). Net to fix = purchases to fix − sales to fix. Past months only appear while they still have lots to fix (marked in red).":
+    "Contratos em aberto por mês da bolsa (compras pelo \"Mês Bolsa\", vendas pelo \"Fixar Mês\"). Vendas aparecem como quantidade positiva. Futuros: lotes líquidos da TermM (negativo = vendido). Saldo a fixar = compras a fixar − vendas a fixar. Meses já vencidos só aparecem enquanto tiverem lotes a fixar (marcados em vermelho).",
   "Show breakdown": "Mostrar detalhamento", "Hide breakdown": "Ocultar detalhamento", "vs previous": "vs anterior",
 
   // ---------------------------------------------------------------- Estufados / aguardando embarque

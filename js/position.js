@@ -739,10 +739,19 @@ async function painelContratos(alvo, carga, ctx) {
   const logistica = await ctx.api.positionDetalheApi?.(["logistica"])
     .then((d) => (d.logistica ? d.logistica.filter((r) => r.prev_carga && r.prev_carga < hoje) : null)).catch(() => null);
   let aba = "purchases", busca = "", especie = "", qualidade = "", mes = "", fix = "", ordem = null;
+  let bolsaSel = "NY", unidade = "lotes";
   const abas = () => [...Object.entries(TABELAS).map(([k, d]) => [k, `${d.titulo} (${(detalhes[k] ?? []).length})`]),
+    ["bolsa", "By exchange month"],
     ...(logistica ? [["logistica", `Stuffed, pending stock exit (${logistica.length})`]] : [])];
 
   const desenhar = () => {
+    if (aba === "bolsa") {
+      alvo.innerHTML = painelBolsa(detalhes, carga.resumo.termm, { bolsa: bolsaSel, unidade }, abas());
+      ligarSegmentos(alvo, "segAba", (k) => { aba = k; qualidade = ""; busca = ""; mes = ""; fix = ""; ordem = null; desenhar(); });
+      ligarSegmentos(alvo, "segBolsaMes", (k) => { bolsaSel = k; desenhar(); });
+      ligarSegmentos(alvo, "segUnidade", (k) => { unidade = k; desenhar(); });
+      return;
+    }
     if (aba === "logistica") {
       alvo.innerHTML = painelLogistica(logistica, { busca, especie, ordem }, abas());
       ligarSegmentos(alvo, "segAba", (k) => { aba = k; qualidade = ""; busca = ""; mes = ""; fix = ""; ordem = null; desenhar(); });
@@ -849,6 +858,70 @@ async function painelContratos(alvo, carga, ctx) {
     }));
   };
   desenhar();
+}
+
+// Por mês da bolsa (Z26, H27…): comprado e vendido, fixado e a fixar, dos contratos em
+// aberto, mais os futuros da TermM. Em lotes (padrão) ou em sacas.
+const SACAS_POR_LOTE = { NY: 283.5, LONDRES: 500 / 3 };
+const COD_MES_BOLSA = "FGHJKMNQUVXZ";
+const codigoBolsa = (ym) => `${COD_MES_BOLSA[Number(ym.slice(5, 7)) - 1]}${ym.slice(2, 4)}`;
+
+function painelBolsa(detalhes, termm, { bolsa, unidade }, abas) {
+  const lote = SACAS_POR_LOTE[bolsa];
+  const emLotes = unidade === "lotes";
+  const meses = new Map();
+  const linha = (ym) => meses.get(ym) ?? meses.set(ym, { ym, cT: 0, cF: 0, cA: 0, eT: 0, eF: 0, eA: 0, iT: 0, iF: 0, iA: 0, fut: 0 }).get(ym);
+  // compras (c), vendas de exportação (e) e internas (i): total, fixado, a fixar
+  for (const [tipo, p] of [["purchases", "c"], ["expsales", "e"], ["intsales", "i"]]) {
+    for (const r of detalhes[tipo] ?? []) {
+      const m = r[CAMPO_MES[tipo]];
+      if (norm(r.bolsa) !== bolsa || !m) continue;
+      const l = linha(m.slice(0, 7));
+      if (emLotes) {
+        l[p + "T"] += r.lotes ?? 0; l[p + "F"] += r.lotes_fixados ?? 0; l[p + "A"] += r.lotes_a_fixar ?? 0;
+      } else {
+        const aFixar = r.a_fixar ?? 0;
+        l[p + "T"] += r.sacas ?? 0; l[p + "F"] += (r.sacas ?? 0) - aFixar; l[p + "A"] += aFixar;
+      }
+    }
+  }
+  // futuros: coluna FUTURES da TermM (sacas; NY = Arábica, Londres = Robusta)
+  for (const m of termm?.[bolsa === "NY" ? "arabica" : "robusta"]?.meses ?? []) {
+    if (!m.futures) continue;
+    linha(m.mes.slice(0, 7)).fut += emLotes ? m.futures / lote : m.futures;
+  }
+  // meses já vencidos só aparecem se ainda houver o que fixar (aí ficam marcados)
+  const mesAtual = hojeIso().slice(0, 7);
+  const temAFixar = (l) => Math.abs(l.cA) > 0.05 || Math.abs(l.eA + l.iA) > 0.05;
+  const lista = [...meses.values()].filter((l) => l.ym >= mesAtual || temAFixar(l)).sort((a, b) => a.ym.localeCompare(b.ym));
+  const tot = lista.reduce((t, l) => { for (const k of Object.keys(t)) t[k] += l[k]; return t; },
+    { cT: 0, cF: 0, cA: 0, eT: 0, eF: 0, eA: 0, iT: 0, iF: 0, iA: 0, fut: 0 });
+  const f = (v) => (emLotes ? fmtLotes(v) : fmtN(v));
+  const c = (v, forte = false) => `<td class="num ${forte ? "forte" : ""}">${Math.abs(v) < 0.05 ? `<span class="zero">–</span>` : f(v)}</td>`;
+  const vendas = (l, k) => l["e" + k] + l["i" + k];
+  const corpo = (l, total = false) => {
+    const aFixar = l.cA - vendas(l, "A");
+    return `${c(l.cT, total)}${c(l.cF, total)}${c(l.cA, total)}
+      <td class="num ${total ? "forte" : ""}" title="${esc(`${tr("Export")}: ${f(l.eT)} · ${tr("Domestic")}: ${f(l.iT)}`)}">${Math.abs(vendas(l, "T")) < 0.05 ? `<span class="zero">–</span>` : f(vendas(l, "T"))}</td>
+      ${c(vendas(l, "F"), total)}${c(vendas(l, "A"), total)}${c(l.fut, total)}${c(aFixar, true)}`;
+  };
+  return `
+    <div class="pos-filtros">
+      ${segmentos("segAba", abas, "bolsa")}
+      ${segmentos("segBolsaMes", [["NY", "NY (Arabica)"], ["LONDRES", "London (Robusta)"]], bolsa)}
+      ${segmentos("segUnidade", [["lotes", "Lots"], ["sacas", "Bags"]], unidade)}
+    </div>
+    <p class="muted pos-nota">${icon("info")} <span>Open contracts by exchange month (purchases by "Mês Bolsa", sales by "Fixar Mês"). Sales are shown as positive quantities. Futures: net lots of the TermM (negative = sold). Net to fix = purchases to fix − sales to fix. Past months only appear while they still have lots to fix (marked in red).</span></p>
+    <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+      <thead>
+        <tr><th rowspan="2">Exchange month</th><th colspan="3">Purchases</th><th colspan="3">Sales (export + domestic)</th>
+          <th rowspan="2">Futures</th><th rowspan="2">Net to fix</th></tr>
+        <tr><th>Total</th><th>Fixed</th><th>To fix</th><th>Total</th><th>Fixed</th><th>To fix</th></tr>
+      </thead>
+      <tbody>${lista.length ? lista.map((l) => `<tr class="${l.ym < mesAtual ? "linha-alerta" : ""}"><td><strong>${codigoBolsa(l.ym)}</strong> <span class="muted">${esc(fmtMes(l.ym + "-01"))}</span></td>${corpo(l)}</tr>`).join("")
+        : `<tr><td colspan="9" class="vazio-td">No open contracts for this exchange.</td></tr>`}</tbody>
+      ${lista.length ? `<tfoot><tr class="total"><th scope="row">Total</th>${corpo(tot, true)}</tr></tfoot>` : ""}
+    </table></div>`;
 }
 
 // Estufado e pendente de saída do estoque (regra da área de exportação): Prev. Carga
