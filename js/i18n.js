@@ -199,7 +199,7 @@ const PT = {
   "The history builds up with each daily upload — this chart appears from the second Position onwards.":
     "O histórico se forma a cada envio diário — este gráfico aparece a partir da segunda posição.",
   "⊞ opens the fixed and PTBF breakdown of purchases and sales.": "⊞ abre o detalhamento de fixado e PTBF das compras e das vendas.",
-  "Show breakdown": "Mostrar detalhamento", "Hide breakdown": "Ocultar detalhamento",
+  "Show breakdown": "Mostrar detalhamento", "Hide breakdown": "Ocultar detalhamento", "vs previous": "vs anterior",
 
   // ---------------------------------------------------------------- Estufados / aguardando embarque
   "Stuffed, pending stock exit ({n})": "Estufado, pendente de saída do estoque ({n})", "Days": "Dias",
@@ -438,6 +438,7 @@ const ESPECIAIS = [
 
 // número com separadores; não engole a pontuação do fim ("5,1224." → "5,1224")
 const RE_NUM = /[-+−]?\d(?:[\d.,]*\d)?/g;
+const RE_NUM_PAR = /\([$R]*\$?\d(?:[\d.,]*\d)?[%kKM]?\)|[-+−]?\d(?:[\d.,]*\d)?/g;
 
 // Tradução de um texto solto da tela; null quando não há tradução
 function traduzirTexto(bruto) {
@@ -473,6 +474,10 @@ function traduzirTexto(bruto) {
   if (nums) {
     const chave = s.replace(RE_NUM, "{n}");
     if (PT[chave] != null) { let i = 0; return PT[chave].replace(/\{n\}/g, () => nums[i++] ?? ""); }
+    // negativo no padrão do Position, "(1.234)": o parêntese faz parte do número
+    const negs = s.match(RE_NUM_PAR);
+    const chaveNeg = s.replace(RE_NUM_PAR, "{n}");
+    if (chaveNeg !== chave && PT[chaveNeg] != null) { let i = 0; return PT[chaveNeg].replace(/\{n\}/g, () => negs[i++] ?? ""); }
   }
   return null;
 }

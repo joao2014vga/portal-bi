@@ -87,13 +87,36 @@ const hojeIso = () => { const d = new Date(); return `${d.getFullYear()}-${Strin
 // =====================================================================
 // FORMATAÇÃO E GRÁFICOS
 // =====================================================================
-const fmtN = (v, dec = 0) => (v == null ? "—" : Number(v).toLocaleString(LOCALE, { minimumFractionDigits: dec, maximumFractionDigits: dec }));
+// Padrão do portal: negativo entre parênteses, "(1.234)" — e em vermelho (marcarNegativos).
+// `suf` entra dentro do parêntese: "(12%)", "(3,5k)".
+const fmtN = (v, dec = 0, suf = "") => {
+  if (v == null) return "—";
+  const txt = Math.abs(Number(v)).toLocaleString(LOCALE, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  // -0,4 arredondado para 0 não é negativo
+  return Number(v) < 0 && /[1-9]/.test(txt) ? `(${txt}${suf})` : `${txt}${suf}`;
+};
 const fmtSinal = (v) => (v > 0 ? "+" : "") + fmtN(v);
+
+// Pinta de vermelho os números negativos "(…)" de células, indicadores e variações.
+// Roda sozinho a cada redesenho do painel (MutationObserver em renderPosition).
+const RE_NEG = /^[▲▼]?\s*\([^()]*\d[^()]*\)$/;
+function marcarNegativos(raiz) {
+  for (const el of raiz.querySelectorAll("td, th, .pos-kpi-v, .pos-kpi-s span, .pos-kpi-d b, .yoy, .cel-barra b")) {
+    if (el.children.length && !el.matches(".yoy")) continue;
+    el.classList.toggle("neg", RE_NEG.test(el.textContent.trim()));
+  }
+}
+function vigiarNegativos(alvo) {
+  if (alvo._vigiaNeg) return;
+  let quadro = 0;
+  alvo._vigiaNeg = new MutationObserver(() => { cancelAnimationFrame(quadro); quadro = requestAnimationFrame(() => marcarNegativos(alvo)); });
+  alvo._vigiaNeg.observe(alvo, { childList: true, subtree: true, characterData: true });
+}
 // mês curto: "Dec-26" em inglês, "Dez/26" em português
 const MESES_CURTOS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const fmtMes = (iso) => (iso ? `${tr(MESES_CURTOS[Number(iso.slice(5, 7)) - 1])}${IDIOMA === "pt" ? "/" : "-"}${iso.slice(2, 4)}` : "—");
 const fmtData = (iso) => (iso ? dataBR(iso + "T12:00:00") : "—");
-const fmtK = (v) => (Math.abs(v) >= 1000 ? `${fmtN(v / 1000, Math.abs(v) >= 10000 ? 0 : 1)}k` : fmtN(v));
+const fmtK = (v) => (Math.abs(v) >= 1000 ? fmtN(v / 1000, Math.abs(v) >= 10000 ? 0 : 1, "k") : fmtN(v));
 
 const NOME_GRUPO = { arabica: "Arabica", robusta: "Robusta", exportable: "Exportable", lowgrade: "Low Grade" };
 
@@ -158,6 +181,7 @@ const NOME_FONTE = { planilha: "Spreadsheet", api: "Digisul API" };
 
 export async function renderPosition(link, alvo, ctx) {
   limparGraficos();
+  vigiarNegativos(alvo);
   alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading Position…</div>`;
   let carga, oficial, fonte;
   try {
@@ -296,8 +320,8 @@ async function painelOverview(alvo, carga, ctx) {
       return `<button type="button" class="pos-kpi ${k === grupo ? "on" : ""}" data-grupo="${k}" aria-pressed="${k === grupo}">
         <span class="pos-kpi-t">${NOME_GRUPO[k]} · net outright</span>
         <span class="pos-kpi-v">${fmtSinal(kpis[k].outright)}</span>
-        <span class="pos-kpi-s">Net diff position ${fmtSinal(kpis[k].diff)}</span>
-        ${delta != null ? `<span class="pos-kpi-d">${delta === 0 ? "No change" : `${delta > 0 ? "▲" : "▼"} ${fmtSinal(delta)}`} vs previous</span>` : ""}
+        <span class="pos-kpi-s">Net diff position <span>${fmtSinal(kpis[k].diff)}</span></span>
+        ${delta != null ? `<span class="pos-kpi-d">${delta === 0 ? "No change vs previous" : `<b>${delta > 0 ? "▲" : "▼"} ${fmtSinal(delta)}</b> vs previous`}</span>` : ""}
       </button>`;
     }).join("")}</div>
 
@@ -451,7 +475,7 @@ const NOME_COMP = { inventory: "Inventory", purchases: "Purchases", exp_sales: "
 const MESES_LONGOS = Array.from({ length: 12 }, (_, i) => new Date(2000, i, 1).toLocaleString(LOCALE, { month: "long" }).toUpperCase());
 const mesLongo = (iso) => `${MESES_LONGOS[Number(iso.slice(5, 7)) - 1]}-${iso.slice(2, 4)}`;
 // número como no Power BI: negativo entre parênteses, zero vazio
-const numPbi = (v) => (Math.abs(v) < 0.5 ? "" : v < 0 ? `(${fmtN(-v)})` : fmtN(v));
+const numPbi = (v) => (Math.abs(v) < 0.5 ? "" : fmtN(v));
 
 // grupos a partir do cabeçalho da planilha: qualidades seguidas do nome do grupo (… BC3, FC, BC4 …)
 function gruposDaPlanilha(colunas, temQualidade) {
@@ -972,8 +996,9 @@ const media = (a, campo) => (a?.[campo + "Sacas"] ? a[campo + "Peso"] / a[campo 
 const ptaxMedia = (a) => (a?.brlUsd ? a.brl / a.brlUsd : null);
 
 const fmtDin = (v, moeda = "$") => {
-  const a = Math.abs(v), s = v < 0 ? "-" : "";
-  return a >= 1e6 ? `${s}${moeda}${fmtN(a / 1e6, 2)}M` : a >= 1e3 ? `${s}${moeda}${fmtN(a / 1e3, 1)}K` : `${s}${moeda}${fmtN(a)}`;
+  const a = Math.abs(v);
+  const txt = a >= 1e6 ? `${moeda}${fmtN(a / 1e6, 2)}M` : a >= 1e3 ? `${moeda}${fmtN(a / 1e3, 1)}K` : `${moeda}${fmtN(a)}`;
+  return v < 0 ? `(${txt})` : txt;
 };
 // variação contra o ano anterior: % para volumes e valores, diferença absoluta para preços/diferenciais
 function yoy(atual, ant, { abs = false, dec = 2 } = {}) {
@@ -981,12 +1006,12 @@ function yoy(atual, ant, { abs = false, dec = 2 } = {}) {
   const d = atual - ant;
   if (Math.abs(d) < 1e-9) return `<span class="yoy">= 0</span>`;
   const seta = d > 0 ? "▲" : "▼";
-  const txt = abs ? `${d > 0 ? "+" : ""}${fmtN(d, dec)}` : `${d > 0 ? "+" : ""}${fmtN((d / Math.abs(ant)) * 100)}%`;
+  const txt = abs ? `${d > 0 ? "+" : ""}${fmtN(d, dec)}` : `${d > 0 ? "+" : ""}${fmtN((d / Math.abs(ant)) * 100, 0, "%")}`;
   return `<span class="yoy">${seta} ${txt}</span>`;
 }
 const barra = (v, max) => `<span class="cel-barra"><i style="width:${max ? Math.max(0, Math.min(100, (v / max) * 100)) : 0}%"></i><b>${fmtN(v)}</b></span>`;
 const fmtSinalDec = (v) => (v > 0 ? "+" : "") + fmtN(v, 2);
-const pct = (v, base) => (base ? `${fmtN((v / base) * 100, 1)}%` : "—");
+const pct = (v, base) => (base ? fmtN((v / base) * 100, 1, "%") : "—");
 
 // barras agrupadas: safra escolhida (série 1) × safra anterior (cinza), um eixo em sacas
 async function graficoSafras(canvas, { rotulos, atual, anterior, rotAtual, rotAnterior }) {

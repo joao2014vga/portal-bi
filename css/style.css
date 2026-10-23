@@ -369,6 +369,9 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-data .ic { width: 16px; height: 16px; color: var(--texto-3); }
 .pos-data strong { color: var(--texto); }
 .pos-acoes { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* padrão: número negativo entre parênteses e em vermelho (marcarNegativos) */
+.pos .neg { color: var(--critico); }
+.pos-kpi-d b { font-weight: inherit; }
 .pos-filtros { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pos-filtros select { width: auto; height: 34px; }
 .pos-filtros .busca { width: 260px; max-width: 100%; }
