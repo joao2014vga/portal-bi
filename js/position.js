@@ -721,11 +721,14 @@ async function painelContratos(alvo, carga, ctx) {
   for (const r of detalhes.expsales ?? []) { r.diferencial = difExportacao(r); r.vlr_final = precoExportacao(r); }
   const temLotes = (detalhes.purchases ?? []).some((r) => "lotes_a_fixar" in r);
   const alertas = alertasFixacao(detalhes);
-  // estufados / aguardando embarque: vem da sincronização com o Digisul (null = ainda não há)
-  const logistica = await ctx.api.positionDetalheApi?.(["logistica"]).then((d) => d.logistica ?? null).catch(() => null);
+  // estufado e pendente de saída do estoque: Prev. Carga anterior a hoje e ainda com saldo
+  // (vem da sincronização com o Digisul; null = ainda não há)
+  const hoje = hojeIso();
+  const logistica = await ctx.api.positionDetalheApi?.(["logistica"])
+    .then((d) => (d.logistica ? d.logistica.filter((r) => r.prev_carga && r.prev_carga < hoje) : null)).catch(() => null);
   let aba = "purchases", busca = "", especie = "", qualidade = "", mes = "", fix = "", ordem = null;
   const abas = () => [...Object.entries(TABELAS).map(([k, d]) => [k, `${d.titulo} (${(detalhes[k] ?? []).length})`]),
-    ...(logistica ? [["logistica", `Stuffed / awaiting shipment (${logistica.length})`]] : [])];
+    ...(logistica ? [["logistica", `Stuffed, pending stock exit (${logistica.length})`]] : [])];
 
   const desenhar = () => {
     if (aba === "logistica") {
@@ -836,31 +839,33 @@ async function painelContratos(alvo, carga, ctx) {
   desenhar();
 }
 
-// Exportações estufadas ou com NF emitida e ainda sem saída no Digisul, pelo ETD
-// (saída do Brasil). ETD já passado sem saída = falta dar a saída no sistema.
+// Estufado e pendente de saída do estoque (regra da área de exportação): Prev. Carga
+// anterior a hoje e saldo ainda sem saída no Digisul. ETD já passado = o navio saiu e
+// falta dar a saída no sistema.
 const COLS_LOGISTICA = [["contrato", "Contract"], ["importador", "Importer"], ["padrao", "Quality"], ["especie", "Species"],
-  ["sacas", "Bags", "n"], ["_status", "Status"], ["cheio", "Full container", "d"], ["etd", "ETD", "d"], ["navio", "Vessel"],
-  ["estufagem", "Stuffing site"], ["terminal", "Terminal"], ["containers", "Containers", "n"]];
+  ["sacas", "Bags", "n"], ["prev_carga", "Est. loading", "d"], ["_dias", "Days", "n"], ["_status", "Status"], ["cheio", "Full container", "d"],
+  ["etd", "ETD", "d"], ["navio", "Vessel"], ["estufagem", "Stuffing site"], ["terminal", "Terminal"], ["containers", "Containers", "n"]];
 
 function painelLogistica(todas, { busca, especie, ordem }, abas) {
   const hoje = hojeIso();
+  const dias = (iso) => Math.round((new Date(hoje + "T12:00:00Z") - new Date(iso + "T12:00:00Z")) / 864e5);
   const t = busca.toLowerCase();
   let linhas = todas.map((r) => ({
     ...r,
-    _status: r.cheio && r.cheio <= hoje ? "Stuffed" : "Invoice issued",
-    _nivel: r.etd && r.etd < hoje ? "vencido" : r.etd === hoje ? "hoje" : "",
+    _dias: dias(r.prev_carga),
+    _status: r.cheio && r.cheio <= hoje ? "Full container delivered" : r.nfs ? "Invoice issued" : "—",
+    _nivel: r.etd && r.etd < hoje ? "vencido" : "",
   })).filter((r) => (!especie || norm(r.especie) === especie)
     && (!t || COLS_LOGISTICA.some(([k]) => String(r[k] ?? "").toLowerCase().includes(t))));
-  const [k, dir] = ordem ?? ["etd", 1];
+  const [k, dir] = ordem ?? ["prev_carga", 1];
   linhas.sort((a, b) => {
     const x = a[k], y = b[k];
     if (x == null) return 1; if (y == null) return -1;
     return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), "en", { numeric: true })) * dir;
   });
   const soma = (rows) => rows.reduce((s, r) => s + (r.sacas ?? 0), 0);
-  const vencidos = linhas.filter((r) => r._nivel === "vencido"), hojeL = linhas.filter((r) => r._nivel === "hoje");
+  const vencidos = linhas.filter((r) => r._nivel === "vencido"), antigos = linhas.filter((r) => r._dias > 7);
   const arabica = linhas.filter((r) => norm(r.especie) === "ARABICA"), conilon = linhas.filter((r) => norm(r.especie) === "CONILON");
-  const estufados = linhas.filter((r) => r._status === "Stuffed");
   const celulaLog = (r, col, tipo) => {
     const v = r[col];
     if (col === "cheio" && v && r.etd && v > r.etd) {
@@ -881,13 +886,12 @@ function painelLogistica(todas, { busca, especie, ordem }, abas) {
         <option value="ARABICA" ${especie === "ARABICA" ? "selected" : ""}>Arabica</option><option value="CONILON" ${especie === "CONILON" ? "selected" : ""}>Conilon</option></select>
     </div>
     <div class="pos-kpis pos-kpis-fix">
-      ${tile("Awaiting shipment", `${fmtN(soma(linhas))} bags`, contratos(linhas.length))}
-      ${tile("Stuffed (full container delivered)", `${fmtN(soma(estufados))} bags`, contratos(estufados.length))}
+      ${tile("Pending stock exit", `${fmtN(soma(linhas))} bags`, contratos(linhas.length))}
+      ${tile("Loaded over 7 days ago", `${fmtN(soma(antigos))} bags`, contratos(antigos.length), antigos.length ? "pos-kpi-alerta" : "")}
       ${tile("ETD passed, no exit in Digisul", `${fmtN(soma(vencidos))} bags`, contratos(vencidos.length), vencidos.length ? "pos-kpi-critico" : "")}
-      ${tile("ETD today", `${fmtN(soma(hojeL))} bags`, contratos(hojeL.length), hojeL.length ? "pos-kpi-alerta" : "")}
       ${tile("Arabica · Conilon", `${fmtN(soma(arabica))} · ${fmtN(soma(conilon))}`, "bags")}
     </div>
-    <p class="muted pos-nota">${icon("info")} <span>Export contracts with bags still to ship in Digisul and a full container delivered or an export invoice issued, by ETD (departure from Brazil). From the Digisul API, updated every 2 hours.</span></p>
+    <p class="muted pos-nota">${icon("info")} <span>Export contracts with an estimated loading date before today and bags still without exit from stock in Digisul. From the Digisul API, updated every 2 hours.</span></p>
     <div class="tabela-wrap pos-tabela pos-contratos"><table class="tabela tabela-num">
       <thead><tr>${COLS_LOGISTICA.map(([c, rot, tipo]) => `<th class="${["n", "d"].includes(tipo) ? "num" : ""}"><button type="button" class="ordenar" data-ordem="${c}">${esc(rot)}${k === c && ordem ? (dir > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("")}</tr></thead>
       <tbody>${linhas.length ? linhas.map((r) => `<tr class="${r._nivel === "vencido" ? "linha-alerta" : ""}">${COLS_LOGISTICA.map(([c, , tipo]) => celulaLog(r, c, tipo)).join("")}</tr>`).join("")

@@ -567,17 +567,20 @@ function inventory(a) {
   };
 }
 
-// Exportações estufadas (contêiner cheio entregue) ou com nota fiscal de exportação
-// emitida que ainda têm saldo sem saída no Digisul — só existe pela API.
+// Exportações com Prev. Carga e saldo ainda sem saída no Digisul, com os dados de
+// embarque (contêiner, NF, ETD, navio) que só existem pela API. A tela mostra como
+// "estufado, pendente de saída do estoque" quando a Prev. Carga é anterior a hoje
+// (regra da área de exportação).
 const iso = (v) => { const s = data(v); return s == null ? null : serialIso(s); };
 export function logisticaDaApi(exportacao) {
   return (exportacao ?? []).map((a) => {
     const saldo = r2(z(a.Sacas) - z(a.Saida_sc) + z(a.Devolucao));
+    const prevCarga = iso(a["Prev Carga"]);
+    if (saldo <= 0.5 || !prevCarga) return null;
     const nfs = String(a.Notas_Fiscais ?? "").split(",").map((x) => x.trim()).filter(Boolean).length;
-    if (saldo <= 0.5 || !(t(a.DataEntregaCheio) || nfs)) return null;
     const lugar = (v) => t(String(v ?? "").replace(/\s*\|.*$/, ""));
     return {
-      contrato: t(a.Contrato), importador: t(a.Importador), padrao: t(a.Padrao), especie: t(a.Especie), sacas: saldo,
+      contrato: t(a.Contrato), importador: t(a.Importador), padrao: t(a.Padrao), especie: t(a.Especie), sacas: saldo, prev_carga: prevCarga,
       vazio: iso(a.DataRetiradaVazio), cheio: iso(a.DataEntregaCheio), etd: iso(a.Saida_Brasil), eta: iso(a.Chegada_Destino),
       dead_cafe: iso(a.Dead_Cafe), nfs, due: t(a.RE), navio: t(a.Navio), booking: t(a.Booking),
       estufagem: lugar(a.Local_de_Estufagem), terminal: lugar(a.Terminal_Embarque),
