@@ -840,22 +840,29 @@ async function painelContratos(alvo, carga, ctx) {
 }
 
 // Estufado e pendente de saída do estoque (regra da área de exportação): Prev. Carga
-// anterior a hoje e saldo ainda sem saída no Digisul. ETD já passado = o navio saiu e
-// falta dar a saída no sistema.
+// anterior a hoje e saldo ainda sem saída no Digisul. ETD anterior a ontem e sem
+// data de BL = "BL pending" (o navio já saiu e falta o BL).
 const COLS_LOGISTICA = [["contrato", "Contract"], ["importador", "Importer"], ["padrao", "Quality"], ["especie", "Species"],
   ["sacas", "Bags", "n"], ["prev_carga", "Est. loading", "d"], ["_dias", "Days", "n"], ["_status", "Status"], ["cheio", "Full container", "d"],
-  ["etd", "ETD", "d"], ["navio", "Vessel"], ["estufagem", "Stuffing site"], ["terminal", "Terminal"], ["containers", "Containers", "n"]];
+  ["etd", "ETD", "d"], ["data_bl", "BL date", "d"], ["navio", "Vessel"], ["estufagem", "Stuffing site"], ["terminal", "Terminal"],
+  ["containers", "Containers", "n"]];
 
 function painelLogistica(todas, { busca, especie, ordem }, abas) {
   const hoje = hojeIso();
+  const d = new Date(hoje + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 1);
+  const ontem = d.toISOString().slice(0, 10);
   const dias = (iso) => Math.round((new Date(hoje + "T12:00:00Z") - new Date(iso + "T12:00:00Z")) / 864e5);
   const t = busca.toLowerCase();
-  let linhas = todas.map((r) => ({
-    ...r,
-    _dias: dias(r.prev_carga),
-    _status: r.cheio && r.cheio <= hoje ? "Full container delivered" : r.nfs ? "Invoice issued" : "—",
-    _nivel: r.etd && r.etd < hoje ? "vencido" : "",
-  })).filter((r) => (!especie || norm(r.especie) === especie)
+  let linhas = todas.map((r) => {
+    const blPendente = !!r.etd && r.etd < ontem && !r.data_bl;
+    return {
+      ...r,
+      _dias: dias(r.prev_carga),
+      _status: blPendente ? "BL pending" : r.cheio && r.cheio <= hoje ? "Full container delivered" : r.nfs ? "Invoice issued" : "—",
+      _nivel: blPendente ? "vencido" : "",
+    };
+  }).filter((r) => (!especie || norm(r.especie) === especie)
     && (!t || COLS_LOGISTICA.some(([k]) => String(r[k] ?? "").toLowerCase().includes(t))));
   const [k, dir] = ordem ?? ["prev_carga", 1];
   linhas.sort((a, b) => {
@@ -873,7 +880,7 @@ function painelLogistica(todas, { busca, especie, ordem }, abas) {
     }
     if (tipo === "n") return `<td class="num">${v == null ? "—" : fmtN(v)}</td>`;
     if (tipo === "d") return `<td class="num">${esc(fmtData(v))}</td>`;
-    if (col === "_status") return `<td><span class="pill">${esc(v)}</span></td>`;
+    if (col === "_status") return `<td><span class="pill ${v === "BL pending" ? "pill-critico" : ""}">${esc(v)}</span></td>`;
     return `<td>${esc(v ?? "—")}</td>`;
   };
   const tile = (titulo, valor, sub, cls = "") => `<div class="pos-kpi pos-kpi-sm pos-kpi-est ${cls}">
@@ -888,7 +895,7 @@ function painelLogistica(todas, { busca, especie, ordem }, abas) {
     <div class="pos-kpis pos-kpis-fix">
       ${tile("Pending stock exit", `${fmtN(soma(linhas))} bags`, contratos(linhas.length))}
       ${tile("Loaded over 7 days ago", `${fmtN(soma(antigos))} bags`, contratos(antigos.length), antigos.length ? "pos-kpi-alerta" : "")}
-      ${tile("ETD passed, no exit in Digisul", `${fmtN(soma(vencidos))} bags`, contratos(vencidos.length), vencidos.length ? "pos-kpi-critico" : "")}
+      ${tile("BL pending (ETD before yesterday)", `${fmtN(soma(vencidos))} bags`, contratos(vencidos.length), vencidos.length ? "pos-kpi-critico" : "")}
       ${tile("Arabica · Conilon", `${fmtN(soma(arabica))} · ${fmtN(soma(conilon))}`, "bags")}
     </div>
     <p class="muted pos-nota">${icon("info")} <span>Export contracts with an estimated loading date before today and bags still without exit from stock in Digisul. From the Digisul API, updated every 2 hours.</span></p>

@@ -200,6 +200,7 @@ const PT = {
     "O histórico se forma a cada envio diário — este gráfico aparece a partir da segunda posição.",
   // ---------------------------------------------------------------- Estufados / aguardando embarque
   "Stuffed, pending stock exit ({n})": "Estufado, pendente de saída do estoque ({n})", "Days": "Dias",
+  "BL date": "Data do BL", "BL pending": "BL pending", "BL pending (ETD before yesterday)": "BL pending (ETD anterior a ontem)",
   "Full container delivered": "Contêiner cheio entregue", "Pending stock exit": "Pendente de saída do estoque",
   "Loaded over 7 days ago": "Carregado há mais de 7 dias",
   "Export contracts with an estimated loading date before today and bags still without exit from stock in Digisul. From the Digisul API, updated every 2 hours.":

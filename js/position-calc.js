@@ -582,6 +582,7 @@ export function logisticaDaApi(exportacao) {
     return {
       contrato: t(a.Contrato), importador: t(a.Importador), padrao: t(a.Padrao), especie: t(a.Especie), sacas: saldo, prev_carga: prevCarga,
       vazio: iso(a.DataRetiradaVazio), cheio: iso(a.DataEntregaCheio), etd: iso(a.Saida_Brasil), eta: iso(a.Chegada_Destino),
+      data_bl: iso(a.Data_BL), bl: t(a.BL),
       dead_cafe: iso(a.Dead_Cafe), nfs, due: t(a.RE), navio: t(a.Navio), booking: t(a.Booking),
       estufagem: lugar(a.Local_de_Estufagem), terminal: lugar(a.Terminal_Embarque),
       containers: n(a.Containers), tipo_container: t(a.Tipo_Container),
