@@ -198,6 +198,9 @@ const PT = {
   "Net outright over time": "Posição outright ao longo do tempo",
   "The history builds up with each daily upload — this chart appears from the second Position onwards.":
     "O histórico se forma a cada envio diário — este gráfico aparece a partir da segunda posição.",
+  "⊞ opens the fixed and PTBF breakdown of purchases and sales.": "⊞ abre o detalhamento de fixado e PTBF das compras e das vendas.",
+  "Show breakdown": "Mostrar detalhamento", "Hide breakdown": "Ocultar detalhamento",
+
   // ---------------------------------------------------------------- Estufados / aguardando embarque
   "Stuffed, pending stock exit ({n})": "Estufado, pendente de saída do estoque ({n})", "Days": "Dias",
   "BL date": "Data do BL", "BL pending": "BL pending", "BL pending (ETD before yesterday)": "BL pending (ETD anterior a ontem)",

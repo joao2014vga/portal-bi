@@ -112,41 +112,6 @@ function tema() {
   };
 }
 
-// Barras empilhadas (componentes) + linha (saldo), um único eixo em sacas
-async function graficoBarrasLinha(canvas, { meses, series, linha }) {
-  const Chart = await carregarChart();
-  const t = tema();
-  const cores = [t.s1, t.s3, t.s2];
-  const c = new Chart(canvas, {
-    data: {
-      labels: meses.map(fmtMes),
-      datasets: [
-        { type: "line", label: tr(linha.rotulo), data: linha.dados, borderColor: t.tinta, backgroundColor: t.tinta, borderWidth: 2,
-          pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: t.tinta, pointBorderColor: t.sup, pointBorderWidth: 2, tension: 0, order: 0 },
-        ...series.map((s, i) => ({
-          type: "bar", label: tr(s.rotulo), data: s.dados, backgroundColor: cores[i], borderColor: t.sup, borderWidth: 1,
-          borderRadius: 3, borderSkipped: false, stack: "fisico", order: 1, maxBarThickness: 30,
-        })),
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
-      interaction: { mode: "index", intersect: false },
-      scales: {
-        x: { stacked: true, grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
-        y: { stacked: true, grid: { color: t.grade }, border: { display: false },
-          ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) },
-          title: { display: true, text: tr("bags (60 kg)"), color: t.muda, font: { size: 11 } } },
-      },
-      plugins: {
-        legend: { position: "top", align: "start", labels: { color: t.tinta2, boxWidth: 10, boxHeight: 10, padding: 14, font: { size: 12 } } },
-        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)} ${tr("bags")}` } },
-      },
-    },
-  });
-  graficos.push(c);
-}
-
 async function graficoLinha(canvas, { rotulos, dados, rotulo }) {
   const Chart = await carregarChart();
   const t = tema();
@@ -337,17 +302,12 @@ async function painelOverview(alvo, carga, ctx) {
     }).join("")}</div>
 
     <section class="pos-card">
-      <div class="pos-card-h"><h2>Net position by term month · ${NOME_GRUPO[grupo]}</h2>
-        <p class="muted">Bars: physical position (purchases and inventory above zero, sales below). Line: net diff position.</p></div>
-      ${b.meses.length ? `<div class="pos-grafico"><canvas id="gMes" role="img" aria-label="Net position by term month, ${NOME_GRUPO[grupo]}"></canvas></div>`
-        : `<p class="muted pos-nota">The spreadsheet has no term-month breakdown for ${NOME_GRUPO[grupo]} — only the total below. The month-by-month view is in Physical Position.</p>`}
-      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
-        <thead>
-          <tr><th rowspan="2">Term month</th><th rowspan="2">Cash</th><th colspan="3">Purchases</th><th rowspan="2">Inventory</th>
-            <th rowspan="2">Sales</th><th colspan="3">Exp sales</th><th colspan="3">Int sales</th><th colspan="2">Futures</th>
-            <th rowspan="2">Switch exp.</th><th rowspan="2">Net diff position</th><th rowspan="2">Net outright</th></tr>
-          <tr><th>Total</th><th>Fixed</th><th>PTBF</th><th>Total</th><th>Fixed</th><th>PTBF</th><th>Total</th><th>Fixed</th><th>PTBF</th><th>Total</th><th>PTBF</th></tr>
-        </thead>
+      <div class="pos-card-h pos-card-h-linha"><div><h2>Net position by term month · ${NOME_GRUPO[grupo]}</h2>
+        <p class="muted">⊞ opens the fixed and PTBF breakdown of purchases and sales.</p></div>
+        <button type="button" class="btn" id="termmTudo">${abertosTermM.size ? "Hide breakdown" : "Show breakdown"}</button></div>
+      ${b.meses.length ? "" : `<p class="muted pos-nota">The spreadsheet has no term-month breakdown for ${NOME_GRUPO[grupo]} — only the total below. The month-by-month view is in Physical Position.</p>`}
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num pos-termm">
+        <thead>${cabecalhoTermM()}</thead>
         <tbody>${b.meses.map((m) => linhaTermM(fmtMes(m.mes), m)).join("")}</tbody>
         <tfoot>${linhaTermM("Total", b.total, true)}</tfoot>
       </table></div>
@@ -382,17 +342,16 @@ async function painelOverview(alvo, carga, ctx) {
 
     $$("[data-grupo]", alvo).forEach((el) => el.addEventListener("click", () => { grupo = el.dataset.grupo; desenhar(); }));
     $("#posOficial", alvo)?.addEventListener("click", () => trocarFonteOficial(ctx));
-    if (b.meses.length) {
-      await graficoBarrasLinha($("#gMes", alvo), {
-        meses: b.meses.map((m) => m.mes),
-        series: [
-          { rotulo: "Purchases", dados: b.meses.map((m) => m.purchases) },
-          { rotulo: "Inventory", dados: b.meses.map((m) => m.inventory) },
-          { rotulo: "Sales", dados: b.meses.map((m) => m.sales) },
-        ],
-        linha: { rotulo: "Net diff position", dados: b.meses.map((m) => m.net_diff) },
-      });
-    }
+    // detalhamento das compras e vendas: abre/fecha por grupo ou tudo de uma vez
+    $$("[data-abrir]", alvo).forEach((el) => el.addEventListener("click", () => {
+      const g = el.dataset.abrir;
+      if (abertosTermM.has(g)) abertosTermM.delete(g); else abertosTermM.add(g);
+      guardarAbertosTermM(); desenhar();
+    }));
+    $("#termmTudo", alvo).addEventListener("click", () => {
+      if (abertosTermM.size) abertosTermM.clear(); else GRUPOS_TERMM.forEach((g) => abertosTermM.add(g.k));
+      guardarAbertosTermM(); desenhar();
+    });
     if (hist.length >= 2) {
       await graficoLinha($("#gHist", alvo), { rotulos: hist.map((h) => fmtData(h.data_ref)), dados: hist.map((h) => h.kpis[grupo].outright), rotulo: "Net outright" });
     }
@@ -445,12 +404,41 @@ function trocarFonteOficial(ctx) {
   });
 }
 
+// Colunas da TermM. Compras e vendas abrem o detalhamento (as colunas vermelhas da
+// planilha: fixado e PTBF); fechadas mostram só o total. Estado lembrado no navegador.
+const GRUPOS_TERMM = [
+  { k: "purchases", rot: "Purchases", det: [["purchases_fixed", "Fixed"], ["purchases_ptbf", "PTBF"]] },
+  { k: "sales", rot: "Sales", det: [["exp_sales", "Exp sales"], ["exp_fixed", "Fixed"], ["exp_ptbf", "PTBF"],
+    ["int_sales", "Int sales"], ["int_fixed", "Fixed"], ["int_ptbf", "PTBF"]] },
+];
+const CHAVE_TERMM = "bi-termm-abertos";
+const abertosTermM = new Set((() => { try { return JSON.parse(localStorage.getItem(CHAVE_TERMM)) ?? []; } catch { return []; } })());
+const guardarAbertosTermM = () => { try { localStorage.setItem(CHAVE_TERMM, JSON.stringify([...abertosTermM])); } catch { /* sem armazenamento */ } };
+// colunas na ordem da planilha: [chave, rótulo, é detalhe?]
+function colunasTermM() {
+  const g = (k) => GRUPOS_TERMM.find((x) => x.k === k);
+  const grupo = (k) => [[k, "Total", false], ...(abertosTermM.has(k) ? g(k).det.map(([c, r]) => [c, r, true]) : [])];
+  return [["cash", "Cash", false], ...grupo("purchases"), ["inventory", "Inventory", false], ...grupo("sales"),
+    ["futures", "Total", false], ["futures_ptbf", "PTBF", false], ["switch_exp", "Switch exp.", false]];
+}
+
+function cabecalhoTermM() {
+  const botao = (k) => {
+    const aberto = abertosTermM.has(k), x = GRUPOS_TERMM.find((g) => g.k === k);
+    return `<th colspan="${aberto ? x.det.length + 1 : 1}" class="pbi-grupo"><button type="button" data-abrir="${k}" aria-expanded="${aberto}"
+      title="${aberto ? "Collapse" : "Expand"}">${aberto ? "⊟" : "⊞"}</button> ${x.rot}</th>`;
+  };
+  const sub = colunasTermM().filter(([k]) => k !== "cash" && k !== "inventory" && k !== "switch_exp")
+    .map(([, rot, det]) => `<th class="${det ? "det" : ""}">${rot}</th>`).join("");
+  return `<tr><th rowspan="2">Term month</th><th rowspan="2">Cash</th>${botao("purchases")}<th rowspan="2">Inventory</th>${botao("sales")}
+      <th colspan="2">Futures</th><th rowspan="2">Switch exp.</th><th rowspan="2">Net diff position</th><th rowspan="2">Net outright</th></tr>
+    <tr>${sub}</tr>`;
+}
+
 function linhaTermM(rotulo, m, total = false) {
   const tag = total ? "th" : "td";
-  return `<tr class="${total ? "total" : ""}"><${tag} scope="row">${esc(rotulo)}</${tag}>${[
-    m.cash, m.purchases, m.purchases_fixed, m.purchases_ptbf, m.inventory, m.sales, m.exp_sales, m.exp_fixed, m.exp_ptbf,
-    m.int_sales, m.int_fixed, m.int_ptbf, m.futures, m.futures_ptbf, m.switch_exp,
-  ].map((v) => celNum(v, { forte: total })).join("")}${celNum(m.net_diff, { forte: true })}${celNum(m.net_outright, { forte: true })}</tr>`;
+  return `<tr class="${total ? "total" : ""}"><${tag} scope="row">${esc(rotulo)}</${tag}>${colunasTermM()
+    .map(([k]) => celNum(m[k], { forte: total })).join("")}${celNum(m.net_diff, { forte: true })}${celNum(m.net_outright, { forte: true })}</tr>`;
 }
 
 // ---------------------------------------------------------------- Physical

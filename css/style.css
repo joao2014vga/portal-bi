@@ -495,6 +495,9 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pbi-matriz thead tr:first-child th { font-size: 15px; }
 .pbi-matriz thead tr + tr th { top: 38px; }
 .pbi-matriz .pbi-grupo button { background: none; border: 0; color: #fff; font-size: 15px; cursor: pointer; padding: 0 4px 0 0; line-height: 1; }
+/* Overview (TermM): grupos com detalhamento recolhível; colunas de detalhe em vermelho como na planilha */
+.pos-termm .pbi-grupo button { background: none; border: 0; color: var(--brand); font-size: 15px; cursor: pointer; padding: 0 4px 0 0; line-height: 1; }
+.pos-termm th.det { color: var(--critico); }
 .pbi-matriz tbody th { text-align: left; font-weight: 700; padding: 7px 10px; white-space: nowrap; border-right: 1px solid var(--borda); }
 .pbi-matriz tbody td { text-align: right; padding: 7px 10px; white-space: nowrap; }
 .pbi-matriz tbody td.neg { color: var(--pbi-short); }
