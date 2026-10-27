@@ -237,7 +237,10 @@ export async function renderCert(link, alvo, ctx) {
   const meses = posicaoMensal(cc, vc, inicial, cert.inicio);
   const atual = hojeYm();
   const ateHoje = meses.filter((l) => l.ym <= atual);
-  const saldoHoje = ateHoje.length ? ateHoje[ateHoje.length - 1].acumulado : inicial;
+  // saldo hoje: a sobra das compras já vencidas (fora o produtor bloqueado), já sem as
+  // sacas vinculadas a exportações; sem histórico, o saldo acumulado até o mês atual
+  const saldoHoje = hist.gravadas ? soma(hist.linhas.filter(FILTROS_HIST.disponivel), "_sobra")
+    : ateHoje.length ? ateHoje[ateHoje.length - 1].acumulado : inicial;
   const saldoFinal = meses.length ? meses[meses.length - 1].acumulado : inicial;
   const fimHistorico = cert.inicio ? fmtMes(mesAnterior(cert.inicio) + "-01") : null;
   // exportações do Digisul, para mostrar embarque e cliente nos vínculos do histórico
@@ -281,7 +284,7 @@ export async function renderCert(link, alvo, ctx) {
         ${cert.inicio ? kpi("Opening stock", fmtN(inicial), `end of <span>${esc(fimHistorico)}</span>${cert.bloqueado && hist.excluido ? ` · excl. <span>${esc(cert.bloqueado.nome)}</span>` : ""}`, "", "historico:inicial") : ""}
         ${kpi("Purchased", fmtN(soma(cc, "_sacas")), contratos(cc.length), "", "compra")}
         ${kpi("Sold (export)", fmtN(-soma(vc, "_sacas")), contratos(vc.length), "", "venda")}
-        ${kpi("Balance today", fmtN(saldoHoje), `up to <span>${esc(fmtMes(atual + "-01"))}</span> · ${saldoHoje < 0 ? "short" : "long"}`, "", "historico:disponivel")}
+        ${kpi("Balance today", fmtN(saldoHoje), hist.gravadas ? "in stock, after the links" : `up to <span>${esc(fmtMes(atual + "-01"))}</span> · ${saldoHoje < 0 ? "short" : "long"}`, "", "historico:disponivel")}
         ${kpi("To buy", nec >= 0.5 ? fmtN(nec) : "–", !mesNec ? "no shortfall ahead"
           : `${nec >= 0.5 ? "to cover up to" : "covered up to"} <span>${esc(fmtMes(mesNec + "-01"))}</span>${nec - necAntes >= 0.5 ? ` · <span>${esc(fmtN(nec - necAntes))}</span> in the month` : ""}`,
           nec >= 0.5 ? "cert-kpi-comprar" : "")}
@@ -423,15 +426,14 @@ export async function renderCert(link, alvo, ctx) {
         <span><strong>${fmtN(soma(linhas, "sacas"))}</strong> bags</span>
         <span><strong>${fmtN(soma(linhas, "_usado"))}</strong> used</span>
         <span><strong>${fmtN(soma(linhas, "_sobra"))}</strong> leftover</span>
-        ${filtroHist === "disponivel" && Math.abs(soma(linhas, "_sobra") - saldoHoje) >= 0.5 ? `<span class="muted" title="Exports already shipped but not linked, or links to exports still to ship">Balance today: <strong>${fmtN(saldoHoje)}</strong></span>` : ""}
       </div>
       <div class="tabela-wrap pos-tabela pos-contratos"><table class="tabela tabela-num">
         <thead><tr>${cabecalho(COLS_HIST, ordem)}<th>Exports</th><th>Source</th>${editar ? "<th></th>" : ""}</tr></thead>
         <tbody>${linhas.length ? linhas.map((h) => `<tr class="${h._bloqueado ? "cert-bloqueado" : ""}">${COLS_HIST.map(([k, , tipo]) => celula(h, k, tipo)).join("")}
-          <td class="cert-vinculos">${h.vinculos.length || h._novos.length ? [
+          <td class="cert-vinculos"><div>${h.vinculos.length || h._novos.length ? [
             ...h.vinculos.map((v) => chipVenda(v, vendaPorContrato.get(v.venda))),
             ...h._novos.map((v) => chipVenda(v, vendaPorContrato.get(v.venda), quemLancou(v))),
-          ].join("") : `<span class="muted">—</span>`}</td>
+          ].join("") : `<span class="muted">—</span>`}</div></td>
           <td>${origemHist(h)}</td>
           ${editar ? `<td class="cert-acoes">${h._sobra >= 0.5 ? `<button type="button" class="link" data-usar="${esc(h._chave)}" title="Use bags of this leftover in an export">${icon("link")}Use</button>` : ""}${h._origem === "digisul" ? "" : `<button type="button" class="link" data-editar-compra="${h.id}">${icon("edit")}Edit</button>
             ${h._origem === "manual" ? `<button type="button" class="link" data-remover-compra="${h.id}">${icon("trash")}Remove</button>` : ""}`}</td>` : ""}</tr>`).join("")
@@ -657,12 +659,12 @@ function abrirVinculo(r, hist, cert, ctx) {
   modal({
     titulo: "Link shipment to BRC purchases",
     botao: "Save links",
-    largura: "modal-lg",
+    largura: "modal-lg cert-modal-largo",
     corpo: `<p><strong>${esc(r.contrato)}</strong> <span class="muted">${esc(["", r._cliente, r.embarque ? mesExtenso(r.embarque) : null, `${fmtN(alvoSacas)} bags`].filter((x) => x != null).join(" · "))}</span></p>
       <p class="muted">Type how many bags of this export come from each BRC purchase. The leftover of each purchase updates when you save.</p>
       ${daPlanilha.length ? `<p class="muted pos-nota">${esc(["Already in the spreadsheet", ...daPlanilha.map((v) => `${v.compra} ${fmtN(v.sacas)}`)].join(" · "))}</p>` : ""}
       <label class="busca">${icon("search")}<input type="search" id="vinBusca" placeholder="Search contract or producer…" autocomplete="off"></label>
-      <div class="tabela-wrap pos-tabela cert-lista"><table class="tabela tabela-num">
+      <div class="tabela-wrap pos-tabela cert-lista cert-lista-alta"><table class="tabela tabela-num">
         <thead><tr><th>BRC contract</th><th>Producer</th><th>Due date</th><th class="num">Available</th><th class="num">Bags from it</th></tr></thead>
         <tbody>${fontes.length ? fontes.map((h) => `<tr data-fonte="${esc(`${h.compra} ${h.fornecedor ?? ""}`.toLowerCase())}" class="${h._bloqueado ? "cert-bloqueado" : ""}">
           <td>${esc(h.compra)}${h._origem === "digisul" ? ` <span class="pill">Digisul</span>` : ""}</td>
@@ -675,7 +677,9 @@ function abrirVinculo(r, hist, cert, ctx) {
     onOpen(form) {
       const total = () => {
         const t = $$(".cert-qtd", form).reduce((s, i) => s + (Number(i.value) || 0), 0) + totalPlanilha;
-        $("#vinTotal", form).innerHTML = `<span>Linked</span> <strong>${esc(fmtN(t))}</strong> <span>of</span> <strong>${esc(fmtN(alvoSacas))}</strong> <span>bags</span>${t > alvoSacas + 0.5 ? ` <span class="pill pill-critico">More than the export</span>` : ""}`;
+        const falta = alvoSacas - t;
+        $("#vinTotal", form).innerHTML = `<span>Linked</span> <strong>${esc(fmtN(t))}</strong> <span>of</span> <strong>${esc(fmtN(alvoSacas))}</strong> <span>bags</span>`
+          + (falta >= 0.5 ? ` · <span>Missing</span> <strong class="cert-falta">${esc(fmtN(falta))}</strong>` : falta > -0.5 ? ` · <span class="pill pill-ok">Complete</span>` : ` <span class="pill pill-critico">More than the export</span>`);
       };
       $$(".cert-qtd", form).forEach((i) => i.addEventListener("input", total));
       $("#vinBusca", form).addEventListener("input", (e) => {

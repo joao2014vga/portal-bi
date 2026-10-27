@@ -477,10 +477,16 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .cert-inc-campos { display: grid; grid-template-columns: 180px 1fr; gap: 12px; }
 .cert-lista { max-height: 340px; margin: 10px 0; }
 .cert-lista th:not(.num) { text-align: left; }
+.modal.cert-modal-largo { max-width: min(1000px, 96vw); }
+.cert-lista.cert-lista-alta { max-height: min(60vh, 560px); }
+#vinTotal { font-size: 14px; }
+.cert-falta { color: var(--alerta); }
 .cert-abertura td { background: var(--sup-2); font-style: italic; }
 .cert-bloqueado td { opacity: .6; }
-.cert-vinculos { white-space: normal; text-align: left; min-width: 260px; max-width: 520px; line-height: 1.6; }
-.cert-vinculos span { display: inline-block; margin-right: 10px; white-space: nowrap; }
+/* exportações de cada compra: quebram em várias linhas numa coluna de largura fixa */
+.tabela-num td.cert-vinculos { white-space: normal; text-align: left; }
+.cert-vinculos > div { display: flex; flex-wrap: wrap; gap: 2px 14px; width: 440px; line-height: 1.6; }
+.cert-vinculos span { white-space: nowrap; }
 .cert-vinculos .cert-novo { color: var(--brand); }
 .cert-vinculos .cert-novo::before { content: "● "; font-size: .7em; vertical-align: middle; }
 .cert-acoes { white-space: nowrap; }
