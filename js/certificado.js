@@ -12,13 +12,15 @@ import { fmtN, fmtMes, fmtData, segmentos, ligarSegmentos, vigiarNegativos } fro
 export const ehPainelCert = (link) => /^portal:cert-/.test(link ?? "");
 
 // Contrato entra quando o certificador tem o certificado, mesmo junto com outros
-// ("RAINFOREST ALIANCE,EUDR,CAFE PRATICES"). `sugestao`: exportações que costumam ser
-// do certificado mas vêm sem ele no Digisul (a exportação não preenche o CP).
+// ("RAINFOREST ALIANCE,EUDR,CAFE PRATICES"). A exportação não preenche o CP no
+// Digisul, então a venda também entra pelo cliente no Alertas ou na qualidade
+// (`cliente`) ou pelo certificado escrito na descrição da qualidade (`descricao`,
+// ex.: "C.A.F.E. PRACTICES VERIFIED") — regra conferida contra o Power BI.
 const CERTS = {
   "portal:cert-cp": {
     codigo: "CP", nome: "C.A.F.E. Practices",
     re: /\bCP\b|PRATIC|PRACTIC/i,
-    sugestao: { rotulo: "Starbucks", re: /STARBUCK|\bSBUX\b|\bSTBX\b/i },
+    venda: { cliente: /STARBUCK|\bSBUX\b|\bSTBX\b/i, descricao: /C\.?\s?A\.?\s?F\.?\s?E\.?\s+PRA[CT]?TICES|\bCP\b/i },
   },
 };
 
@@ -29,14 +31,15 @@ const hojeYm = () => { const d = new Date(); return `${d.getFullYear()}-${String
 const soma = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
 const contratos = (n) => `${fmtN(n)} ${n === 1 ? "contract" : "contracts"}`;
 
-// mês do movimento: compra pela entrega (real, senão a prevista); venda pelo mês de embarque
-const mesCompra = (r) => (r.entrega ?? r.prev_entrega ?? r.emissao)?.slice(0, 7) ?? null;
+// mês do movimento: compra pelo vencimento (como no Power BI; base antiga sem vencimento:
+// entrega real, senão a prevista); venda pelo mês de embarque
+const mesCompra = (r) => (r.vencimento ?? r.entrega ?? r.prev_entrega ?? r.emissao)?.slice(0, 7) ?? null;
 const mesVenda = (r) => (r.embarque ?? r.data_bl ?? r.prev_carga ?? r.emissao)?.slice(0, 7) ?? null;
 // cliente final da exportação: primeiro trecho do Alertas ("STARBUCKS - PO60029548 - SH101356")
 const clienteDoAlerta = (r) => (r.alertas ? r.alertas.split(/\s+-\s+/)[0].trim() : null) || r.importador;
 
 // Junta a base do Digisul com os ajustes manuais. Cada contrato ganha:
-//   _auto  o certificado está no Digisul · _ajuste inclusão/exclusão manual
+//   _auto  o certificado está no Digisul (_regra: pela regra das vendas) · _ajuste inclusão/exclusão manual
 //   _conta entra na posição · _sacas quantidade considerada · _mes mês do movimento
 function montar(base, ajustes, cert) {
   const aj = new Map(ajustes.map((a) => [`${a.tipo}|${a.contrato}`, a]));
@@ -45,10 +48,13 @@ function montar(base, ajustes, cert) {
     const chave = `${tipo}|${r.contrato}`;
     const a = aj.get(chave) ?? null;
     if (a) usados.add(chave);
-    const auto = cert.re.test(r.certificado ?? "");
+    const peloCertificado = cert.re.test(r.certificado ?? "");
+    const regra = !peloCertificado && tipo === "venda" && !!cert.venda
+      && (cert.venda.cliente.test(`${r.alertas ?? ""} ${r.qualidade ?? ""}`) || cert.venda.descricao.test(r.qualidade ?? ""));
+    const auto = peloCertificado || regra;
     const conta = a ? a.acao === "incluir" : auto;
     return {
-      ...r, _tipo: tipo, _auto: auto, _ajuste: a, _conta: conta,
+      ...r, _tipo: tipo, _auto: auto, _regra: regra, _ajuste: a, _conta: conta,
       _sacas: conta && a?.sacas != null ? Number(a.sacas) : r.sacas,
       _mes: tipo === "compra" ? mesCompra(r) : mesVenda(r),
       ...(tipo === "venda" ? { _cliente: clienteDoAlerta(r) } : {}),
@@ -86,7 +92,7 @@ function posicaoMensal(compras, vendas) {
 }
 
 const COLS = {
-  compra: [["contrato", "Contract"], ["fornecedor", "Supplier"], ["_mes", "Month", "m"], ["_sacas", "Bags", "n"],
+  compra: [["contrato", "Contract"], ["fornecedor", "Supplier"], ["_mes", "Month", "m"], ["vencimento", "Due date", "d"], ["_sacas", "Bags", "n"],
     ["entregue", "Delivered", "n"], ["a_entregar", "To deliver", "n"], ["padrao", "Quality"], ["safra", "Crop"],
     ["diferencial", "Diff", "n2"], ["preco", "Price R$/bag", "n2"], ["valor", "Value R$", "n"], ["certificado", "Certificate"]],
   venda: [["contrato", "Contract"], ["_cliente", "Client (alert)"], ["importador", "Importer"], ["embarque", "Shipment", "e"],
@@ -111,7 +117,7 @@ function origem(r) {
     const parcial = r._ajuste.sacas != null ? ` · ${fmtN(r._ajuste.sacas)} bags` : "";
     return `<span class="pill pill-alerta" title="${esc(quemLancou(r._ajuste))}">Manual${parcial}</span>`;
   }
-  return `<span class="pill">Digisul</span>`;
+  return r._regra ? `<span class="pill" title="Export without the certificate in Digisul, counted by the client or quality description">Digisul · rule</span>` : `<span class="pill">Digisul</span>`;
 }
 const quemLancou = (a) => [a.autor, a.created_at ? fmtData(a.created_at.slice(0, 10)) : null, a.obs].filter(Boolean).join(" · ");
 
@@ -147,10 +153,6 @@ export async function renderCert(link, alvo, ctx) {
   const saldoHoje = ateHoje.length ? ateHoje[ateHoje.length - 1].acumulado : 0;
   const saldoFinal = meses.length ? meses[meses.length - 1].acumulado : 0;
   const pior = meses.reduce((p, l) => (l.ym >= atual && (!p || l.acumulado < p.acumulado) ? l : p), null);
-  // sugestões: exportações do cliente do certificado ainda fora da posição e sem ajuste
-  const sugeridas = cert.sugestao
-    ? vendas.filter((r) => !r._conta && !r._ajuste && (cert.sugestao.re.test(r.alertas ?? "") || cert.sugestao.re.test(r.qualidade ?? "")))
-    : [];
 
   let aba = "compra", busca = "", mes = "", fonte = "", ordem = null;
 
@@ -181,9 +183,6 @@ export async function renderCert(link, alvo, ctx) {
         </div>` : ""}
       </div>
 
-      ${ctx.gerente && sugeridas.length ? `<div class="aviso-inline alerta">${icon("alert")}
-        <span><strong>${contratos(sugeridas.length)}</strong> for ${esc(cert.sugestao.rotulo)} without ${esc(cert.codigo)} in the Digisul certificate (${fmtN(soma(sugeridas, "sacas"))} bags).
-        <button type="button" class="link" id="certSugeridas">Review and include</button></span></div>` : ""}
       ${orfaos.length ? `<div class="aviso-inline alerta">${icon("alert")}<span>Included or excluded manually but no longer found in Digisul: <strong>${esc(orfaos.map((a) => a.contrato).join(", "))}</strong></span></div>` : ""}
 
       <div class="pos-kpis">
@@ -196,7 +195,7 @@ export async function renderCert(link, alvo, ctx) {
 
       <div class="pos-card">
         <div class="pos-card-h pos-card-h-linha"><div><h2>Long / short by month</h2>
-          <p class="muted">Purchases by delivery month (actual, else expected) · export sales by shipment month · running balance. Click a month to see its contracts.</p></div>
+          <p class="muted">Purchases by due month · export sales by shipment month · running balance. Click a month to see its contracts.</p></div>
           ${mes ? `<button type="button" class="link" id="certLimparMes">${icon("x")}Show all months</button>` : ""}</div>
         <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
           <thead><tr><th>Month</th><th class="num">Purchases</th><th class="num">Sales</th><th class="num">Net</th><th class="num">Running balance</th></tr></thead>
@@ -252,7 +251,6 @@ export async function renderCert(link, alvo, ctx) {
       desenhar();
     }));
     $("#certIncluir", alvo)?.addEventListener("click", () => abrirInclusao(compras, vendas, cert, ctx));
-    $("#certSugeridas", alvo)?.addEventListener("click", () => abrirSugeridas(sugeridas, cert, ctx));
     $$("[data-acao]", alvo).forEach((b) => b.addEventListener("click", () => executarAcao(b.dataset, todas, cert, ctx)));
   };
   desenhar();
@@ -355,35 +353,6 @@ function abrirInclusao(compras, vendas, cert, ctx) {
       if (sacas != null && !(sacas > 0)) throw new Error("Bags must be greater than zero, or leave it empty for the whole contract.");
       await ctx.api.salvarCertAjuste({ certificado: cert.codigo, tipo, contrato, acao: "incluir", sacas, obs: form.obs.value.trim() || null });
       toast(`Contract included in the ${cert.codigo} position.`);
-      ctx.recarregar();
-    },
-  });
-}
-
-// Exportações sugeridas (cliente do certificado sem o certificado no Digisul): incluir de uma vez
-function abrirSugeridas(sugeridas, cert, ctx) {
-  const lista = [...sugeridas].sort((a, b) => String(a._mes ?? "").localeCompare(String(b._mes ?? "")) || a.contrato.localeCompare(b.contrato, "en", { numeric: true }));
-  modal({
-    titulo: `${cert.sugestao.rotulo} exports without ${cert.codigo}`,
-    botao: "Include selected",
-    largura: "modal-lg",
-    corpo: `<p class="muted">These export contracts mention ${esc(cert.sugestao.rotulo)} in the alert or quality, but Digisul has no ${esc(cert.codigo)} in their certificate.
-      Uncheck the ones that are not ${esc(cert.codigo)}; the rest are included with your name.</p>
-      <div class="tabela-wrap pos-tabela cert-lista"><table class="tabela tabela-num">
-        <thead><tr><th><input type="checkbox" id="sugTodas" checked aria-label="Select all"></th><th>Contract</th><th>Client (alert)</th><th>Shipment</th><th class="num">Bags</th><th>Certificate</th></tr></thead>
-        <tbody>${lista.map((r) => `<tr><td><input type="checkbox" name="sug" value="${esc(r.contrato)}" checked aria-label="${esc(r.contrato)}"></td>
-          <td>${esc(r.contrato)}</td><td title="${esc(r.alertas ?? "")}">${esc(r._cliente ?? "—")}</td><td>${esc(mesExtenso(r.embarque))}</td>
-          <td class="num">${fmtN(r.sacas)}</td><td>${esc(r.certificado ?? "—")}</td></tr>`).join("")}</tbody>
-      </table></div>`,
-    onOpen(form) {
-      $("#sugTodas", form).addEventListener("change", (e) => $$("input[name=sug]", form).forEach((i) => { i.checked = e.target.checked; }));
-    },
-    async onSubmit(form) {
-      const marcados = $$("input[name=sug]:checked", form).map((i) => i.value);
-      if (!marcados.length) throw new Error("Select at least one contract.");
-      await ctx.api.salvarCertAjuste(marcados.map((contrato) =>
-        ({ certificado: cert.codigo, tipo: "venda", contrato, acao: "incluir", obs: `${cert.sugestao.rotulo} export` })));
-      toast(`${contratos(marcados.length)} included in the ${cert.codigo} position.`);
       ctx.recarregar();
     },
   });

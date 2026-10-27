@@ -433,13 +433,13 @@ const PT = {
   "The purchases and export sales come from the Digisul update, every 2 hours on business days. Click “Update now” to load them.":
     "As compras e as vendas de exportação vêm da atualização do Digisul, de 2 em 2 horas nos dias úteis. Clique em “Atualizar agora” para carregá-las.",
   "Digisul data updated": "Dados do Digisul atualizados", "Fetch Digisul now": "Buscar no Digisul agora", "Include contract": "Incluir contrato",
-  "for Starbucks without CP in the Digisul certificate ({n} bags).": "da Starbucks sem CP no certificado do Digisul ({n} sacas).",
-  "Review and include": "Revisar e incluir",
   "Included or excluded manually but no longer found in Digisul:": "Incluídos ou excluídos manualmente, mas que não estão mais no Digisul:",
   "Sold (export)": "Vendido (exportação)", "Balance today": "Saldo hoje", "Final balance": "Saldo final", "Lowest balance ahead": "Menor saldo à frente",
   "up to": "até", "after": "depois de", "in": "em",
   "Long / short by month": "Long / short por mês",
-  "Purchases by delivery month (actual, else expected)": "Compras pelo mês de entrega (real, senão a prevista)",
+  "Purchases by due month": "Compras pelo mês de vencimento", "rule": "regra",
+  "Export without the certificate in Digisul, counted by the client or quality description":
+    "Exportação sem o certificado no Digisul, contada pelo cliente ou pela descrição da qualidade",
   "export sales by shipment month": "vendas de exportação pelo mês de embarque",
   "running balance. Click a month to see its contracts.": "saldo acumulado. Clique em um mês para ver os contratos dele.",
   "Show all months": "Mostrar todos os meses", "Running balance": "Saldo acumulado", "Current month": "Mês atual",
@@ -454,7 +454,6 @@ const PT = {
   "Remove this contract from the CP position?": "Tirar este contrato da posição CP?",
   "Contract excluded from the CP position.": "Contrato excluído da posição CP.", "Contract restored.": "Contrato restaurado.",
   "Contract removed from the CP position.": "Contrato retirado da posição CP.", "Contract included in the CP position.": "Contrato incluído na posição CP.",
-  "{n} contracts included in the CP position.": "{n} contratos incluídos na posição CP.", "{n} contract included in the CP position.": "{n} contrato incluído na posição CP.",
   "Certificate data updated from Digisul.": "Dados do certificado atualizados pelo Digisul.",
   "Include contract in CP": "Incluir contrato no CP", "Include": "Incluir",
   "For contracts that received the C.A.F.E. Practices certificate after they were closed, when Digisul no longer allows the change. Only the portal changes; the inclusion is recorded with your name.":
@@ -465,10 +464,6 @@ const PT = {
   "e.g. certificate issued after delivery": "ex.: certificado emitido depois da entrega",
   "Choose a contract from the list.": "Escolha um contrato da lista.",
   "Bags must be greater than zero, or leave it empty for the whole contract.": "As sacas precisam ser maiores que zero, ou deixe em branco para o contrato inteiro.",
-  "Starbucks exports without CP": "Exportações Starbucks sem CP", "Include selected": "Incluir selecionados",
-  "These export contracts mention Starbucks in the alert or quality, but Digisul has no CP in their certificate. Uncheck the ones that are not CP; the rest are included with your name.":
-    "Estas exportações citam a Starbucks no alerta ou na qualidade, mas o Digisul não tem CP no certificado delas. Desmarque as que não são CP; as demais são incluídas com o seu nome.",
-  "Select at least one contract.": "Selecione pelo menos um contrato.",
   "Certificates are not set up yet: run section 11 of supabase/schema.sql in the Supabase SQL Editor.":
     "Os certificados ainda não estão configurados: rode a seção 11 do supabase/schema.sql no SQL Editor do Supabase.",
   "Only administrators and file managers can change the certificate list.": "Só administradores e gestores de arquivos podem alterar a lista do certificado.",

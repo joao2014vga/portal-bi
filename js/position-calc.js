@@ -655,7 +655,8 @@ export function certificadosDaApi(api) {
     return {
       contrato: p["Contrato"], fornecedor: p["Fornecedor"], cidade: t(a.Cidade_Fornecedor),
       sacas: p["Sacas Total"], entregue: p["Entregue(Sc)"], a_entregar: p["A Entregar BC"],
-      emissao: paraIso(p["Emissão"]), entrega: paraIso(data(a.Entrega)), prev_entrega: paraIso(data(a.Prev_de_Entrega)),
+      emissao: paraIso(p["Emissão"]), vencimento: paraIso(p["Vencimento"]),
+      entrega: paraIso(data(a.Entrega)), prev_entrega: paraIso(data(a.Prev_de_Entrega)),
       preco: p["Média Final (R$)"], valor: p["Valor Final (R$)"], diferencial: p["Diferencial"], bolsa: p["Bolsa"],
       mes_bolsa: paraIso(p["Mês Bolsa"]), fixacao: p["Status Fixação"] ?? p["Fixação"],
       padrao: p["Padrão"], especie: p["Espécie"], safra: p["Safra"], certificado: p["Certificador"],
