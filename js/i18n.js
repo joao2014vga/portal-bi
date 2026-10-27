@@ -513,6 +513,8 @@ const PT = {
   "no shortfall ahead": "sem falta à frente", "in the month": "no mês",
   "in stock, after the links": "em estoque, já sem os vínculos", "Missing": "Faltam", "Complete": "Completo",
   "Export to Excel": "Exportar para Excel", "Download the history, links, producers and monthly position": "Baixar o histórico, os vínculos, os produtores e a posição por mês",
+  "Save image": "Salvar imagem", "Download the indicators and the long / short table as an image, in English": "Baixar os indicadores e a tabela long / short como imagem, em inglês",
+  "Unable to load the image generator. Check your connection.": "Não foi possível carregar o gerador de imagem. Verifique sua conexão.",
   "History": "Histórico", "Links": "Vínculos", "Due": "Vencida", "Yes": "Sim", "Linked by": "Lançado por", "Date": "Data", "Portal": "Portal",
   "With leftover": "Com sobra", "Available today": "Disponível hoje",
   "In the opening stock": "No saldo inicial", "Balance today:": "Saldo hoje:",

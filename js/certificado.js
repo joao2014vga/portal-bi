@@ -269,10 +269,11 @@ export async function renderCert(link, alvo, ctx) {
         <div class="pos-data">${icon("clock")}<span>${esc(cert.nome)} · Digisul data updated <strong>${esc(tempoRelativo(base.atualizado_em))}</strong></span>
           ${cert.inicio ? `<span class="muted">· contracts starting <span>${esc(fmtMes(cert.inicio + "-01"))}</span></span>` : ""}
           <span class="muted">· all figures in 60 kg bags</span></div>
-        ${ctx.gerente ? `<div class="pos-acoes">
-          <button class="btn" id="certSync" title="Fetch Digisul now">${icon("refresh")}<span>Update now</span></button>
-          <button class="btn btn-primary" id="certIncluir">${icon("plus")}<span>Include contract</span></button>
-        </div>` : ""}
+        <div class="pos-acoes">
+          <button class="btn" id="certImagem" title="Download the indicators and the long / short table as an image, in English">${icon("image")}<span>Save image</span></button>
+          ${ctx.gerente ? `<button class="btn" id="certSync" title="Fetch Digisul now">${icon("refresh")}<span>Update now</span></button>
+          <button class="btn btn-primary" id="certIncluir">${icon("plus")}<span>Include contract</span></button>` : ""}
+        </div>
       </div>
 
       ${orfaos.length ? `<div class="aviso-inline alerta">${icon("alert")}<span>Included or excluded manually but no longer found in Digisul: <strong>${esc(orfaos.map((a) => a.contrato).join(", "))}</strong></span></div>` : ""}
@@ -344,6 +345,11 @@ export async function renderCert(link, alvo, ctx) {
     $("#certIncluir", alvo)?.addEventListener("click", () => abrirInclusao(compras, vendas, cert, ctx));
     $("#certImportar", alvo)?.addEventListener("click", () => abrirImportacao(cert, ctx, hist.linhas.filter((h) => h._origem === "planilha").length, hist.novos.length));
     $("#certExportar", alvo)?.addEventListener("click", (ev) => exportarExcel(ev.currentTarget, { cert, hist, meses, inicial, fimHistorico, vendaPorContrato }));
+    $("#certImagem", alvo)?.addEventListener("click", (ev) => salvarImagem(ev.currentTarget, {
+      cert, atualizado: base.atualizado_em, meses, inicial, fimHistorico, atual, saldoFinal, excluido: hist.excluido,
+      comprado: soma(cc, "_sacas"), nCompras: cc.length, vendido: soma(vc, "_sacas"), nVendas: vc.length,
+      saldoHoje, gravadas: hist.gravadas, nec, necAntes, mesNec,
+    }));
     $("#certNovaCompra", alvo)?.addEventListener("click", () => abrirCompra(null, historico, cert, ctx));
     $$("[data-editar-compra]", alvo).forEach((b) => b.addEventListener("click", () => abrirCompra(historico.find((h) => String(h.id) === b.dataset.editarCompra), historico, cert, ctx)));
     $$("[data-remover-compra]", alvo).forEach((b) => b.addEventListener("click", () => removerCompra(hist.linhas.find((h) => String(h.id) === b.dataset.removerCompra), cert, ctx)));
@@ -835,6 +841,96 @@ async function exportarExcel(botao, { cert, hist, meses, inicial, fimHistorico, 
   } catch (e) {
     toast(e.message, "erro");
   } finally {
+    botao.disabled = false;
+  }
+}
+
+// Imagem para mandar a posição (como no informativo diário): indicadores e a tabela
+// long / short completa, sempre em inglês e no tema claro, qualquer que seja a tela
+const HTML2CANVAS_URL = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+let html2canvasPromise = null;
+function carregarHtml2canvas() {
+  html2canvasPromise ??= new Promise((ok, falha) => {
+    if (window.html2canvas) return ok(window.html2canvas);
+    const s = document.createElement("script");
+    s.src = HTML2CANVAS_URL;
+    s.onload = () => ok(window.html2canvas);
+    s.onerror = () => { html2canvasPromise = null; falha(new Error("Unable to load the image generator. Check your connection.")); };
+    document.head.appendChild(s);
+  });
+  return html2canvasPromise;
+}
+
+async function salvarImagem(botao, d) {
+  botao.disabled = true;
+  const caixa = document.createElement("div");
+  try {
+    const capturar = await carregarHtml2canvas();
+    const MES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const mesEn = (ym) => `${MES[Number(ym.slice(5, 7)) - 1]}-${ym.slice(2, 4)}`;
+    const n = (v) => {
+      const txt = Math.round(Math.abs(Number(v) || 0)).toLocaleString("en-US");
+      return v < 0 && txt !== "0" ? `(${txt})` : txt;
+    };
+    const cor = { texto: "#1b2e22", texto2: "#5a7a69", texto3: "#8aab97", borda: "#dde8e2", brand: "#2d4a3e", claro: "#e8f0ec", neg: "#c4291c", alerta: "#a35a00" };
+    const td = (v, forte = false) => `<td style="text-align:right;padding:7px 14px;${forte ? "font-weight:700;" : ""}color:${v < 0 ? cor.neg : cor.texto}">${Math.abs(v) < 0.5 ? `<span style="color:${cor.texto3}">–</span>` : n(v)}</td>`;
+    const card = (t, v, s, corV = cor.texto) => `<div style="flex:1;background:#fff;border:1px solid ${cor.borda};border-radius:10px;padding:12px 14px">
+      <div style="font-size:11px;font-weight:600;color:${cor.texto3};text-transform:uppercase;letter-spacing:.03em">${esc(t)}</div>
+      <div style="font-size:24px;font-weight:700;line-height:1.25;color:${corV}">${esc(v)}</div>
+      <div style="font-size:11.5px;color:${cor.texto2}">${esc(s)}</div></div>`;
+    const contratosEn = (k) => `${k} contract${k === 1 ? "" : "s"}`;
+    const quando = d.atualizado ? new Date(d.atualizado).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+    const fim = d.cert.inicio ? mesEn(mesAnterior(d.cert.inicio)) : null;
+
+    const cards = [
+      d.cert.inicio ? card("Opening stock", n(d.inicial), `end of ${fim}${d.cert.bloqueado && d.excluido ? ` · excl. ${d.cert.bloqueado.nome}` : ""}`) : "",
+      card("Purchased", n(d.comprado), contratosEn(d.nCompras)),
+      card("Sold (export)", n(-d.vendido), contratosEn(d.nVendas), d.vendido >= 0.5 ? cor.neg : cor.texto),
+      card("Balance today", n(d.saldoHoje), d.gravadas ? "in stock, after the links" : `up to ${mesEn(d.atual)} · ${d.saldoHoje < 0 ? "short" : "long"}`, d.saldoHoje < 0 ? cor.neg : cor.texto),
+      card("To buy", d.nec >= 0.5 ? n(d.nec) : "–", !d.mesNec ? "no shortfall ahead"
+        : `${d.nec >= 0.5 ? "to cover up to" : "covered up to"} ${mesEn(d.mesNec)}${d.nec - d.necAntes >= 0.5 ? ` · ${n(d.nec - d.necAntes)} in the month` : ""}`,
+        d.nec >= 0.5 ? cor.alerta : cor.texto),
+    ].join("");
+
+    const th = (t, dir = true) => `<th style="text-align:${dir ? "right" : "left"};padding:8px 14px;font-size:11.5px;font-weight:600;color:${cor.texto2};text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid ${cor.borda}">${t}</th>`;
+    const linhas = d.meses.map((l) => `<tr style="border-top:1px solid ${cor.borda};${l.ym === d.atual ? `background:${cor.claro};` : ""}">
+      <td style="padding:7px 14px">${l.ym === d.atual ? `<strong>${mesEn(l.ym)}</strong> <span style="color:${cor.texto2}">· today</span>` : mesEn(l.ym)}</td>
+      ${td(l.compras)}${td(-l.vendas)}${td(l.saldo)}${td(l.acumulado, true)}</tr>`).join("");
+
+    caixa.setAttribute("data-sem-traducao", "");
+    caixa.style.cssText = `position:fixed;left:-10000px;top:0;width:920px;padding:24px;background:#f0f4f2;color:${cor.texto};font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13.5px;line-height:1.45`;
+    caixa.innerHTML = `
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <img src="assets/logo_brascof.png" alt="" style="height:40px">
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700;color:${cor.brand}">${esc(d.cert.nome)} (${esc(d.cert.codigo)}) · Long / short position</div>
+          <div style="font-size:12px;color:${cor.texto2}">Digisul data as of ${esc(quando)}${d.cert.inicio ? ` · contracts starting ${mesEn(d.cert.inicio)}` : ""} · all figures in 60 kg bags</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:16px">${cards}</div>
+      <div style="background:#fff;border:1px solid ${cor.borda};border-radius:10px;overflow:hidden">
+        <div style="padding:12px 14px 8px"><div style="font-size:15px;font-weight:700">Long / short by month</div>
+          <div style="font-size:11.5px;color:${cor.texto2}">Purchases by due month · export sales by shipment month · running balance</div></div>
+        <table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">
+          <thead><tr>${th("Month", false)}${th("Purchases")}${th("Sales")}${th("Net")}${th("Running balance")}</tr></thead>
+          <tbody>${d.inicial ? `<tr style="background:#f7faf8"><td style="padding:7px 14px;font-style:italic">Opening stock <span style="color:${cor.texto2}">· end of ${fim}</span></td>
+            <td></td><td></td><td></td>${td(d.inicial, true)}</tr>` : ""}${linhas}</tbody>
+          ${d.meses.length ? `<tfoot><tr style="border-top:2px solid ${cor.borda};font-weight:700;background:#f7faf8"><td style="padding:8px 14px">Total</td>
+            ${td(soma(d.meses, "compras"), true)}${td(-soma(d.meses, "vendas"), true)}${td(d.saldoFinal - d.inicial, true)}${td(d.saldoFinal, true)}</tr></tfoot>` : ""}
+        </table>
+      </div>`;
+    document.body.appendChild(caixa);
+    await Promise.all([...caixa.querySelectorAll("img")].map((i) => (i.complete ? null : new Promise((ok) => { i.onload = i.onerror = ok; }))));
+    await document.fonts?.ready;
+    const canvas = await capturar(caixa, { scale: 2, backgroundColor: "#f0f4f2", logging: false, useCORS: true });
+    const a = document.createElement("a");
+    a.download = `${d.cert.codigo} Long Short ${hojeIso()}.png`;
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+  } catch (e) {
+    toast(e.message, "erro");
+  } finally {
+    caixa.remove();
     botao.disabled = false;
   }
 }
