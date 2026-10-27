@@ -18,7 +18,7 @@ export const ehPainelCert = (link) => /^portal:cert-/.test(link ?? "");
 // ex.: "C.A.F.E. PRACTICES VERIFIED") — regra conferida contra o Power BI.
 const CERTS = {
   "portal:cert-cp": {
-    codigo: "CP", nome: "C.A.F.E. Practices",
+    codigo: "CP", nome: "C.A.F.E. Practices", inicio: "2026-10", // controle começa em out/26
     re: /\bCP\b|PRATIC|PRACTIC/i,
     venda: { cliente: /STARBUCK|\bSBUX\b|\bSTBX\b/i, descricao: /C\.?\s?A\.?\s?F\.?\s?E\.?\s+PRA[CT]?TICES|\bCP\b/i },
   },
@@ -60,7 +60,9 @@ function montar(base, ajustes, cert) {
       ...(tipo === "venda" ? { _cliente: clienteDoAlerta(r) } : {}),
     };
   });
-  const compras = preparar(base.compras, "compra"), vendas = preparar(base.vendas, "venda");
+  // só contratos do mês de início do controle em diante
+  const doInicio = (r) => !cert.inicio || (r._mes ?? "") >= cert.inicio;
+  const compras = preparar(base.compras, "compra").filter(doInicio), vendas = preparar(base.vendas, "venda").filter(doInicio);
   // ajustes de contratos que não vêm mais do Digisul (renomeados ou apagados)
   const orfaos = ajustes.filter((a) => !usados.has(`${a.tipo}|${a.contrato}`));
   return { compras, vendas, orfaos };
@@ -176,6 +178,7 @@ export async function renderCert(link, alvo, ctx) {
     alvo.innerHTML = `<div class="pos">
       <div class="pos-topo">
         <div class="pos-data">${icon("clock")}<span>${esc(cert.nome)} · Digisul data updated <strong>${esc(tempoRelativo(base.atualizado_em))}</strong></span>
+          ${cert.inicio ? `<span class="muted">· contracts starting <span>${esc(fmtMes(cert.inicio + "-01"))}</span></span>` : ""}
           <span class="muted">· all figures in 60 kg bags</span></div>
         ${ctx.gerente ? `<div class="pos-acoes">
           <button class="btn" id="certSync" title="Fetch Digisul now">${icon("refresh")}<span>Update now</span></button>

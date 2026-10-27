@@ -432,7 +432,7 @@ const PT = {
     "As compras e as vendas de exportação vêm da atualização do Digisul, de 2 em 2 horas nos dias úteis.",
   "The purchases and export sales come from the Digisul update, every 2 hours on business days. Click “Update now” to load them.":
     "As compras e as vendas de exportação vêm da atualização do Digisul, de 2 em 2 horas nos dias úteis. Clique em “Atualizar agora” para carregá-las.",
-  "Digisul data updated": "Dados do Digisul atualizados", "Fetch Digisul now": "Buscar no Digisul agora", "Include contract": "Incluir contrato",
+  "Digisul data updated": "Dados do Digisul atualizados", "· contracts starting": "· contratos a partir de", "Fetch Digisul now": "Buscar no Digisul agora", "Include contract": "Incluir contrato",
   "Included or excluded manually but no longer found in Digisul:": "Incluídos ou excluídos manualmente, mas que não estão mais no Digisul:",
   "Sold (export)": "Vendido (exportação)", "Balance today": "Saldo hoje", "Final balance": "Saldo final", "Lowest balance ahead": "Menor saldo à frente",
   "up to": "até", "after": "depois de", "in": "em",
