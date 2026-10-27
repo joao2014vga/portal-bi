@@ -903,3 +903,18 @@ select c.id, 'C.A.F.E. Practices (CP)', 'Long/short position of the CP certifica
 from public.bi_categorias c
 where c.nome = 'Certificates'
   and not exists (select 1 from public.bi_dashboards d where d.link = 'portal:cert-cp');
+-- ---------------------------------------------------------------------
+-- 12. POSIÇÃO FÍSICA: O QUE FORMA CADA NÚMERO DA MATRIZ
+-- A composição da matriz por padrão (tipo 'fisica_itens') é lida por quem vê a
+-- Posição Física. Substitui a política anterior; o resto continua igual.
+-- ---------------------------------------------------------------------
+drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
+create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated
+  using (
+    public.bi_gerencia_arquivos()
+    or (tipo = 'vendas' and (public.bi_ve_painel('portal:position-sales') or public.bi_ve_painel('portal:position-diffs')))
+    or (tipo = 'compras' and public.bi_ve_painel('portal:position-purchases'))
+    or (tipo like 'cert\_%' and public.bi_ve_painel('portal:cert-'))
+    or (tipo = 'fisica_itens' and public.bi_ve_painel('portal:position-physical'))
+    or (tipo not in ('vendas', 'compras', 'fisica_itens') and tipo not like 'cert\_%' and public.bi_ve_painel('portal:position-contracts'))
+  );

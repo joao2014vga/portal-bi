@@ -235,6 +235,10 @@ const PT = {
   "{n} lots out or reduced": "{n} lotes saíram ou diminuíram", "{n} lots in or increased": "{n} lotes entraram ou aumentaram",
   "fixed {n} sc": "fixou {n} sc", "{n} sc more to fix": "{n} sc a mais a fixar",
   "Purchases {n}": "Compras {n}", "Inventory {n}": "Estoque {n}",
+  "Click to see the contracts and lots": "Clique para ver os contratos e lotes", "Accumulated position up to": "Posição acumulada até", "Remainders under half a bag": "Resíduos de menos de meia saca",
+  "Sum of the lines: {n} bags.": "Soma das linhas: {n} sacas.", "No contracts or lots in this cell.": "Nenhum contrato ou lote nesta célula.",
+  "Upload the Position again (or update from Digisul) to see what makes up each number.":
+    "Envie a posição de novo (ou atualize pelo Digisul) para ver o que forma cada número.",
   "Show breakdown": "Mostrar detalhamento", "Hide breakdown": "Ocultar detalhamento", "vs previous": "vs anterior",
 
   // ---------------------------------------------------------------- Estufados / aguardando embarque

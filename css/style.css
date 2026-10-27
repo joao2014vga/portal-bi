@@ -513,6 +513,9 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pbi-matriz thead tr:first-child th { font-size: 15px; }
 .pbi-matriz thead tr + tr th { top: 38px; }
 .pbi-matriz .pbi-grupo button { background: none; border: 0; color: #fff; font-size: 15px; cursor: pointer; padding: 0 4px 0 0; line-height: 1; }
+.pbi-matriz td.pbi-cel { cursor: pointer; }
+.pbi-matriz td.pbi-cel:hover { outline: 2px solid var(--brand); outline-offset: -2px; }
+.pos-comp-h { font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
 /* Overview (TermM): grupos com detalhamento recolhível; colunas de detalhe em vermelho como na planilha */
 .pos-termm .pbi-grupo button { background: none; border: 0; color: var(--brand); font-size: 15px; cursor: pointer; padding: 0 4px 0 0; line-height: 1; }
 .pos-termm th.det { color: var(--critico); }

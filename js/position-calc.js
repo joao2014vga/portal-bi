@@ -150,16 +150,18 @@ function lerComponentesQualidade(g) {
 //  - vendas de exportação e internas: saldo pelo EOM Ship.
 // soExportavel reproduz a parte exportável da Arábica (usada para conferir com a planilha).
 const FORNECEDOR_PROPRIO = "AMERICAN COFFEE CORPORATION";
-export function componentesPorEspecie(gAba, meses, especie, { soExportavel = false } = {}) {
+export function componentesPorEspecie(gAba, meses, especie, { soExportavel = false, itens = null } = {}) {
   const idxMes = new Map(meses.map((m, i) => [m.slice(0, 7), i]));
   const mesDe = (v) => (num(v) == null ? null : idxMes.get(serialIso(v).slice(0, 7)) ?? null);
   const daEspecie = (v) => norm(v) === norm(especie);
   const q = {};
-  const soma = (padrao, comp, i, v) => {
+  // id = [tipo, chave, parceiro]: com `itens`, guarda também cada linha que entrou na conta
+  const soma = (padrao, comp, i, v, id) => {
     const p = String(padrao ?? "").trim();
     if (!p || i == null || !v) return;
     q[p] ??= Object.fromEntries(COMPONENTES.map((k) => [k, meses.map(() => 0)]));
     q[p][comp][i] += v;
+    if (itens && id) itens.push([p, COMPONENTES.indexOf(comp), i, ...id, arred(v)]);
   };
   // percorre a aba pelas colunas pedidas (pelo título); aba sem alguma delas fica de fora
   const ler = (aba, cols, fn) => {
@@ -170,20 +172,20 @@ export function componentesPorEspecie(gAba, meses, especie, { soExportavel = fal
     for (const r of g.slice(1)) if (!vazia(r)) fn(...ix.map((i) => r[i]));
   };
   const v0 = (v) => num(v) ?? 0;
-  ler(ABAS.inventory, ["Espécie", "Padrão", "EXP", "Sacas 60kg"], (e, p, exp, total) => {
-    if (daEspecie(e)) soma(p, "inventory", 0, v0(soExportavel ? exp : total));
+  ler(ABAS.inventory, ["Espécie", "Padrão", "EXP", "Sacas 60kg", "Lote/Guia", "Armazém"], (e, p, exp, total, lote, arm) => {
+    if (daEspecie(e)) soma(p, "inventory", 0, v0(soExportavel ? exp : total), ["e", lote, arm]);
   });
-  ler(ABAS.purchases, ["Fornecedor", "Padrão", "Espécie", "EOM Ship/Paym", "EXP Bags Balance", "LG Bags Balance", "Low Grades Code"], (f, p, e, m, exp, lg, cod) => {
+  ler(ABAS.purchases, ["Fornecedor", "Padrão", "Espécie", "EOM Ship/Paym", "EXP Bags Balance", "LG Bags Balance", "Low Grades Code", "Contrato"], (f, p, e, m, exp, lg, cod, ctr) => {
     if (!daEspecie(e) || norm(f) === FORNECEDOR_PROPRIO) return;
     const i = mesDe(m);
-    soma(p, "purchases", i, v0(exp));
-    if (!soExportavel) soma(cod, "purchases", i, v0(lg));
+    soma(p, "purchases", i, v0(exp), ["c", ctr, f]);
+    if (!soExportavel) soma(cod, "purchases", i, v0(lg), ["c", ctr, f]);
   });
-  ler(ABAS.expsales, ["Padrão", "Espécie", "Quality Group", "EOM Ship", "Balance bags"], (p, e, grupo, m, v) => {
-    if (daEspecie(e) && (!soExportavel || norm(grupo) === "EXP")) soma(p, "exp_sales", mesDe(m), -v0(v));
+  ler(ABAS.expsales, ["Padrão", "Espécie", "Quality Group", "EOM Ship", "Balance bags", "Contrato", "Importador"], (p, e, grupo, m, v, ctr, imp) => {
+    if (daEspecie(e) && (!soExportavel || norm(grupo) === "EXP")) soma(p, "exp_sales", mesDe(m), -v0(v), ["v", ctr, imp]);
   });
-  ler(ABAS.intsales, ["Padrão", "Espécie", "Quality Group", "EOM Ship", "A Entregar(Sc)"], (p, e, grupo, m, v) => {
-    if (daEspecie(e) && (!soExportavel || norm(grupo) === "EXP")) soma(p, "domestic_sales", mesDe(m), -v0(v));
+  ler(ABAS.intsales, ["Padrão", "Espécie", "Quality Group", "EOM Ship", "A Entregar(Sc)", "Contrato", "Cliente"], (p, e, grupo, m, v, ctr, cli) => {
+    if (daEspecie(e) && (!soExportavel || norm(grupo) === "EXP")) soma(p, "domestic_sales", mesDe(m), -v0(v), ["i", ctr, cli]);
   });
   for (const comps of Object.values(q)) for (const k of COMPONENTES) comps[k] = comps[k].map(arred);
   return Object.keys(q).length ? { meses, q } : null;
@@ -1024,6 +1026,67 @@ class Pasta {
     }
   }
   // aba de resumo inteira como grade de valores (erros viram vazio)
+  // Desmonta uma célula de resumo nas linhas das abas base que a formam: segue somas,
+  // subtrações, multiplicações por constante e referências a outras células, até os
+  // SUMIFS. Devolve [{ aba, linha, v }] (linha = número da linha na aba base).
+  termos(aba, a1) {
+    const out = [];
+    const [, L, r] = /^([A-Z]+)(\d+)$/.exec(a1);
+    this.termosCelula(aba, colNum(L), +r, 1, out, new Set());
+    return out;
+  }
+  termosCelula(aba, c, r, fator, out, vistos) {
+    const k = `${aba}!${c}:${r}`;
+    if (vistos.has(k)) return;
+    vistos.add(k);
+    const x = this.calc.get(aba)?.get(colLetra(c) + r);
+    if (x?.f) this.termosNo(this.arvore(x.f), aba, fator, out, vistos);
+  }
+  termosNo(no, aba, fator, out, vistos) {
+    const constante = (n) => (n.k === "val" && typeof n.v === "number" ? n.v : n.k === "neg" && n.a.k === "val" ? -n.a.v : null);
+    switch (no.k) {
+      case "neg": return this.termosNo(no.a, aba, -fator, out, vistos);
+      case "ref": if (!this.base.has(no.aba ?? aba)) this.termosCelula(no.aba ?? aba, no.c, no.r, fator, out, vistos); return;
+      case "bin": {
+        if (no.o === "+" || no.o === "-") {
+          this.termosNo(no.a, aba, fator, out, vistos);
+          this.termosNo(no.b, aba, no.o === "-" ? -fator : fator, out, vistos);
+        } else if (no.o === "*") {
+          const ca = constante(no.a), cb = constante(no.b);
+          if (cb != null) this.termosNo(no.a, aba, fator * cb, out, vistos);
+          else if (ca != null) this.termosNo(no.b, aba, fator * ca, out, vistos);
+        }
+        return;
+      }
+      case "fn": {
+        if (no.n === "SUMIFS") {
+          const alvo = no.args[0];
+          if (alvo.k !== "rng") return;
+          const abaSoma = alvo.aba ?? aba;
+          const rng = this.eval(alvo, aba, 0);
+          const pares = [];
+          for (let i = 1; i < no.args.length; i += 2) {
+            const crit = this.valor(this.eval(no.args[i + 1], aba, 0));
+            pares.push(this.mascara(this.eval(no.args[i], aba, 0), crit));
+          }
+          const r1 = alvo.a.r ?? 1;
+          rng.v.forEach((v, i) => {
+            if (typeof v !== "number" || !v || pares.some((m) => !m[i])) return;
+            out.push({ aba: abaSoma, linha: r1 + i, v: v * fator });
+          });
+        } else if (["SUM", "ROUND", "IFERROR"].includes(no.n)) {
+          const args = no.n === "SUM" ? no.args : [no.args[0]];
+          for (const a of args) {
+            if (a.k === "rng" && !this.base.has(a.aba ?? aba)) {
+              for (let r = a.a.r; r <= (a.b.r ?? a.a.r); r++) for (let c = a.a.c; c <= a.b.c; c++) this.termosCelula(a.aba ?? aba, c, r, fator, out, vistos);
+            } else this.termosNo(a, aba, fator, out, vistos);
+          }
+        }
+        return;
+      }
+      default: return;
+    }
+  }
   grade(aba) {
     const cel = this.calc.get(aba);
     let mr = 0, mc = 0;
@@ -1146,6 +1209,70 @@ function sobreporAnterior(modelo, anterior) {
   return { [ABAS.variacao]: out };
 }
 
+// Linhas das abas base a partir das grades da planilha (para recalcular a planilha enviada)
+export function basesDaGrade(gAba) {
+  const out = {};
+  for (const aba of [ABAS.purchases, ABAS.expsales, ABAS.intsales, ABAS.inventory]) {
+    const g = gAba(aba) ?? [];
+    const cab = (g[0] ?? []).map((x) => String(x ?? "").trim());
+    out[aba] = g.slice(1).filter((r) => String(r[0] ?? "").trim() !== "").map((r) => Object.fromEntries(cab.map((k, i) => [k, r[i] ?? null]).filter(([k]) => k)));
+  }
+  return out;
+}
+
+// Composição da matriz "posição acumulada por padrão": cada linha das abas base que
+// entra em cada célula. Arábica: desmonta as fórmulas dos blocos da aba Physical
+// Position; Conilon: mesmas regras de componentesPorEspecie.
+// Item: [padrão, componente (0 estoque · 1 compras · 2 vendas exp · 3 vendas int),
+//        índice do mês, tipo (e/c/v/i), contrato ou lote, parceiro ou armazém, sacas]
+const ID_BASE = {
+  [ABAS.purchases]: ["c", "Contrato", "Fornecedor"], [ABAS.expsales]: ["v", "Contrato", "Importador"],
+  [ABAS.intsales]: ["i", "Contrato", "Cliente"], [ABAS.inventory]: ["e", "Lote/Guia", "Armazém"],
+};
+export function composicaoFisica(pasta, gAba) {
+  const aba = ABAS.fisica;
+  if (!pasta.calc.get(aba)) return null;
+  const g = gAba(aba);
+  const colunas = {};
+  const id = (abaBase, linha) => {
+    const def = ID_BASE[abaBase];
+    if (!def) return null;
+    colunas[abaBase] ??= def.slice(1).map((titulo) => {
+      const L = Object.entries(pasta.base.get(abaBase).titulos).find(([, t]) => norm(t) === norm(titulo))?.[0];
+      return L ? pasta.coluna(abaBase, colNum(L)) : [];
+    });
+    const [ck, cp] = colunas[abaBase];
+    return [def[0], ck[linha - 1] ?? null, cp[linha - 1] ?? null];
+  };
+  const arabica = { meses: null, itens: [] };
+  const vistas = new Set();
+  for (let i = 0; i + 2 < g.length; i++) {
+    const l = g[i], sub = g[i + 1] ?? [];
+    if (norm(l[0]) !== "ARABICA" || !String(l[1] ?? "").trim() || norm(sub[1]) !== "INVENTORY" || !/^EXPORTABLE/.test(norm(sub[0]))) continue;
+    const lados = [[1, String(l[1]).trim()], [6, String(l[6] ?? "").trim()]].filter(([, q]) => q && !vistas.has(q));
+    lados.forEach(([, q]) => vistas.add(q));
+    const meses = [];
+    for (let k = i + 2; k < g.length && num(g[k][0]) != null; k++) {
+      const mi = meses.push(serialIso(g[k][0])) - 1;
+      for (const [c, q] of lados) {
+        COMPONENTES.forEach((_, j) => {
+          for (const t of pasta.termos(aba, colLetra(c + j + 1) + (k + 1))) {
+            const x = id(t.aba, t.linha);
+            if (x && Math.abs(t.v) >= 0.005) arabica.itens.push([q, j, mi, ...x, arred(t.v)]);
+          }
+        });
+      }
+    }
+    arabica.meses ??= meses;
+  }
+  let conilon = null;
+  if (arabica.meses) {
+    const itens = [];
+    if (componentesPorEspecie(gAba, arabica.meses, "CONILON", { itens })) conilon = { meses: arabica.meses, itens };
+  }
+  return { arabica: arabica.meses ? arabica : null, conilon };
+}
+
 // Calcula a Position inteira: bases = { aba: linhas }, hoje = "AAAA-MM-DD",
 // anterior = kpis do último dia anterior { arabica: {diff, outright}, ... } (opcional)
 export function calcularPosition(modelo, bases, { hoje = hojeSP(), anterior = null } = {}) {
@@ -1159,5 +1286,8 @@ export function calcularPosition(modelo, bases, { hoje = hojeSP(), anterior = nu
     if (!grades.has(nome)) grades.set(nome, ABAS_CALCULO.includes(nome) ? pasta.grade(nome) : pasta.gradeBase(nome));
     return grades.get(nome);
   };
-  return { ...montarPosition(gAba), pasta };
+  const r = montarPosition(gAba);
+  // o que compõe cada célula da matriz por padrão (aberto ao clicar na Posição Física)
+  try { r.detalhes.fisica_itens = composicaoFisica(pasta, gAba); } catch (e) { /* segue sem a composição */ }
+  return { ...r, pasta };
 }

@@ -13,6 +13,7 @@ import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } fro
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
   prazoFixacao, alertasFixacao, textoAlertaFixacao, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
+  calcularPosition, basesDaGrade,
 } from "./position-calc.js";
 import { t as tr, LOCALE, IDIOMA } from "./i18n.js";
 
@@ -25,7 +26,7 @@ export const ehPainelPosition = (link) => /^portal:position-/.test(link ?? "");
 // LEITURA DA PLANILHA (o cálculo e as regras ficam em position-calc.js)
 // =====================================================================
 let xlsxPromise;
-function carregarXlsx() {
+export function carregarXlsx() {
   xlsxPromise ??= new Promise((ok, falha) => {
     if (window.XLSX) return ok(window.XLSX);
     const s = document.createElement("script");
@@ -72,6 +73,12 @@ export async function lerPlanilhaPosition(file) {
   let modelo = null;
   try { modelo = extrairModelo(XLSX, wb); }
   catch (e) { avisos.push(`The Digisul update could not read this spreadsheet's formulas: ${e.message}`); }
+  // composição da matriz da Posição Física: recalcula a própria planilha com as fórmulas dela
+  // (mesmo resultado do Excel) para saber que linhas formam cada célula
+  if (modelo) {
+    try { detalhes.fisica_itens = calcularPosition(modelo, basesDaGrade(gAba), { hoje: data_ref }).detalhes.fisica_itens; }
+    catch { /* segue sem a composição */ }
+  }
   // receita em R$: PTAX de compra D-1 de cada embarque (se o Banco Central não responder, segue sem)
   try {
     const semPtax = await aplicarPtax(detalhes.vendas);
@@ -716,16 +723,81 @@ function matrizPorPadrao(f, estado) {
         const cels = grupos.map((g) => {
           const t = totGrupo(g, i);
           geral += t;
-          const qs = estado.recolhidos.has(g.nome) ? "" : g.qualidades.map((c) => { const v = acumulado[c][i]; return `<td class="${v < -0.5 ? "neg" : ""}">${numPbi(v)}</td>`; }).join("");
-          return `${qs}<td class="pbi-tot ${classe(t)}">${numPbi(t)}</td>`;
+          const qs = estado.recolhidos.has(g.nome) ? "" : g.qualidades.map((c) => { const v = acumulado[c][i]; return `<td class="pbi-cel ${v < -0.5 ? "neg" : ""}" data-g="${esc(c)}" data-qs="${esc(c)}" data-i="${i}" title="${esc(tr("Click to see the contracts and lots"))}">${numPbi(v)}</td>`; }).join("");
+          return `${qs}<td class="pbi-tot pbi-cel ${classe(t)}" data-g="${esc(g.nome)}" data-qs="${esc(g.qualidades.join(","))}" data-i="${i}">${numPbi(t)}</td>`;
         }).join("");
-        return `<tr><th scope="row">${esc(mesLongo(m))}</th>${cels}<td class="pbi-total ${classe(geral)}">${numPbi(geral)}</td></tr>`;
+        return `<tr><th scope="row">${esc(mesLongo(m))}</th>${cels}<td class="pbi-total pbi-cel ${classe(geral)}" data-g="Total" data-qs="${esc(grupos.flatMap((g) => g.qualidades).join(","))}" data-i="${i}">${numPbi(geral)}</td></tr>`;
       }).join("")}</tbody>
     </table></div>
   </section>`;
 }
 
-async function painelFisica(alvo, carga) {
+// Composição de uma célula da matriz por padrão (acumulado até o mês da célula):
+// lotes do estoque, compras e vendas, conforme os componentes ligados na tela.
+const COMPONENTES_FIS = ["inventory", "purchases", "exp_sales", "domestic_sales"]; // ordem de position-calc
+const ROT_COMP_FIS = ["Inventory", "Purchases", "Export Sales", "Domestic Sales"];
+const ROT_ID_FIS = { e: ["Lot", "Warehouse"], c: ["Contract", "Supplier"], v: ["Contract", "Importer"], i: ["Contract", "Client"] };
+let composicaoCache = null;
+
+async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor }) {
+  if (!ctx?.api?.positionDetalhe) return;
+  try {
+    composicaoCache ??= ctx.api.positionDetalhe(["fisica_itens"]).then((d) => d.fisica_itens ?? null);
+    const fi = await composicaoCache;
+    const dados = fi?.[estado.especie === "conilon" ? "conilon" : "arabica"];
+    if (!dados) throw new Error("Upload the Position again (or update from Digisul) to see what makes up each number.");
+    const ligados = estado.comps.size ? COMPS_FISICA.map(([k]) => k).filter((k) => estado.comps.has(k)) : COMPS_FISICA.map(([k]) => k);
+    const comps = new Set(ligados.map((k) => COMPONENTES_FIS.indexOf(k)));
+    const qs = new Set(qualidades);
+    const itens = dados.itens.filter((x) => qs.has(x[0]) && x[2] <= i && comps.has(x[1]));
+    // por componente; dentro dele, uma linha por contrato/lote (soma dos meses)
+    const secoes = [0, 1, 2, 3].filter((c) => comps.has(c)).map((c) => {
+      const porChave = new Map();
+      for (const x of itens.filter((y) => y[1] === c)) {
+        const k = `${x[4]}|${x[0]}`;
+        const l = porChave.get(k) ?? porChave.set(k, { tipo: x[3], chave: x[4], parceiro: x[5], padrao: x[0], meses: new Set(), v: 0 }).get(k);
+        l.meses.add(x[2]); l.v += x[6];
+      }
+      const todas = [...porChave.values()].filter((l) => Math.abs(l.v) > 1e-6);
+      const linhas = todas.filter((l) => Math.abs(l.v) >= 0.5).sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+      // resíduos de menos de meia saca ficam numa linha só, para a soma bater com a célula
+      const miudos = todas.filter((l) => Math.abs(l.v) < 0.5);
+      const vMiudos = miudos.reduce((s, l) => s + l.v, 0);
+      if (miudos.length && Math.abs(vMiudos) >= 0.005) {
+        linhas.push({ tipo: miudos[0].tipo, chave: `${miudos.length} × < ½`, parceiro: tr("Remainders under half a bag"), padrao: "", meses: new Set(miudos.flatMap((l) => [...l.meses])), v: vMiudos });
+      }
+      return { c, linhas, total: todas.reduce((s, l) => s + l.v, 0) };
+    }).filter((s) => s.linhas.length);
+    const total = secoes.reduce((s, x) => s + x.total, 0);
+    const variasQ = qs.size > 1;
+    const mesesTxt = (l) => [...l.meses].sort((a, b) => a - b).map((m) => mesLongo(dados.meses[m])).join(", ");
+    modal({
+      titulo: `${rotulo} · ${mesLongo(mes)}`,
+      largura: "modal-lg",
+      corpo: `<p><span>Accumulated position up to</span> <b>${esc(mesLongo(mes))}</b>: <strong class="pos-alt-ef">${esc(valor)}</strong> <span>bags</span></p>
+        <div class="pos-alt-resumo">${secoes.map((s) => `<span>${esc(tr(ROT_COMP_FIS[s.c]))}: <strong class="pos-alt-ef">${fmtN(Math.round(s.total))}</strong></span>`).join("")}</div>
+        ${valor && Math.abs(Math.abs(total) - (Number(String(valor).replace(/[^\d]/g, "")) || 0)) > 1
+          ? `<p class="muted pos-nota">${icon("info")} Sum of the lines: ${fmtN(Math.round(total))} bags.</p>` : ""}
+        ${secoes.map((s) => {
+          const [rotChave, rotParc] = ROT_ID_FIS[s.linhas[0].tipo];
+          return `<h3 class="pos-comp-h">${tr(ROT_COMP_FIS[s.c])} <span class="muted">· ${s.linhas.length} · ${fmtN(Math.round(s.total))} bags</span></h3>
+          <div class="tabela-wrap"><table class="tabela tabela-num">
+            <thead><tr><th>${rotChave}</th><th>${rotParc}</th>${variasQ ? "<th>Quality</th>" : ""}${s.c ? "<th>Month</th>" : ""}<th class="num">Bags</th></tr></thead>
+            <tbody>${s.linhas.map((l) => `<tr><td>${esc(l.chave ?? "—")}</td><td>${esc(l.parceiro ?? "—")}</td>${variasQ ? `<td>${esc(l.padrao)}</td>` : ""}${s.c ? `<td>${esc(mesesTxt(l))}</td>` : ""}${celNum(l.v)}</tr>`).join("")}</tbody>
+          </table></div>`;
+        }).join("") || `<p class="muted">No contracts or lots in this cell.</p>`}`,
+    });
+    // os negativos do modal também ficam em vermelho
+    const m = $$(".modal").at(-1);
+    if (m) { m.classList.add("pos"); marcarNegativos(m); }
+  } catch (e) {
+    composicaoCache = null;
+    toast(e.message, "erro");
+  }
+}
+
+async function painelFisica(alvo, carga, ctx) {
+  composicaoCache = null;
   const f = carga.resumo.fisica;
   const grupos = ["exportable", "lowgrade"].filter((k) => f[k]);
   let grupo = grupos[0];
@@ -770,6 +842,11 @@ async function painelFisica(alvo, carga) {
       estado.recolhidos.clear();
       desenhar();
     }));
+    // clique num número da matriz: contratos e lotes que formam aquele saldo
+    $$(".pbi-cel", alvo).forEach((td) => td.addEventListener("click", () => abrirComposicao(ctx, estado, {
+      rotulo: td.dataset.g, qualidades: td.dataset.qs.split(",").filter(Boolean), i: Number(td.dataset.i),
+      mes: mesesMatriz()[Number(td.dataset.i)], valor: td.textContent.trim(),
+    })));
     $("#pbiDe", alvo)?.addEventListener("change", (e) => { estado.de = e.target.value; desenhar(); });
     $("#pbiAte", alvo)?.addEventListener("change", (e) => { estado.ate = e.target.value; desenhar(); });
     // − / + 1 mês: mexe no fim do período
