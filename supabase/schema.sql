@@ -972,3 +972,131 @@ end;
 $$;
 revoke all on function public.bi_cert_historico_importar(text, jsonb) from public, anon;
 grant execute on function public.bi_cert_historico_importar(text, jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 14. CERTIFICADOS: HISTÓRICO EDITADO PELO PORTAL
+-- Depois da importação (uma vez só), tudo é feito na página: incluir e editar
+-- compras BRC, e vincular cada embarque às compras de onde saem as sacas.
+-- As compras com o certificado que o Digisul traz a partir do início do
+-- controle entram sozinhas como origem (não são gravadas aqui).
+-- Pré-requisito: seções 11 e 13.
+-- ---------------------------------------------------------------------
+alter table public.bi_cert_historico add column if not exists origem text not null default 'planilha';
+alter table public.bi_cert_historico add column if not exists obs text;
+alter table public.bi_cert_historico add column if not exists alterado_por text;
+alter table public.bi_cert_historico add column if not exists updated_at timestamptz;
+alter table public.bi_cert_historico drop constraint if exists bi_cert_historico_origem;
+alter table public.bi_cert_historico add constraint bi_cert_historico_origem check (origem in ('planilha', 'manual'));
+
+-- quem incluiu ou alterou pela tela (não vem do navegador)
+create or replace function public.bi_cert_historico_autor()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_nome text := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+begin
+  if tg_op = 'INSERT' then
+    if new.origem = 'manual' then new.importado_por := v_nome; new.created_at := now(); end if;
+  else
+    new.alterado_por := v_nome;
+    new.updated_at := now();
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists bi_cert_historico_autor on public.bi_cert_historico;
+create trigger bi_cert_historico_autor before insert or update on public.bi_cert_historico
+  for each row execute function public.bi_cert_historico_autor();
+
+drop policy if exists bi_cert_historico_insert on public.bi_cert_historico;
+create policy bi_cert_historico_insert on public.bi_cert_historico for insert to authenticated
+  with check (public.bi_gerencia_arquivos());
+drop policy if exists bi_cert_historico_update on public.bi_cert_historico;
+create policy bi_cert_historico_update on public.bi_cert_historico for update to authenticated
+  using (public.bi_gerencia_arquivos()) with check (public.bi_gerencia_arquivos());
+drop policy if exists bi_cert_historico_delete on public.bi_cert_historico;
+create policy bi_cert_historico_delete on public.bi_cert_historico for delete to authenticated
+  using (public.bi_gerencia_arquivos());
+
+-- Vínculo embarque → compra: quantas sacas de cada compra BRC saem em cada
+-- exportação. historico_id aponta a linha do histórico; null = compra que vem
+-- direto do Digisul (identificada pelo contrato).
+create table if not exists public.bi_cert_vinculos (
+  id           bigint generated always as identity primary key,
+  certificado  text not null default 'CP',
+  historico_id bigint references public.bi_cert_historico (id) on delete cascade,
+  compra       text not null,
+  venda        text not null,
+  sacas        numeric not null check (sacas > 0),
+  obs          text,
+  autor        text,
+  created_by   uuid default auth.uid() references public.bi_perfis (id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+create index if not exists bi_cert_vinculos_venda on public.bi_cert_vinculos (certificado, venda);
+drop trigger if exists bi_cert_vinculos_autor on public.bi_cert_vinculos;
+create trigger bi_cert_vinculos_autor before insert or update on public.bi_cert_vinculos
+  for each row execute function public.bi_cert_autor();
+
+alter table public.bi_cert_vinculos enable row level security;
+drop policy if exists bi_cert_vinculos_select on public.bi_cert_vinculos;
+create policy bi_cert_vinculos_select on public.bi_cert_vinculos for select to authenticated
+  using (public.bi_ve_painel('portal:cert-') or public.bi_gerencia_arquivos());
+drop policy if exists bi_cert_vinculos_insert on public.bi_cert_vinculos;
+create policy bi_cert_vinculos_insert on public.bi_cert_vinculos for insert to authenticated
+  with check (public.bi_gerencia_arquivos());
+drop policy if exists bi_cert_vinculos_update on public.bi_cert_vinculos;
+create policy bi_cert_vinculos_update on public.bi_cert_vinculos for update to authenticated
+  using (public.bi_gerencia_arquivos()) with check (public.bi_gerencia_arquivos());
+drop policy if exists bi_cert_vinculos_delete on public.bi_cert_vinculos;
+create policy bi_cert_vinculos_delete on public.bi_cert_vinculos for delete to authenticated
+  using (public.bi_gerencia_arquivos());
+
+-- Troca os vínculos de um embarque de uma vez (numa transação; vale o RLS acima)
+create or replace function public.bi_cert_vincular(p_certificado text, p_venda text, p_linhas jsonb)
+returns integer
+language plpgsql
+as $$
+declare
+  v_n integer;
+begin
+  delete from public.bi_cert_vinculos where certificado = p_certificado and venda = p_venda;
+  insert into public.bi_cert_vinculos (certificado, historico_id, compra, venda, sacas, obs)
+  select p_certificado, nullif(l ->> 'historico_id', '')::bigint, l ->> 'compra', p_venda, (l ->> 'sacas')::numeric, nullif(l ->> 'obs', '')
+  from jsonb_array_elements(p_linhas) l
+  where (l ->> 'sacas')::numeric > 0;
+  get diagnostics v_n = row_count;
+  return v_n;
+end;
+$$;
+revoke all on function public.bi_cert_vincular(text, text, jsonb) from public, anon;
+grant execute on function public.bi_cert_vincular(text, text, jsonb) to authenticated;
+
+-- Igual à da seção 13, mas uma nova importação só troca as linhas da planilha:
+-- as compras incluídas pela tela ficam (os vínculos feitos pela tela nas linhas
+-- da planilha saem junto com elas)
+create or replace function public.bi_cert_historico_importar(p_certificado text, p_linhas jsonb)
+returns integer
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_autor text;
+  v_n integer;
+begin
+  if not public.bi_gerencia_arquivos() then
+    raise exception 'permission denied: only administrators and file managers can import the certificate history';
+  end if;
+  v_autor := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  delete from public.bi_cert_historico where certificado = p_certificado and origem = 'planilha';
+  insert into public.bi_cert_historico (certificado, origem, ordem, compra, id_cert, fornecedor, fazenda, sacas, usado, vencimento, vinculos, importado_por)
+  select p_certificado, 'planilha', (l ->> 'ordem')::int, l ->> 'compra', l ->> 'id_cert', l ->> 'fornecedor', l ->> 'fazenda',
+         (l ->> 'sacas')::numeric, (l ->> 'usado')::numeric, (l ->> 'vencimento')::date,
+         coalesce(l -> 'vinculos', '[]'::jsonb), v_autor
+  from jsonb_array_elements(p_linhas) l;
+  get diagnostics v_n = row_count;
+  return v_n;
+end;
+$$;
+revoke all on function public.bi_cert_historico_importar(text, jsonb) from public, anon;
+grant execute on function public.bi_cert_historico_importar(text, jsonb) to authenticated;

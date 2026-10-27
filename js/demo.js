@@ -272,10 +272,31 @@ export function criarDemo() {
     },
     async removerCertAjuste(id) { exigeArquivos(); db.certAjustes = (db.certAjustes ?? []).filter((a) => a.id !== id); salvar(); },
     async certHistorico(certificado) { return structuredClone((db.certHistorico ?? []).filter((h) => h.certificado === certificado)); },
+    async certVinculos(certificado) { return structuredClone((db.certVinculos ?? []).filter((v) => v.certificado === certificado)); },
+    async salvarCertVinculos(certificado, venda, linhas) {
+      exigeArquivos();
+      db.certVinculos = [...(db.certVinculos ?? []).filter((v) => !(v.certificado === certificado && v.venda === venda)),
+        ...linhas.filter((l) => l.sacas > 0).map((l) => ({ id: novoId(), certificado, venda, ...l, autor: eu().nome, created_at: new Date().toISOString() }))];
+      salvar();
+    },
+    async salvarCertCompra({ id, ...linha }) {
+      exigeArquivos();
+      db.certHistorico ??= [];
+      const h = id && db.certHistorico.find((x) => x.id === id);
+      if (h) Object.assign(h, linha, { ordem: h.ordem, alterado_por: eu().nome, updated_at: new Date().toISOString() });
+      else db.certHistorico.push({ id: novoId(), ...linha, origem: "manual", vinculos: [], importado_por: eu().nome, created_at: new Date().toISOString() });
+      salvar();
+    },
+    async removerCertCompra(id) {
+      exigeArquivos();
+      db.certHistorico = (db.certHistorico ?? []).filter((h) => h.id !== id);
+      db.certVinculos = (db.certVinculos ?? []).filter((v) => v.historico_id !== id);
+      salvar();
+    },
     async importarCertHistorico(certificado, linhas) {
       exigeArquivos();
-      db.certHistorico = [...(db.certHistorico ?? []).filter((h) => h.certificado !== certificado),
-        ...linhas.map((l) => ({ id: novoId(), certificado, ...l, importado_por: eu().nome, created_at: new Date().toISOString() }))];
+      db.certHistorico = [...(db.certHistorico ?? []).filter((h) => h.certificado !== certificado || h.origem === "manual"),
+        ...linhas.map((l) => ({ id: novoId(), certificado, origem: "planilha", ...l, importado_por: eu().nome, created_at: new Date().toISOString() }))];
       salvar();
       return linhas.length;
     },

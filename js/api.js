@@ -50,6 +50,10 @@ function erroPosition(msg = "") {
   return traduzErro(msg);
 }
 
+function erroCertEdicao(msg = "") {
+  if (/bi_cert_vinc|origem|alterado_por|schema cache|does not exist|could not find/i.test(msg)) return "Editing the certificate history is not set up yet: run section 14 of supabase/schema.sql in the Supabase SQL Editor.";
+  return erroCert(msg);
+}
 function erroCert(msg = "") {
   if (/bi_cert_ajustes|schema cache|does not exist/i.test(msg)) return "Certificates are not set up yet: run section 11 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/row-level security|permission denied/i.test(msg)) return "Only administrators and file managers can change the certificate list.";
@@ -340,6 +344,32 @@ async function criarApiSupabase() {
         throw new Error(erroCert(error.message));
       }
       return data;
+    },
+    // vínculos embarque → compra BRC feitos pela tela (null = seção 14 ainda não rodada)
+    async certVinculos(certificado) {
+      const { data, error } = await sb.from("bi_cert_vinculos").select("*").eq("certificado", certificado).order("created_at");
+      if (error) {
+        if (/bi_cert_vinculos|schema cache|does not exist/i.test(error.message)) return null;
+        throw new Error(erroCert(error.message));
+      }
+      return data;
+    },
+    // troca todos os vínculos de um embarque: [{ historico_id, compra, sacas }]
+    async salvarCertVinculos(certificado, venda, linhas) {
+      const { error } = await sb.rpc("bi_cert_vincular", { p_certificado: certificado, p_venda: venda, p_linhas: linhas });
+      if (error) throw new Error(erroCertEdicao(error.message));
+    },
+    // compra do histórico: inclui (sem id) ou altera
+    async salvarCertCompra({ id, certificado, ordem, compra, id_cert, fornecedor, fazenda, sacas, usado, vencimento, obs }) {
+      const linha = { certificado, compra, id_cert, fornecedor, fazenda, sacas, usado, vencimento, obs };
+      const { error } = id
+        ? await sb.from("bi_cert_historico").update(linha).eq("id", id)
+        : await sb.from("bi_cert_historico").insert({ ...linha, ordem, origem: "manual" });
+      if (error) throw new Error(erroCertEdicao(error.message));
+    },
+    async removerCertCompra(id) {
+      const { error } = await sb.from("bi_cert_historico").delete().eq("id", id);
+      if (error) throw new Error(erroCertEdicao(error.message));
     },
     async importarCertHistorico(certificado, linhas) {
       const { data, error } = await sb.rpc("bi_cert_historico_importar", { p_certificado: certificado, p_linhas: linhas });

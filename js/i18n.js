@@ -480,7 +480,41 @@ const PT = {
   "Import CP history": "Importar histórico CP", "Read and import": "Ler e importar",
   "Choose the Controle CAFE Pratices spreadsheet (.xlsx). The CONTROLE sheet is read in your browser: each BRC purchase, the exports it went to and the leftover.":
     "Escolha a planilha Controle CAFE Pratices (.xlsx). A aba CONTROLE é lida no seu navegador: cada compra BRC, as exportações para onde ela foi e a sobra.",
-  "It replaces the {n} contracts imported before.": "Ela substitui os {n} contratos importados antes.",
+  "It replaces the {n} contracts imported before. Purchases added on the portal stay.":
+    "Ela substitui os {n} contratos importados antes. As compras incluídas pelo portal ficam.",
+  "Shipment links made on the portal to spreadsheet contracts are removed with them. You only need to import once: after that, edit the history here.":
+    "Os vínculos de embarque feitos pelo portal nos contratos da planilha saem junto. A importação só precisa ser feita uma vez: depois, edite o histórico aqui.",
+  // histórico editado pelo portal
+  "From BRC": "Das compras BRC", "Link": "Vincular", "Which BRC purchases this export came from": "De quais compras BRC saiu esta exportação",
+  "Add purchase": "Incluir compra", "Edit purchase": "Editar compra",
+  "To edit the history and link shipments here, run section 14 of supabase/schema.sql in the Supabase SQL Editor.":
+    "Para editar o histórico e vincular embarques aqui, rode a seção 14 do supabase/schema.sql no SQL Editor do Supabase.",
+  "To say which purchases an export came from, use “Link” on the export in the Export sales tab.":
+    "Para dizer de quais compras saiu uma exportação, use “Vincular” na exportação, na aba Vendas de exportação.",
+  "Purchase with the certificate in Digisul, due from the start of the control": "Compra com o certificado no Digisul, com vencimento a partir do início do controle",
+  "Spreadsheet": "Planilha", "edited": "editada",
+  "Changes are recorded with your name.": "As alterações ficam registradas com o seu nome.",
+  "A BRC purchase with the C.A.F.E. Practices certificate that is not in the history. Purchases due from the start of the control already come from Digisul.":
+    "Uma compra BRC com o certificado C.A.F.E. Practices que não está no histórico. As compras com vencimento a partir do início do controle já vêm do Digisul.",
+  "BRC contract *": "Contrato BRC *", "Producer *": "Produtor *", "Bags *": "Sacas *", "Used before the portal": "Usado antes do portal", "Due date *": "Vencimento *",
+  "Fill in the contract, producer and due date.": "Preencha o contrato, o produtor e o vencimento.",
+  "Bags must be greater than zero.": "As sacas precisam ser maiores que zero.",
+  "Used must be between zero and the contract bags.": "O usado precisa ficar entre zero e as sacas do contrato.",
+  "Purchase updated.": "Compra atualizada.", "Purchase added to the history.": "Compra incluída no histórico.",
+  "Remove purchase": "Remover compra", "Remove this purchase from the CP history?": "Tirar esta compra do histórico CP?",
+  "Remove this purchase from the CP history? Its shipment links are removed too.": "Tirar esta compra do histórico CP? Os vínculos de embarque dela saem junto.",
+  "Purchase removed from the history.": "Compra removida do histórico.",
+  "Link shipment to BRC purchases": "Vincular embarque às compras BRC",
+  "Type how many bags of this export come from each BRC purchase. The leftover of each purchase updates when you save.":
+    "Digite quantas sacas desta exportação saem de cada compra BRC. A sobra de cada compra se atualiza ao salvar.",
+  "Already in the spreadsheet": "Já na planilha", "Search contract or producer…": "Buscar contrato ou produtor…",
+  "Available": "Disponível", "Bags from it": "Sacas dela", "No purchase with leftover in the history.": "Nenhuma compra com sobra no histórico.",
+  "Shipment links saved.": "Vínculos do embarque salvos.", "Shipment links removed.": "Vínculos do embarque removidos.",
+  "Linked": "Vinculado", "of": "de", "More than the export": "Mais que a exportação", "Save links": "Salvar vínculos",
+  "Bags cannot be negative.": "As sacas não podem ser negativas.",
+  "The links add up to more than the {n} bags of the export.": "Os vínculos somam mais que as {n} sacas da exportação.",
+  "Editing the certificate history is not set up yet: run section 14 of supabase/schema.sql in the Supabase SQL Editor.":
+    "A edição do histórico de certificados ainda não foi instalada: rode a seção 14 do supabase/schema.sql no SQL Editor do Supabase.",
   "History imported: {n} purchase contracts.": "Histórico importado: {n} contratos de compra.",
   "Sheet CONTROLE not found. Is this the C.A.F.E. Practices control spreadsheet?": "Aba CONTROLE não encontrada. Esta é a planilha de controle do C.A.F.E. Practices?",
   "No BRC purchase contract found in the CONTROLE sheet.": "Nenhum contrato de compra BRC na aba CONTROLE.",
