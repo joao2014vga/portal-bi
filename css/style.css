@@ -376,6 +376,10 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-alt-resumo { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; color: var(--texto-2); margin: 4px 0 8px; }
 .pos-alt-resumo strong { color: var(--texto); }
 .pos-alt-total { font-weight: 500; }
+.pos-alt-texto { display: grid; gap: 14px; margin: 6px 0 10px; }
+.pos-alt-secao h3 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.pos-alt-secao td { vertical-align: top; white-space: normal; }
+.pos-alt-secao .nowrap { white-space: nowrap; }
 .pos-filtros { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pos-filtros select { width: auto; height: 34px; }
 .pos-filtros .busca { width: 260px; max-width: 100%; }

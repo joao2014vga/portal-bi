@@ -223,6 +223,14 @@ const PT = {
   "To fix before": "A fixar antes", "To fix now": "A fixar agora",
   "Hover a number to see the lots. Lot changes are usually reprocessing, blends, deliveries and shipments.":
     "Passe o mouse no número para ver os lotes. Mudanças de lote costumam ser rebeneficiamento, ligas, entregas e embarques.",
+  "Movement": "Movimento", "Effect": "Efeito", "Exportable:": "Exportável:", "Low Grade:": "Low Grade:", "Conilon:": "Conilon:",
+  "Other qualities:": "Outras qualidades:", "Outright": "Outright", "Lot movements": "Movimentação de lotes",
+  "delivery of {n} sc": "entrega de {n} sc", "{n} new lots in inventory": "{n} lotes novos no estoque",
+  "new purchase contract": "contrato de compra novo", "new export sale": "venda de exportação nova", "new domestic sale": "venda interna nova",
+  "shipment of {n} sc": "embarque de {n} sc", "increase of {n} sc": "aumento de {n} sc",
+  "{n} lots out or reduced": "{n} lotes saíram ou diminuíram", "{n} lots in or increased": "{n} lotes entraram ou aumentaram",
+  "fixed {n} sc": "fixou {n} sc", "{n} sc more to fix": "{n} sc a mais a fixar",
+  "Purchases {n}": "Compras {n}", "Inventory {n}": "Estoque {n}",
   "Show breakdown": "Mostrar detalhamento", "Hide breakdown": "Ocultar detalhamento", "vs previous": "vs anterior",
 
   // ---------------------------------------------------------------- Estufados / aguardando embarque

@@ -101,7 +101,7 @@ const fmtSinal = (v) => (v > 0 ? "+" : "") + fmtN(v);
 // Roda sozinho a cada redesenho do painel (MutationObserver em renderPosition).
 const RE_NEG = /^[▲▼]?\s*\([^()]*\d[^()]*\)$/;
 function marcarNegativos(raiz) {
-  for (const el of raiz.querySelectorAll("td, th, .pos-kpi-v, .pos-kpi-s span, .pos-kpi-d b, .yoy, .cel-barra b")) {
+  for (const el of raiz.querySelectorAll("td, th, .pos-kpi-v, .pos-kpi-s span, .pos-kpi-d b, .yoy, .cel-barra b, .pos-alt-ef")) {
     if (el.children.length && !el.matches(".yoy")) continue;
     el.classList.toggle("neg", RE_NEG.test(el.textContent.trim()));
   }
@@ -341,7 +341,6 @@ async function painelOverview(alvo, carga, ctx) {
       </table></div>
     </section>
 
-    ${cardAlteracoes(carga.resumo.alteracoes, FILTRO_GRUPO_ALT[grupo], NOME_GRUPO[grupo])}
 
     <div class="pos-duas">
       <section class="pos-card">
@@ -368,6 +367,7 @@ async function painelOverview(alvo, carga, ctx) {
           : `<p class="muted">The history builds up with each daily upload — this chart appears from the second Position onwards.</p>`}
       </section>
     </div>
+    ${cardAlteracoes(carga.resumo.alteracoes, FILTRO_GRUPO_ALT[grupo], NOME_GRUPO[grupo])}
     ${ctx.gerente ? cardComparacao(grupo, carga, outra, modeloInfo, ctx) : ""}`;
 
     $$("[data-grupo]", alvo).forEach((el) => el.addEventListener("click", () => { grupo = el.dataset.grupo; desenhar(); }));
@@ -427,6 +427,7 @@ function cardAlteracoes(alt, filtro, rotulo) {
       ${fixs.length ? `<span>Fixations: <strong>${fmtN(fixs.reduce((s, x) => s + (x.antes - x.agora), 0))}</strong> bags <span class="muted">(${fixs.length})</span></span>` : ""}
       ${!movs.length && !fixs.length ? `<span class="muted">No changes.</span>` : ""}
     </div>
+    ${resumoAlteracoes(itens)}
     ${alteracoesAbertas && contratos.length ? `<div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
       <thead><tr><th>Type</th><th>Contract</th><th>Counterparty</th><th>Quality</th><th class="num">Before</th><th class="num">Now</th><th class="num">Physical effect</th><th>What happened</th></tr></thead>
       <tbody>${contratos.map((x) => `<tr><td>${ROT_TIPO_ALT[x.tipo]}</td><td>${esc(x.chave)}</td><td>${esc(x.parceiro ?? "—")}</td><td>${esc(x.padrao ?? "—")}</td>
@@ -444,6 +445,71 @@ function cardAlteracoes(alt, filtro, rotulo) {
     </table></div>` : ""}
   </section>`;
 }
+// Resumo escrito, por grupo (Exportável / Low Grade / Conilon): contrato novo, entrega
+// (casada com os lotes que ela gerou no estoque), embarque, movimentação de lotes e fixações.
+const SECOES_ALT = [["EXP", "Exportable"], ["LOW GRADE", "Low Grade"], ["CONILON", "Conilon"], [null, "Other qualities"]];
+const PALAVRAS_FORA = /^(LTDA|S\.?A\.?|ME|EIRELI|EPP|DE|DA|DO|DAS|DOS|E|EM)$/i;
+// nome curto do parceiro: o que vem antes do " - " ou as três primeiras palavras
+function nomeCurto(s) {
+  if (!s) return "—";
+  const base = String(s).includes(" - ") ? String(s).split(" - ")[0] : String(s).split(/\s+/).filter((w) => !PALAVRAS_FORA.test(w)).slice(0, 3).join(" ");
+  return base.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
+
+function resumoAlteracoes(itens) {
+  if (!itens.length) return "";
+  const soma = (l) => l.reduce((s, x) => s + x.efeito, 0);
+  const lotesTxt = (l, max = 6) => l.slice(0, max).map((x) => x.chave).join(", ") + (l.length > max ? ` +${l.length - max}` : "");
+  const quem = (x, comSacas) => `<b>${esc(x.chave)}</b> <span class="muted" title="${esc(x.parceiro ?? "")}">(${esc(nomeCurto(x.parceiro))}, ${esc(x.padrao ?? "—")}${comSacas ? `, ${fmtN(comSacas)} sc` : ""})</span>`;
+  const ef = (v) => `<strong class="pos-alt-ef">${fmtSinal(Math.round(v))}</strong>`;
+  const secoes = [];
+  for (const [grupo, nome] of SECOES_ALT) {
+    const doGrupo = itens.filter((x) => (x.grupo ?? null) === grupo);
+    if (!doGrupo.length) continue;
+    const movs = doGrupo.filter((x) => !x.fixacao), fixs = doGrupo.filter((x) => x.fixacao);
+    const lotes = movs.filter((x) => x.tipo === "e");
+    const usados = new Set();
+    const linhas = [];
+    for (const x of movs.filter((m) => m.tipo !== "e").sort((a, b) => Math.abs(b.efeito) - Math.abs(a.efeito))) {
+      const q = Math.abs(x.agora - x.antes);
+      if (x.tipo === "c" && (x.motivo === "Delivery" || x.motivo === "Delivered / closed")) {
+        // lotes novos com o contrato desta compra = o café que entrou no estoque com a entrega
+        const daEntrega = lotes.filter((l) => l.parceiro === x.chave && l.efeito > 0);
+        daEntrega.forEach((l) => usados.add(l));
+        const est = soma(daEntrega);
+        linhas.push([`${quem(x)} — <span>delivery of ${fmtN(q)} sc</span>${daEntrega.length ? `, <span>${daEntrega.length} new lots in inventory</span>` : ""}`,
+          daEntrega.length ? `<span class="muted">Purchases ${fmtN(x.efeito)} · Inventory ${fmtSinal(Math.round(est))}</span> ${ef(x.efeito + est)}` : `<span class="muted">Purchases</span> ${ef(x.efeito)}`]);
+        continue;
+      }
+      const txt = {
+        "c|New purchase": "new purchase contract", "c|Increase": "increase",
+        "v|New sale": "new export sale", "v|Shipment": "shipment", "v|Shipped / closed": "shipment", "v|Increase": "increase",
+        "i|New sale": "new domestic sale", "i|Delivery": "delivery", "i|Delivered / closed": "delivery", "i|Increase": "increase",
+      }[`${x.tipo}|${x.motivo}`] ?? x.motivo;
+      const novo = x.motivo.startsWith("New");
+      const conta = { c: "Purchases", v: "Exp sales", i: "Int sales" }[x.tipo];
+      linhas.push([`${quem(x, novo ? x.agora : null)} — <span>${txt}${novo ? "" : ` of ${fmtN(q)} sc`}</span>`, `<span class="muted">${conta}</span> ${ef(x.efeito)}`]);
+    }
+    // lotes que sobraram: rebeneficiamentos, ligas, saídas para embarque
+    const resto = lotes.filter((l) => !usados.has(l));
+    if (resto.length) {
+      const entrou = resto.filter((l) => l.efeito > 0), saiu = resto.filter((l) => l.efeito < 0);
+      const padroes = [...new Set(resto.map((l) => l.padrao).filter(Boolean))].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+      linhas.push([`<b>Lot movements</b> <span class="muted">(${esc(padroes.join(", "))})</span> — ${saiu.length ? `<span title="${esc(saiu.map((l) => `${l.chave} (${fmtN(l.efeito)})`).join(", "))}">${saiu.length} lots out or reduced</span> <span class="muted">(${esc(lotesTxt(saiu))})</span>` : ""}${saiu.length && entrou.length ? "; " : ""}${entrou.length ? `<span title="${esc(entrou.map((l) => `${l.chave} (+${fmtN(l.efeito)})`).join(", "))}">${entrou.length} lots in or increased</span> <span class="muted">(${esc(lotesTxt(entrou))})</span>` : ""}`,
+        `<span class="muted">Inventory</span> ${ef(soma(resto))}`]);
+    }
+    for (const x of fixs) {
+      const fixado = x.antes - x.agora;
+      const out = (x.tipo === "c" ? 1 : -1) * fixado;
+      linhas.push([`${quem(x)} — <span>${fixado > 0 ? `fixed ${fmtN(fixado)} sc` : `${fmtN(-fixado)} sc more to fix`}</span>`, `<span class="muted">Outright</span> ${ef(out)}`]);
+    }
+    secoes.push(`<div class="pos-alt-secao"><h3>${nome}: ${ef(soma(movs))} <span class="muted">bags</span></h3>
+      <table class="tabela"><thead><tr><th>Movement</th><th class="num">Effect</th></tr></thead>
+      <tbody>${linhas.map(([m, e]) => `<tr><td>${m}</td><td class="num nowrap">${e}</td></tr>`).join("")}</tbody></table></div>`);
+  }
+  return `<div class="pos-alt-texto">${secoes.join("")}</div>`;
+}
+
 function ligarAlteracoes(alvo, redesenhar) {
   $("#altAbrir", alvo)?.addEventListener("click", () => {
     alteracoesAbertas = !alteracoesAbertas;
