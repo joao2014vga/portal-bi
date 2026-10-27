@@ -30,6 +30,16 @@ function traduzErro(msg = "") {
   return msg;
 }
 
+// partes do resumo que as telas usam (a "pegada" dos contratos fica de fora)
+const CHAVES_RESUMO = ["versao", "termm", "fisica", "variacao", "kpis", "origem", "alteracoes"];
+const PARTES_RESUMO = CHAVES_RESUMO.map((k) => `r_${k}:resumo->${k}`).join(", ");
+function montarCarga(c) {
+  if (!c) return c;
+  const resumo = {};
+  for (const k of CHAVES_RESUMO) { if (c[`r_${k}`] != null) resumo[k] = c[`r_${k}`]; delete c[`r_${k}`]; }
+  return { ...c, resumo };
+}
+
 // coluna "fonte" ainda não existe (seção 9 do schema não rodada)
 const semColunaFonte = (error) => /fonte/i.test(error?.message ?? "") && /does not exist|column/i.test(error.message);
 
@@ -193,8 +203,9 @@ async function criarApiSupabase() {
     // do schema ainda não existe a coluna "fonte" e tudo é planilha.
     // última publicação da fonte (null = nenhuma ainda)
     async positionUltima(fonte = "planilha") {
+      // o resumo vem por partes: a "pegada" dos contratos (usada só na comparação) fica no banco
       const consulta = (comFonte) => {
-        let q = sb.from("bi_position_cargas").select("id, data_ref, nome_arquivo, enviado_por, resumo, created_at");
+        let q = sb.from("bi_position_cargas").select(`id, data_ref, nome_arquivo, enviado_por, created_at, ${PARTES_RESUMO}`);
         if (comFonte) q = q.eq("fonte", fonte);
         return q.order("data_ref", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
       };
@@ -204,7 +215,18 @@ async function criarApiSupabase() {
         ({ data, error } = await consulta(false));
       }
       if (error) throw new Error(erroPosition(error.message));
-      return data;
+      return montarCarga(data);
+    },
+    // pegada da última versão de um dia anterior (null = não há)
+    async positionPegadaAnterior(fonte, data_ref) {
+      const consulta = (comFonte) => {
+        let q = sb.from("bi_position_cargas").select("data_ref, pegada:resumo->pegada").lt("data_ref", data_ref).not("resumo->pegada", "is", null);
+        if (comFonte) q = q.eq("fonte", fonte);
+        return q.order("data_ref", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
+      };
+      let { data, error } = await consulta(true);
+      if (error && semColunaFonte(error)) ({ data, error } = await consulta(false));
+      return error || !data ? null : data;
     },
     // indicadores de cada dia (última publicação do dia), para os gráficos de evolução
     async positionHistorico(fonte = "planilha") {

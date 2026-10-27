@@ -204,6 +204,25 @@ const PT = {
   "No open contracts for this exchange.": "Nenhum contrato em aberto nesta bolsa.",
   "Open contracts by exchange month (purchases by \"Mês Bolsa\", sales by \"Fixar Mês\"). Sales are shown as positive quantities. Futures: net lots of the TermM (negative = sold). Net to fix = purchases to fix − sales to fix. Past months only appear while they still have lots to fix (marked in red).":
     "Contratos em aberto por mês da bolsa (compras pelo \"Mês Bolsa\", vendas pelo \"Fixar Mês\"). Vendas aparecem como quantidade positiva. Futuros: lotes líquidos da TermM (negativo = vendido). Saldo a fixar = compras a fixar − vendas a fixar. Meses já vencidos só aparecem enquanto tiverem lotes a fixar (marcados em vermelho).",
+  // ---------------------------------------------------------------- O que mudou desde a posição anterior
+  "What changed since the previous position": "O que mudou desde a posição anterior",
+  "The comparison appears from the next position onwards (each version keeps a snapshot of the contracts).":
+    "A comparação aparece a partir da próxima posição (cada versão guarda um retrato dos contratos).",
+  "What changed since {n}/{n}/{n}": "O que mudou desde {n}/{n}/{n}",
+  "Contracts and lots that changed against the last position of the previous day, and the effect on the physical position (bags).":
+    "Contratos e lotes que mudaram em relação à última posição do dia anterior, e o efeito na posição física (sacas).",
+  "Show details": "Mostrar detalhes", "Hide details": "Ocultar detalhes", "Physical effect": "Efeito na posição física",
+  "Purchase:": "Compras:", "Export sale:": "Vendas exp.:", "Domestic sale:": "Vendas int.:", "Inventory:": "Estoque:", "Fixations:": "Fixações:",
+  "No changes.": "Nenhuma mudança.", "Purchase": "Compra", "Export sale": "Venda exportação", "Domestic sale": "Venda interna",
+  "Counterparty": "Parceiro", "Before": "Antes", "What happened": "O que aconteceu", "Net": "Líquido",
+  "New purchase": "Compra nova", "Delivered / closed": "Entregue / encerrado", "Delivery": "Entrega", "Increase": "Aumento",
+  "New sale": "Venda nova", "Shipped / closed": "Embarcado / encerrado", "Shipment": "Embarque",
+  "New lot": "Lote novo", "Lot out": "Lote baixado", "Lot reduced": "Lote reduzido", "Lot increased": "Lote aumentado",
+  "Fixation": "Fixação", "More to fix": "Mais a fixar", "Inventory by quality": "Estoque por qualidade",
+  "Lots in": "Lotes que entraram", "Lots out": "Lotes que saíram", "Lots changed": "Lotes alterados",
+  "To fix before": "A fixar antes", "To fix now": "A fixar agora",
+  "Hover a number to see the lots. Lot changes are usually reprocessing, blends, deliveries and shipments.":
+    "Passe o mouse no número para ver os lotes. Mudanças de lote costumam ser rebeneficiamento, ligas, entregas e embarques.",
   "Show breakdown": "Mostrar detalhamento", "Hide breakdown": "Ocultar detalhamento", "vs previous": "vs anterior",
 
   // ---------------------------------------------------------------- Estufados / aguardando embarque

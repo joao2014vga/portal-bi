@@ -317,6 +317,59 @@ export function montarPosition(gAba) {
 }
 
 // =====================================================================
+// O QUE MUDOU DESDE A VERSÃO ANTERIOR
+// =====================================================================
+// Cada versão guarda uma "pegada" compacta dos contratos e lotes (resumo.pegada) e
+// a lista do que mudou contra a última versão de um dia anterior (resumo.alteracoes).
+const GRUPO_POR_PADRAO = {
+  BCSW: "EXP", "BC+": "EXP", BC1: "EXP", BC2: "EXP", BC3: "EXP", BC4: "EXP", BC5: "EXP", BC6: "EXP", BC7: "EXP", BC17: "EXP",
+  BC8: "LOW GRADE", BC9: "LOW GRADE", BC10: "LOW GRADE", BC11: "LOW GRADE", BC12: "LOW GRADE", BC13: "LOW GRADE",
+  BC14: "CONILON", BC15: "CONILON", BC16: "CONILON",
+};
+const especieCurta = (v) => (norm(v).startsWith("CONILON") ? "C" : "A");
+
+// [chave, parceiro, padrão, espécie (A/C), quantidade física, sacas a fixar]
+export function pegadaPosition(det) {
+  const q = (v) => arred(v ?? 0);
+  return {
+    c: (det.purchases ?? []).map((r) => [r.contrato, r.fornecedor, r.padrao, especieCurta(r.especie), q(r.a_entregar), q(r.a_fixar)]),
+    v: (det.expsales ?? []).map((r) => [r.contrato, r.importador, r.padrao, especieCurta(r.especie), q(r.saldo), q(r.a_fixar)]),
+    i: (det.intsales ?? []).map((r) => [r.contrato, r.cliente, r.padrao, especieCurta(r.especie), q(r.a_entregar), q(r.a_fixar)]),
+    e: (det.inventory ?? []).map((r) => [r.lote, r.contrato, r.padrao, especieCurta(r.especie), q(r.sacas), 0]),
+  };
+}
+
+// tipo: c compras · v vendas exportação · i vendas internas · e estoque
+// efeito = mudança na posição física (vendas entram com sinal trocado)
+const MOTIVOS = {
+  c: ["New purchase", "Delivered / closed", "Delivery", "Increase"],
+  v: ["New sale", "Shipped / closed", "Shipment", "Increase"],
+  i: ["New sale", "Delivered / closed", "Delivery", "Increase"],
+  e: ["New lot", "Lot out", "Lot reduced", "Lot increased"],
+};
+export function alteracoesPosition(atual, anterior, desde) {
+  if (!atual || !anterior) return null;
+  const itens = [];
+  for (const [tipo, sinal] of [["c", 1], ["v", -1], ["i", -1], ["e", 1]]) {
+    const ma = new Map((atual[tipo] ?? []).map((x) => [x[0], x])), mb = new Map((anterior[tipo] ?? []).map((x) => [x[0], x]));
+    for (const k of new Set([...ma.keys(), ...mb.keys()])) {
+      const a = ma.get(k), b = mb.get(k), x = a ?? b;
+      const base = { tipo, chave: k, parceiro: x[1], padrao: x[2], especie: x[3], grupo: GRUPO_POR_PADRAO[norm(x[2])] ?? null };
+      const qa = a ? a[4] : 0, qb = b ? b[4] : 0;
+      if (Math.abs(qa - qb) >= 0.5) {
+        const [novo, saiu, menos, mais] = MOTIVOS[tipo];
+        itens.push({ ...base, antes: qb, agora: qa, efeito: arred(sinal * (qa - qb)), motivo: !b ? novo : !a ? saiu : qa < qb ? menos : mais });
+      }
+      // fixação: sacas a fixar que diminuíram (ou aumentaram) no mesmo contrato
+      if (tipo !== "e" && a && b && Math.abs(a[5] - b[5]) >= 5) { // menos de 5 sc é ajuste de peso
+        itens.push({ ...base, fixacao: true, antes: b[5], agora: a[5], efeito: 0, motivo: a[5] < b[5] ? "Fixation" : "More to fix" });
+      }
+    }
+  }
+  return { desde, itens };
+}
+
+// =====================================================================
 // PRAZO DE FIXAÇÃO
 // =====================================================================
 // Prazo de fixação = First Notice Day (FND) estimado do mês da bolsa:

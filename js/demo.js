@@ -231,6 +231,10 @@ export function criarDemo() {
       const d = db.position?.detalhe ?? {};
       return structuredClone(Object.fromEntries(tipos.filter((t) => d[t]).map((t) => [t, d[t]])));
     },
+    async positionPegadaAnterior(fonte, data_ref) {
+      const c = (db.position?.cargas ?? []).filter((x) => x.data_ref < data_ref && x.resumo.pegada);
+      return c.length ? structuredClone({ data_ref: c[c.length - 1].data_ref, pegada: c[c.length - 1].resumo.pegada }) : null;
+    },
     async positionFonte() { return "planilha"; },
     async definirFontePosition() { throw new Error("Not available in demo mode."); },
     async positionModeloInfo() { return null; },
