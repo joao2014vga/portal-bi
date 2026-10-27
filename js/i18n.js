@@ -509,7 +509,9 @@ const PT = {
     "Digite quantas sacas desta exportação saem de cada compra BRC. A sobra de cada compra se atualiza ao salvar.",
   "Already in the spreadsheet": "Já na planilha", "Search contract or producer…": "Buscar contrato ou produtor…",
   "Available": "Disponível", "Bags from it": "Sacas dela", "No purchase with leftover in the history.": "Nenhuma compra com sobra no histórico.",
-  "All contracts": "Todos os contratos", "With leftover": "Com sobra", "Available today": "Disponível hoje",
+  "To buy": "A comprar", "to cover up to": "para cobrir até", "covered up to": "coberto até",
+  "no shortfall ahead": "sem falta à frente", "in the month": "no mês",
+  "With leftover": "Com sobra", "Available today": "Disponível hoje",
   "In the opening stock": "No saldo inicial", "Balance today:": "Saldo hoje:",
   "Exports already shipped but not linked, or links to exports still to ship":
     "Exportações já embarcadas sem vínculo, ou vínculos de exportações que ainda vão embarcar",

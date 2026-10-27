@@ -238,7 +238,6 @@ export async function renderCert(link, alvo, ctx) {
   const ateHoje = meses.filter((l) => l.ym <= atual);
   const saldoHoje = ateHoje.length ? ateHoje[ateHoje.length - 1].acumulado : inicial;
   const saldoFinal = meses.length ? meses[meses.length - 1].acumulado : inicial;
-  const pior = meses.reduce((p, l) => (l.ym >= atual && (!p || l.acumulado < p.acumulado) ? l : p), null);
   const fimHistorico = cert.inicio ? fmtMes(mesAnterior(cert.inicio) + "-01") : null;
   // exportações do Digisul, para mostrar embarque e cliente nos vínculos do histórico
   const vendaPorContrato = new Map(base.vendas.map((r) => [r.contrato, { mes: mesVenda(r), cliente: clienteDoAlerta(r) }]));
@@ -252,6 +251,14 @@ export async function renderCert(link, alvo, ctx) {
     const cols = COLS[aba];
     const abas = segmentos("certAba", [["compra", `Purchases (${cc.length})`], ["venda", `Export sales (${vc.length})`],
       ["historico", `History (${hist.linhas.length})`]], aba);
+
+    // compra necessária: quanto falta para cobrir as entregas até o mês (o clicado na
+    // tabela; sem clique, o primeiro mês daqui em diante que fica short). Compras que
+    // vencem antes entram no saldo acumulado e já reduzem a conta.
+    const mesNec = mes || meses.find((l) => l.ym >= atual && l.acumulado < 0)?.ym || null;
+    const iNec = meses.findIndex((l) => l.ym === mesNec);
+    const nec = iNec >= 0 ? Math.max(0, -meses[iNec].acumulado) : 0;
+    const necAntes = iNec > 0 ? Math.max(0, -meses[iNec - 1].acumulado) : Math.max(0, -inicial);
 
     alvo.innerHTML = `<div class="pos">
       <div class="pos-topo">
@@ -272,10 +279,11 @@ export async function renderCert(link, alvo, ctx) {
       <div class="pos-kpis">
         ${cert.inicio ? kpi("Opening stock", fmtN(inicial), `end of <span>${esc(fimHistorico)}</span>${cert.bloqueado && hist.excluido ? ` · excl. <span>${esc(cert.bloqueado.nome)}</span>` : ""}`, "", "historico:inicial") : ""}
         ${kpi("Purchased", fmtN(soma(cc, "_sacas")), contratos(cc.length), "", "compra")}
-        ${kpi("Sold (export)", fmtN(soma(vc, "_sacas")), contratos(vc.length), "", "venda")}
+        ${kpi("Sold (export)", fmtN(-soma(vc, "_sacas")), contratos(vc.length), "", "venda")}
         ${kpi("Balance today", fmtN(saldoHoje), `up to <span>${esc(fmtMes(atual + "-01"))}</span> · ${saldoHoje < 0 ? "short" : "long"}`, "", "historico:disponivel")}
-        ${kpi("Final balance", fmtN(saldoFinal), meses.length ? `after <span>${esc(fmtMes(meses[meses.length - 1].ym + "-01"))}</span>` : "—")}
-        ${pior ? kpi("Lowest balance ahead", fmtN(pior.acumulado), `in <span>${esc(fmtMes(pior.ym + "-01"))}</span>`, pior.acumulado < 0 ? "pos-kpi-critico" : "") : ""}
+        ${kpi("To buy", nec >= 0.5 ? fmtN(nec) : "–", !mesNec ? "no shortfall ahead"
+          : `${nec >= 0.5 ? "to cover up to" : "covered up to"} <span>${esc(fmtMes(mesNec + "-01"))}</span>${nec - necAntes >= 0.5 ? ` · <span>${esc(fmtN(nec - necAntes))}</span> in the month` : ""}`,
+          nec >= 0.5 ? "cert-kpi-comprar" : "")}
       </div>
 
       <div class="pos-card">

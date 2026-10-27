@@ -488,6 +488,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .cert-qtd { width: 110px; text-align: right; }
 .cert-kpi-link { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 .cert-kpi-link:hover, .cert-kpi-link:focus-visible { border-color: var(--brand); box-shadow: var(--sombra); outline: none; }
+.cert-kpi-comprar .pos-kpi-v { color: var(--alerta); }
 @media (max-width: 560px) { .cert-form { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .cert-inc-campos { grid-template-columns: 1fr; } }
 
