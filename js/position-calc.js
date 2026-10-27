@@ -643,6 +643,40 @@ export function logisticaDaApi(exportacao) {
   }).filter(Boolean);
 }
 
+// Controle de certificados (página Certificado CP): todas as compras e exportações,
+// histórico completo e só os campos da página — ela filtra pelo certificado e soma as
+// inclusões manuais (contratos encerrados que o Digisul não deixa mais editar).
+// As regras de quantidade e preço são as mesmas das abas Purchases e ExpSales acima.
+const paraIso = (s) => (s == null ? null : serialIso(s));
+export function certificadosDaApi(api) {
+  const compras = (api.compras ?? []).map((a) => {
+    const p = purchases(a);
+    if (!p["Contrato"]) return null;
+    return {
+      contrato: p["Contrato"], fornecedor: p["Fornecedor"], cidade: t(a.Cidade_Fornecedor),
+      sacas: p["Sacas Total"], entregue: p["Entregue(Sc)"], a_entregar: p["A Entregar BC"],
+      emissao: paraIso(p["Emissão"]), entrega: paraIso(data(a.Entrega)), prev_entrega: paraIso(data(a.Prev_de_Entrega)),
+      preco: p["Média Final (R$)"], valor: p["Valor Final (R$)"], diferencial: p["Diferencial"], bolsa: p["Bolsa"],
+      mes_bolsa: paraIso(p["Mês Bolsa"]), fixacao: p["Status Fixação"] ?? p["Fixação"],
+      padrao: p["Padrão"], especie: p["Espécie"], safra: p["Safra"], certificado: p["Certificador"],
+    };
+  }).filter(Boolean);
+  const vendas = (api.exportacao ?? []).map((a) => {
+    const e = expSales(a);
+    if (!e["Contrato"]) return null;
+    return {
+      contrato: e["Contrato"], importador: e["Importador"], alertas: t(a.Alertas), referencia: e["Referência"],
+      sacas: e["Sacas"], saida: e["Saída (sc)"], saldo: e["Saldo (sc)"],
+      embarque: paraIso(e["Embarque"]), prev_carga: paraIso(e["Prev. Carga"]), data_bl: paraIso(e["Data BL"]),
+      emissao: paraIso(e["Emissão"]), diferencial: e["Diferencial"], vlr_final: e["Vlr. Final"], unidade: e["Unidade"],
+      bolsa: e["Bolsa"], valor_usd: e["Valor Contrato (US$)"], fixacao: e["Status Fixação"],
+      padrao: e["Padrão"], qualidade: t(a.Qualidade), especie: e["Espécie"], safra: e["Safras"], incoterm: e["Incoterm"],
+      certificado: e["Certificação"], lotes: t(a.lotes_entregues),
+    };
+  }).filter(Boolean);
+  return { cert_compras: compras, cert_vendas: vendas };
+}
+
 // consultas do Digisul usadas e a aba que cada uma alimenta
 export const CONSULTAS = {
   compras: { idsql: 11, aba: ABAS.purchases, linha: purchases, chave: "Contrato" },

@@ -50,6 +50,12 @@ function erroPosition(msg = "") {
   return traduzErro(msg);
 }
 
+function erroCert(msg = "") {
+  if (/bi_cert_ajustes|schema cache|does not exist/i.test(msg)) return "Certificates are not set up yet: run section 11 of supabase/schema.sql in the Supabase SQL Editor.";
+  if (/row-level security|permission denied/i.test(msg)) return "Only administrators and file managers can change the certificate list.";
+  return traduzErro(msg);
+}
+
 // =====================================================================
 // IMPLEMENTAÇÃO SUPABASE
 // =====================================================================
@@ -298,6 +304,33 @@ async function criarApiSupabase() {
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       const { error } = await sb.rpc("bi_position_publicar", { p_data_ref: data_ref, p_nome: nome_arquivo, p_resumo: resumo, p_detalhes: detalhes, p_alerta: alerta });
       if (error) throw new Error(erroPosition(error.message));
+    },
+
+    // ----------------------------------------------------------- certificados
+    // todas as compras e exportações gravadas pela sincronização (null = ainda não há)
+    async certBase() {
+      const { data, error } = await sb.from("bi_position_detalhe").select("tipo, linhas, updated_at")
+        .eq("fonte", "api").in("tipo", ["cert_compras", "cert_vendas"]);
+      if (error) throw new Error(erroCert(error.message));
+      if (data.length < 2) return null;
+      const d = Object.fromEntries(data.map((r) => [r.tipo, r]));
+      return { compras: d.cert_compras.linhas, vendas: d.cert_vendas.linhas, atualizado_em: d.cert_compras.updated_at };
+    },
+    async certAjustes(certificado) {
+      const { data, error } = await sb.from("bi_cert_ajustes").select("*").eq("certificado", certificado).order("created_at");
+      if (error) throw new Error(erroCert(error.message));
+      return data;
+    },
+    // um ajuste ou uma lista (inclusão em lote)
+    async salvarCertAjuste(ajustes) {
+      const linhas = [].concat(ajustes).map(({ certificado, tipo, contrato, acao = "incluir", sacas = null, obs = null }) =>
+        ({ certificado, tipo, contrato, acao, sacas, obs }));
+      const { error } = await sb.from("bi_cert_ajustes").upsert(linhas, { onConflict: "certificado,tipo,contrato" });
+      if (error) throw new Error(erroCert(error.message));
+    },
+    async removerCertAjuste(id) {
+      const { error } = await sb.from("bi_cert_ajustes").delete().eq("id", id);
+      if (error) throw new Error(erroCert(error.message));
     },
 
     // ----------------------------------------------------------- notificações

@@ -89,7 +89,7 @@ const hojeIso = () => { const d = new Date(); return `${d.getFullYear()}-${Strin
 // =====================================================================
 // Padrão do portal: negativo entre parênteses, "(1.234)" — e em vermelho (marcarNegativos).
 // `suf` entra dentro do parêntese: "(12%)", "(3,5k)".
-const fmtN = (v, dec = 0, suf = "") => {
+export const fmtN = (v, dec = 0, suf = "") => {
   if (v == null) return "—";
   const txt = Math.abs(Number(v)).toLocaleString(LOCALE, { minimumFractionDigits: dec, maximumFractionDigits: dec });
   // -0,4 arredondado para 0 não é negativo
@@ -106,7 +106,7 @@ function marcarNegativos(raiz) {
     el.classList.toggle("neg", RE_NEG.test(el.textContent.trim()));
   }
 }
-function vigiarNegativos(alvo) {
+export function vigiarNegativos(alvo) {
   if (alvo._vigiaNeg) return;
   let quadro = 0;
   alvo._vigiaNeg = new MutationObserver(() => { cancelAnimationFrame(quadro); quadro = requestAnimationFrame(() => marcarNegativos(alvo)); });
@@ -114,8 +114,8 @@ function vigiarNegativos(alvo) {
 }
 // mês curto: "Dec-26" em inglês, "Dez/26" em português
 const MESES_CURTOS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const fmtMes = (iso) => (iso ? `${tr(MESES_CURTOS[Number(iso.slice(5, 7)) - 1])}${IDIOMA === "pt" ? "/" : "-"}${iso.slice(2, 4)}` : "—");
-const fmtData = (iso) => (iso ? dataBR(iso + "T12:00:00") : "—");
+export const fmtMes = (iso) => (iso ? `${tr(MESES_CURTOS[Number(iso.slice(5, 7)) - 1])}${IDIOMA === "pt" ? "/" : "-"}${iso.slice(2, 4)}` : "—");
+export const fmtData = (iso) => (iso ? dataBR(iso + "T12:00:00") : "—");
 const fmtK = (v) => (Math.abs(v) >= 1000 ? fmtN(v / 1000, Math.abs(v) >= 10000 ? 0 : 1, "k") : fmtN(v));
 
 const NOME_GRUPO = { arabica: "Arabica", robusta: "Robusta", exportable: "Exportable", lowgrade: "Low Grade" };
@@ -156,11 +156,11 @@ async function graficoLinha(canvas, { rotulos, dados, rotulo }) {
 }
 
 // Botões de escolha (segmented control); `ao` recebe a chave escolhida
-function segmentos(id, opcoes, atual) {
+export function segmentos(id, opcoes, atual) {
   return `<div class="seg" role="tablist" id="${id}">${opcoes.map(([k, t]) =>
     `<button type="button" role="tab" data-k="${k}" class="${k === atual ? "on" : ""}" aria-selected="${k === atual}">${esc(t)}</button>`).join("")}</div>`;
 }
-function ligarSegmentos(raiz, id, ao) {
+export function ligarSegmentos(raiz, id, ao) {
   $$(`#${id} button`, raiz).forEach((b) => b.addEventListener("click", () => ao(b.dataset.k)));
 }
 

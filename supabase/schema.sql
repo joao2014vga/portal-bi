@@ -777,3 +777,129 @@ $job$);
 --   from auth.users where email = 'jsouza@brascof.com'
 --   on conflict (id) do update set is_admin = true, ativo = true;
 -- ---------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------
+-- 11. CERTIFICADOS (página "Certificado CP" — C.A.F.E. Practices)
+-- A sincronização pelo Digisul (seção 9) grava em bi_position_detalhe, com
+-- fonte = 'api', os tipos cert_compras e cert_vendas: todas as compras e
+-- exportações (histórico completo, poucos campos). A página separa as que têm
+-- o certificado (ex.: "CP" ou "CAFE PRATICES" no certificador, mesmo junto com
+-- outros) e soma os ajustes manuais abaixo. Pré-requisito: seções 7 e 9.
+-- ---------------------------------------------------------------------
+-- Ajustes manuais: incluir o certificado num contrato que o Digisul não deixa
+-- mais editar (já encerrado), ou tirar um contrato que veio com o certificado.
+create table if not exists public.bi_cert_ajustes (
+  id           bigint generated always as identity primary key,
+  certificado  text not null default 'CP',
+  tipo         text not null check (tipo in ('compra', 'venda')),
+  contrato     text not null,
+  acao         text not null default 'incluir' check (acao in ('incluir', 'excluir')),
+  sacas        numeric,                             -- null = contrato inteiro
+  obs          text,
+  autor        text,
+  created_by   uuid default auth.uid() references public.bi_perfis (id) on delete set null,
+  created_at   timestamptz not null default now(),
+  unique (certificado, tipo, contrato)
+);
+
+-- quem lançou: sempre o usuário logado (não vem do navegador)
+create or replace function public.bi_cert_autor()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  new.created_by := auth.uid();
+  new.autor := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  new.created_at := now();
+  return new;
+end;
+$$;
+drop trigger if exists bi_cert_ajustes_autor on public.bi_cert_ajustes;
+create trigger bi_cert_ajustes_autor before insert or update on public.bi_cert_ajustes
+  for each row execute function public.bi_cert_autor();
+
+alter table public.bi_cert_ajustes enable row level security;
+-- vê quem vê a página; lança e remove quem publica no portal (ADM ou File manager)
+drop policy if exists bi_cert_ajustes_select on public.bi_cert_ajustes;
+create policy bi_cert_ajustes_select on public.bi_cert_ajustes for select to authenticated
+  using (public.bi_ve_painel('portal:cert-') or public.bi_gerencia_arquivos());
+drop policy if exists bi_cert_ajustes_insert on public.bi_cert_ajustes;
+create policy bi_cert_ajustes_insert on public.bi_cert_ajustes for insert to authenticated
+  with check (public.bi_gerencia_arquivos());
+drop policy if exists bi_cert_ajustes_update on public.bi_cert_ajustes;
+create policy bi_cert_ajustes_update on public.bi_cert_ajustes for update to authenticated
+  using (public.bi_gerencia_arquivos()) with check (public.bi_gerencia_arquivos());
+drop policy if exists bi_cert_ajustes_delete on public.bi_cert_ajustes;
+create policy bi_cert_ajustes_delete on public.bi_cert_ajustes for delete to authenticated
+  using (public.bi_gerencia_arquivos());
+
+-- Substitui a política da seção 7: a base dos certificados é de quem vê a página
+drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
+create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated
+  using (
+    public.bi_gerencia_arquivos()
+    or (tipo = 'vendas' and (public.bi_ve_painel('portal:position-sales') or public.bi_ve_painel('portal:position-diffs')))
+    or (tipo = 'compras' and public.bi_ve_painel('portal:position-purchases'))
+    or (tipo like 'cert\_%' and public.bi_ve_painel('portal:cert-'))
+    or (tipo not in ('vendas', 'compras') and tipo not like 'cert\_%' and public.bi_ve_painel('portal:position-contracts'))
+  );
+
+-- Igual à da seção 9, marcando também as páginas de certificado como atualizadas
+-- (a base delas só vem da API, qualquer que seja a fonte oficial do Position)
+create or replace function public.bi_position_publicar_api(p_data_ref date, p_resumo jsonb, p_detalhes jsonb, p_origem text, p_alerta text default null)
+returns bigint
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id bigint;
+  v_tipo text;
+  v_novo_dia boolean;
+begin
+  v_novo_dia := not exists (select 1 from public.bi_position_cargas where fonte = 'api' and data_ref = p_data_ref);
+  insert into public.bi_position_cargas (data_ref, nome_arquivo, resumo, enviado_por, fonte, created_by)
+  values (p_data_ref, 'Digisul API', p_resumo, p_origem, 'api', null)
+  on conflict (data_ref) where fonte = 'api'
+  do update set resumo = excluded.resumo, enviado_por = excluded.enviado_por, created_at = now()
+  returning id into v_id;
+
+  for v_tipo in select jsonb_object_keys(p_detalhes) loop
+    insert into public.bi_position_detalhe (fonte, tipo, carga_id, linhas, updated_at)
+    values ('api', v_tipo, v_id, p_detalhes -> v_tipo, now())
+    on conflict (fonte, tipo) do update set carga_id = excluded.carga_id, linhas = excluded.linhas, updated_at = now();
+  end loop;
+
+  if p_detalhes ? 'cert_compras' then
+    perform set_config('bi.sem_notificacao', '1', true);
+    update public.bi_dashboards set atualizado_em = now() where link like 'portal:cert-%';
+    perform set_config('bi.sem_notificacao', '', true);
+  end if;
+
+  if (select valor #>> '{}' from public.bi_config where chave = 'position_fonte') = 'api' then
+    perform set_config('bi.sem_notificacao', '1', true);
+    update public.bi_dashboards set atualizado_em = now() where link like 'portal:position-%';
+    perform set_config('bi.sem_notificacao', '', true);
+    if v_novo_dia then
+      update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-overview';
+      if nullif(trim(p_alerta), '') is not null then
+        insert into public.bi_notificacoes (dashboard_id, titulo, mensagem)
+        select id, 'Fixation alert', left(p_alerta, 300) from public.bi_dashboards where link = 'portal:position-contracts';
+      end if;
+    end if;
+  end if;
+  return v_id;
+end;
+$$;
+revoke all on function public.bi_position_publicar_api(date, jsonb, jsonb, text, text) from public, anon, authenticated;
+grant execute on function public.bi_position_publicar_api(date, jsonb, jsonb, text, text) to service_role;
+
+-- Categoria "Certificates" e a página do CP (depois libere o acesso na Administração)
+insert into public.bi_categorias (nome, ordem)
+select 'Certificates', 1
+where not exists (select 1 from public.bi_categorias where nome = 'Certificates');
+
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select c.id, 'C.A.F.E. Practices (CP)', 'Long/short position of the CP certificate by month, with the certified purchases and export sales, contract by contract.',
+       'portal:cert-cp', 'diaria', true, 1
+from public.bi_categorias c
+where c.nome = 'Certificates'
+  and not exists (select 1 from public.bi_dashboards d where d.link = 'portal:cert-cp');

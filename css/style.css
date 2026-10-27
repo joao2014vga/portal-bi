@@ -471,6 +471,13 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .ordenar { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
 .ordenar:hover { color: var(--texto); }
 .pos-contratos { max-height: calc(100vh - 330px); min-height: 240px; }
+/* certificados: mês escolhido na posição long/short e campos da inclusão manual */
+.tabela tr.linha-sel td { background: var(--brand-claro); }
+.tabela tr.linha-sel td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
+.cert-inc-campos { display: grid; grid-template-columns: 180px 1fr; gap: 12px; }
+.cert-lista { max-height: 340px; margin: 10px 0; }
+.cert-lista th:not(.num) { text-align: left; }
+@media (max-width: 560px) { .cert-inc-campos { grid-template-columns: 1fr; } }
 
 /* matriz por qualidade: escala divergente (azul = comprado, vermelho = vendido, sem cor = zero) */
 .pos-matriz td.cel-pos { background: color-mix(in srgb, var(--div-pos) calc(var(--a) * 100%), transparent); }

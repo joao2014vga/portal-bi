@@ -259,6 +259,19 @@ export function criarDemo() {
       salvar();
     },
 
+    // certificados: a base só vem da sincronização com o Digisul (sem dados no modo demonstração)
+    async certBase() { return null; },
+    async certAjustes(certificado) { return structuredClone((db.certAjustes ?? []).filter((a) => a.certificado === certificado)); },
+    async salvarCertAjuste(ajustes) {
+      exigeArquivos();
+      for (const { certificado, tipo, contrato, acao = "incluir", sacas = null, obs = null } of [].concat(ajustes)) {
+        db.certAjustes = (db.certAjustes ?? []).filter((a) => !(a.certificado === certificado && a.tipo === tipo && a.contrato === contrato));
+        db.certAjustes.push({ id: novoId(), certificado, tipo, contrato, acao, sacas, obs, autor: eu().nome, created_at: new Date().toISOString() });
+      }
+      salvar();
+    },
+    async removerCertAjuste(id) { exigeArquivos(); db.certAjustes = (db.certAjustes ?? []).filter((a) => a.id !== id); salvar(); },
+
     async notificacoes() {
       const visiveis = (await this.dashboards()).map((d) => d.id);
       const arqs = (await this.arquivos()).map((a) => a.id);

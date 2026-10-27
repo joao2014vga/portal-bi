@@ -5,6 +5,7 @@ import {
   toLocalInput, fromLocalInput, statusAtualizacao, FREQ_LABEL, NIVEL_ICON, iniciais, saudacao, storage, tamanhoArquivo,
 } from "./ui.js";
 import { ehPainelPosition, renderPosition } from "./position.js";
+import { ehPainelCert, renderCert } from "./certificado.js";
 import { IDIOMA, ligarTraducao } from "./i18n.js";
 
 const app = $("#app");
@@ -487,7 +488,7 @@ async function telaDashboard(id) {
   const st = statusAtualizacao(d);
   const demo = d.link.startsWith("demo:");
   const sistema = ehSistema(d);
-  const nativo = ehPainelPosition(d.link); // painel desenhado pelo próprio portal (Position)
+  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link); // painel desenhado pelo próprio portal (Position, Certificados)
   await shell(`
     <div class="visor">
       <div class="visor-barra">
@@ -513,7 +514,7 @@ async function telaDashboard(id) {
     const el = $("#frame");
     (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   });
-  if (nativo) await renderPosition(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), admin: !!estado.perfil?.is_admin, recarregar });
+  if (nativo) await (ehPainelCert(d.link) ? renderCert : renderPosition)(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), admin: !!estado.perfil?.is_admin, recarregar });
 }
 
 // Simula um relatório no modo demonstração
@@ -671,7 +672,7 @@ async function formDashboard(d, cats) {
       const titulo = f.titulo.value.trim();
       const link = f.link.value.trim();
       if (!titulo) throw new Error("Please enter a title.");
-      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link)) throw new Error("The link must start with https://");
+      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link) && !ehPainelCert(link)) throw new Error("The link must start with https://");
       const dados = {
         titulo, link,
         id: d.id,
