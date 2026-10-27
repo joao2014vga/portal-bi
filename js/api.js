@@ -31,7 +31,7 @@ function traduzErro(msg = "") {
 }
 
 // partes do resumo que as telas usam (a "pegada" dos contratos fica de fora)
-const CHAVES_RESUMO = ["versao", "termm", "fisica", "variacao", "kpis", "origem", "alteracoes"];
+const CHAVES_RESUMO = ["versao", "termm", "fisica", "variacao", "kpis", "origem", "alteracoes", "alteracoes_ultima"];
 const PARTES_RESUMO = CHAVES_RESUMO.map((k) => `r_${k}:resumo->${k}`).join(", ");
 function montarCarga(c) {
   if (!c) return c;
@@ -217,10 +217,12 @@ async function criarApiSupabase() {
       if (error) throw new Error(erroPosition(error.message));
       return montarCarga(data);
     },
-    // pegada da última versão de um dia anterior (null = não há)
-    async positionPegadaAnterior(fonte, data_ref) {
+    // pegada da última versão de um dia anterior (null = não há);
+    // sem data_ref: a versão mais recente, de qualquer dia ("desde a última atualização")
+    async positionPegadaAnterior(fonte, data_ref = null) {
       const consulta = (comFonte) => {
-        let q = sb.from("bi_position_cargas").select("data_ref, pegada:resumo->pegada").lt("data_ref", data_ref).not("resumo->pegada", "is", null);
+        let q = sb.from("bi_position_cargas").select("data_ref, created_at, pegada:resumo->pegada").not("resumo->pegada", "is", null);
+        if (data_ref) q = q.lt("data_ref", data_ref);
         if (comFonte) q = q.eq("fonte", fonte);
         return q.order("data_ref", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
       };

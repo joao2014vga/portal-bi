@@ -209,6 +209,10 @@ const PT = {
   "The comparison appears from the next position onwards (each version keeps a snapshot of the contracts).":
     "A comparação aparece a partir da próxima posição (cada versão guarda um retrato dos contratos).",
   "What changed since {n}/{n}/{n}": "O que mudou desde {n}/{n}/{n}",
+  "What changed since the last update ({n}/{n}/{n}, {n}:{n})": "O que mudou desde a última atualização ({n}/{n}/{n}, {n}:{n})",
+  "Since the previous day": "Desde o dia anterior", "Since the last update": "Desde a última atualização",
+  "Contracts and lots that changed against the previous update, and the effect on the physical position (bags).":
+    "Contratos e lotes que mudaram em relação à atualização anterior, e o efeito na posição física (sacas).",
   "Contracts and lots that changed against the last position of the previous day, and the effect on the physical position (bags).":
     "Contratos e lotes que mudaram em relação à última posição do dia anterior, e o efeito na posição física (sacas).",
   "Show details": "Mostrar detalhes", "Hide details": "Ocultar detalhes", "Physical effect": "Efeito na posição física",

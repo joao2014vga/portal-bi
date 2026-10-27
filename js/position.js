@@ -9,7 +9,7 @@
 //   portal:position-overview   posição por mês de vencimento + variação do dia
 //   portal:position-physical   posição física por mês e por qualidade
 //   portal:position-contracts  contratos em aberto, contrato a contrato
-import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR } from "./ui.js";
+import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } from "./ui.js";
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
   prazoFixacao, alertasFixacao, textoAlertaFixacao, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
@@ -276,8 +276,12 @@ function ligarTopo(alvo, ctx) {
       }
       // o que mudou contra a última planilha de um dia anterior
       lida.resumo.pegada = pegadaPosition(lida.detalhes);
-      const anterior = await ctx.api.positionPegadaAnterior?.("planilha", lida.data_ref).catch(() => null);
+      const [anterior, ultima] = await Promise.all([
+        ctx.api.positionPegadaAnterior?.("planilha", lida.data_ref).catch(() => null),
+        ctx.api.positionPegadaAnterior?.("planilha").catch(() => null),
+      ]);
       lida.resumo.alteracoes = anterior ? alteracoesPosition(lida.resumo.pegada, anterior.pegada, anterior.data_ref) : null;
+      lida.resumo.alteracoes_ultima = ultima ? alteracoesPosition(lida.resumo.pegada, ultima.pegada, ultima.created_at) : null;
       // contratos vencidos ou a vencer em 15 dias viram notificação para quem vê o Open Contracts
       await ctx.api.publicarPosition({ data_ref: lida.data_ref, resumo: lida.resumo, detalhes: lida.detalhes, nome_arquivo: file.name, alerta: textoAlertaFixacao(lida.detalhes, fmtN) });
       toast(`Position of ${fmtData(lida.data_ref)} published.`);
@@ -367,7 +371,7 @@ async function painelOverview(alvo, carga, ctx) {
           : `<p class="muted">The history builds up with each daily upload — this chart appears from the second Position onwards.</p>`}
       </section>
     </div>
-    ${cardAlteracoes(carga.resumo.alteracoes, FILTRO_GRUPO_ALT[grupo], NOME_GRUPO[grupo])}
+    ${cardAlteracoes(carga.resumo, FILTRO_GRUPO_ALT[grupo], NOME_GRUPO[grupo])}
     ${ctx.gerente ? cardComparacao(grupo, carga, outra, modeloInfo, ctx) : ""}`;
 
     $$("[data-grupo]", alvo).forEach((el) => el.addEventListener("click", () => { grupo = el.dataset.grupo; desenhar(); }));
@@ -396,11 +400,20 @@ const ROT_TIPO_ALT = { c: "Purchase", v: "Export sale", i: "Domestic sale", e: "
 const CHAVE_ALT = "bi-alteracoes-aberto";
 let alteracoesAbertas = (() => { try { return localStorage.getItem(CHAVE_ALT) === "1"; } catch { return false; } })();
 
-function cardAlteracoes(alt, filtro, rotulo) {
+// modo: "dia" = contra a última versão de um dia anterior; "ultima" = contra a atualização anterior
+let modoAlteracoes = "dia";
+
+function cardAlteracoes(resumo, filtro, rotulo) {
+  const porModo = { dia: resumo?.alteracoes, ultima: resumo?.alteracoes_ultima };
+  const modo = porModo[modoAlteracoes] ? modoAlteracoes : porModo.dia ? "dia" : "ultima";
+  const alt = porModo[modo];
   if (!alt) {
     return `<section class="pos-card"><div class="pos-card-h"><h2>What changed since the previous position</h2>
       <p class="muted">The comparison appears from the next position onwards (each version keeps a snapshot of the contracts).</p></div></section>`;
   }
+  const titulo = modo === "dia" ? `What changed since ${fmtData(alt.desde)}` : `What changed since the last update (${dataHoraBR(alt.desde)})`;
+  const alternar = porModo.dia && porModo.ultima
+    ? segmentos("segModoAlt", [["dia", "Since the previous day"], ["ultima", "Since the last update"]], modo) : "";
   const passa = (x) => (filtro.especie ? x.especie === filtro.especie : x.grupo === filtro.grupo);
   const itens = alt.itens.filter(passa);
   const movs = itens.filter((x) => !x.fixacao), fixs = itens.filter((x) => x.fixacao);
@@ -418,9 +431,10 @@ function cardAlteracoes(alt, filtro, rotulo) {
   const listaLotes = (l) => l.map((x) => `${x.chave} (${fmtN(x.efeito)})`).join(", ");
   const celLotes = (l) => (l.length ? `<td class="num" title="${esc(listaLotes(l))}">${fmtN(soma(l))} <span class="muted">· ${l.length}</span></td>` : `<td class="num"><span class="zero">–</span></td>`);
   return `<section class="pos-card">
-    <div class="pos-card-h pos-card-h-linha"><div><h2>What changed since ${esc(fmtData(alt.desde))} · ${esc(rotulo)}</h2>
-      <p class="muted">Contracts and lots that changed against the last position of the previous day, and the effect on the physical position (bags).</p></div>
-      <button type="button" class="btn" id="altAbrir">${alteracoesAbertas ? "Hide details" : "Show details"}</button></div>
+    <div class="pos-card-h pos-card-h-linha"><div><h2>${esc(titulo)} · ${esc(rotulo)}</h2>
+      <p class="muted">${modo === "dia" ? "Contracts and lots that changed against the last position of the previous day, and the effect on the physical position (bags)."
+        : "Contracts and lots that changed against the previous update, and the effect on the physical position (bags)."}</p></div>
+      <div class="pos-acoes">${alternar}<button type="button" class="btn" id="altAbrir">${alteracoesAbertas ? "Hide details" : "Show details"}</button></div></div>
     <div class="pos-alt-resumo">
       <span class="pos-alt-total">Physical effect <strong>${fmtSinal(Math.round(total))}</strong> bags</span>
       ${porTipo.map(([t, l]) => `<span>${ROT_TIPO_ALT[t]}: <strong>${fmtSinal(Math.round(soma(l)))}</strong> <span class="muted">(${l.length})</span></span>`).join("")}
@@ -511,6 +525,7 @@ function resumoAlteracoes(itens) {
 }
 
 function ligarAlteracoes(alvo, redesenhar) {
+  ligarSegmentos(alvo, "segModoAlt", (k) => { modoAlteracoes = k; redesenhar(); });
   $("#altAbrir", alvo)?.addEventListener("click", () => {
     alteracoesAbertas = !alteracoesAbertas;
     try { localStorage.setItem(CHAVE_ALT, alteracoesAbertas ? "1" : "0"); } catch { /* sem armazenamento */ }
@@ -735,7 +750,7 @@ async function painelFisica(alvo, carga) {
         ${b.total ? `<tfoot><tr class="total"><th scope="row">Total</th>${celNum(b.total.inventory, { forte: true })}${celNum(b.total.purchases, { forte: true })}${celNum(b.total.exp_sales, { forte: true })}${celNum(b.total.domestic_sales, { forte: true })}${celNum(b.total.net, { forte: true })}</tr></tfoot>` : ""}
       </table></div>
     </section>
-    ${cardAlteracoes(carga.resumo.alteracoes, { especie: estado.especie === "conilon" ? "C" : "A" }, estado.especie === "conilon" ? "Conilon" : "Arabica")}`;
+    ${cardAlteracoes(carga.resumo, { especie: estado.especie === "conilon" ? "C" : "A" }, estado.especie === "conilon" ? "Conilon" : "Arabica")}`;
 
     ligarAlteracoes(alvo, desenhar);
     ligarSegmentos(alvo, "segGrupo", (k) => { grupo = k; desenhar(); });
