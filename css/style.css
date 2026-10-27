@@ -477,6 +477,10 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .cert-inc-campos { display: grid; grid-template-columns: 180px 1fr; gap: 12px; }
 .cert-lista { max-height: 340px; margin: 10px 0; }
 .cert-lista th:not(.num) { text-align: left; }
+.cert-abertura td { background: var(--sup-2); font-style: italic; }
+.cert-bloqueado td { opacity: .6; }
+.cert-vinculos { white-space: normal; text-align: left; min-width: 260px; max-width: 520px; line-height: 1.6; }
+.cert-vinculos span { display: inline-block; margin-right: 10px; white-space: nowrap; }
 @media (max-width: 560px) { .cert-inc-campos { grid-template-columns: 1fr; } }
 
 /* matriz por qualidade: escala divergente (azul = comprado, vermelho = vendido, sem cor = zero) */

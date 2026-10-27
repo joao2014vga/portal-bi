@@ -457,6 +457,35 @@ const PT = {
   "Count this contract in the CP position again, as in Digisul?": "Voltar a contar este contrato na posição CP, como no Digisul?",
   "Remove this contract from the CP position?": "Tirar este contrato da posição CP?",
   "Contract excluded from the CP position.": "Contrato excluído da posição CP.", "Contract restored.": "Contrato restaurado.",
+  // histórico da planilha de controle
+  "History ({n})": "Histórico ({n})", "Opening stock": "Saldo inicial", "end of": "fim de", "excl.": "sem",
+  "Leftover of the purchases in the history spreadsheet due before the control starts":
+    "Sobra das compras da planilha de histórico vencidas antes do início do controle",
+  "The opening stock comes from the history spreadsheet: run section 13 of supabase/schema.sql in the Supabase SQL Editor, then import it in the History tab.":
+    "O saldo inicial vem da planilha de histórico: rode a seção 13 do supabase/schema.sql no SQL Editor do Supabase e depois importe a planilha na aba Histórico.",
+  "No history imported yet, so the position starts at zero. Import the control spreadsheet in the History tab.":
+    "Ainda não há histórico importado, então a posição começa do zero. Importe a planilha de controle na aba Histórico.",
+  "Search contract, producer, export…": "Buscar contrato, produtor, exportação…", "Import spreadsheet": "Importar planilha",
+  "No history imported": "Nenhum histórico importado",
+  "Import the Controle CAFE Pratices spreadsheet (CONTROLE sheet): each BRC purchase, the exports it went to and the leftover.":
+    "Importe a planilha Controle CAFE Pratices (aba CONTROLE): cada compra BRC, as exportações para onde ela foi e a sobra.",
+  "Spreadsheet imported": "Planilha importada",
+  "The leftover of the purchases due before the control starts is the opening stock; later purchases come from Digisul in their due month.":
+    "A sobra das compras vencidas antes do início do controle é o saldo inicial; as compras seguintes vêm do Digisul, no mês do vencimento.",
+  "By producer": "Por produtor", "Producer": "Produtor", "Used": "Usado", "used": "usadas", "Leftover due": "Sobra vencida",
+  "Not due yet": "A vencer", "Over limit": "Acima do limite", "leftover": "de sobra", "Leftover": "Sobra",
+  "Over the volume we can use: the leftover is not counted": "Acima do volume que podemos usar: a sobra não conta",
+  "BRC contract": "Contrato BRC", "CP ID": "ID CP", "Farm": "Fazenda", "Exports": "Exportações",
+  "Not found in Digisul": "Não encontrado no Digisul", "No contracts match the search.": "Nenhum contrato para essa busca.",
+  "Import CP history": "Importar histórico CP", "Read and import": "Ler e importar",
+  "Choose the Controle CAFE Pratices spreadsheet (.xlsx). The CONTROLE sheet is read in your browser: each BRC purchase, the exports it went to and the leftover.":
+    "Escolha a planilha Controle CAFE Pratices (.xlsx). A aba CONTROLE é lida no seu navegador: cada compra BRC, as exportações para onde ela foi e a sobra.",
+  "It replaces the {n} contracts imported before.": "Ela substitui os {n} contratos importados antes.",
+  "History imported: {n} purchase contracts.": "Histórico importado: {n} contratos de compra.",
+  "Sheet CONTROLE not found. Is this the C.A.F.E. Practices control spreadsheet?": "Aba CONTROLE não encontrada. Esta é a planilha de controle do C.A.F.E. Practices?",
+  "No BRC purchase contract found in the CONTROLE sheet.": "Nenhum contrato de compra BRC na aba CONTROLE.",
+  "The certificate history is not set up yet: run section 13 of supabase/schema.sql in the Supabase SQL Editor.":
+    "O histórico de certificados ainda não foi instalado: rode a seção 13 do supabase/schema.sql no SQL Editor do Supabase.",
   "Contract removed from the CP position.": "Contrato retirado da posição CP.", "Contract included in the CP position.": "Contrato incluído na posição CP.",
   "Certificate data updated from Digisul.": "Dados do certificado atualizados pelo Digisul.",
   "Include contract in CP": "Incluir contrato no CP", "Include": "Incluir",

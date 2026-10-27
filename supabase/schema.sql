@@ -918,3 +918,57 @@ create policy bi_position_detalhe_select on public.bi_position_detalhe for selec
     or (tipo = 'fisica_itens' and public.bi_ve_painel('portal:position-physical'))
     or (tipo not in ('vendas', 'compras', 'fisica_itens') and tipo not like 'cert\_%' and public.bi_ve_painel('portal:position-contracts'))
   );
+-- ---------------------------------------------------------------------
+-- 13. CERTIFICADOS: HISTÓRICO DA PLANILHA (compra BRC → exportação)
+-- A planilha "Controle CAFE Pratices" (aba CONTROLE) é importada pela página:
+-- cada compra BRC com o certificado, o que já saiu em cada exportação e a sobra.
+-- A sobra das compras vencidas antes do início do controle vira o saldo inicial.
+-- Pré-requisito: seção 11.
+-- ---------------------------------------------------------------------
+create table if not exists public.bi_cert_historico (
+  id           bigint generated always as identity primary key,
+  certificado  text not null default 'CP',
+  ordem        int not null default 0,                -- linha da planilha
+  compra       text not null,                         -- contrato BRC, como na planilha
+  id_cert      text,                                  -- ID do certificado do produtor
+  fornecedor   text,
+  fazenda      text,
+  sacas        numeric,
+  usado        numeric,
+  vencimento   date,
+  vinculos     jsonb not null default '[]'::jsonb,    -- [{ "venda": "BRAS-0258/25-2", "sacas": 333 }]
+  importado_por text,
+  created_at   timestamptz not null default now()
+);
+create index if not exists bi_cert_historico_cert on public.bi_cert_historico (certificado, ordem);
+
+alter table public.bi_cert_historico enable row level security;
+drop policy if exists bi_cert_historico_select on public.bi_cert_historico;
+create policy bi_cert_historico_select on public.bi_cert_historico for select to authenticated
+  using (public.bi_ve_painel('portal:cert-') or public.bi_gerencia_arquivos());
+
+-- Troca o histórico inteiro de um certificado (só ADM ou File manager)
+create or replace function public.bi_cert_historico_importar(p_certificado text, p_linhas jsonb)
+returns integer
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_autor text;
+  v_n integer;
+begin
+  if not public.bi_gerencia_arquivos() then
+    raise exception 'permission denied: only administrators and file managers can import the certificate history';
+  end if;
+  v_autor := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  delete from public.bi_cert_historico where certificado = p_certificado;
+  insert into public.bi_cert_historico (certificado, ordem, compra, id_cert, fornecedor, fazenda, sacas, usado, vencimento, vinculos, importado_por)
+  select p_certificado, (l ->> 'ordem')::int, l ->> 'compra', l ->> 'id_cert', l ->> 'fornecedor', l ->> 'fazenda',
+         (l ->> 'sacas')::numeric, (l ->> 'usado')::numeric, (l ->> 'vencimento')::date,
+         coalesce(l -> 'vinculos', '[]'::jsonb), v_autor
+  from jsonb_array_elements(p_linhas) l;
+  get diagnostics v_n = row_count;
+  return v_n;
+end;
+$$;
+revoke all on function public.bi_cert_historico_importar(text, jsonb) from public, anon;
+grant execute on function public.bi_cert_historico_importar(text, jsonb) to authenticated;

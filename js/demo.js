@@ -271,6 +271,14 @@ export function criarDemo() {
       salvar();
     },
     async removerCertAjuste(id) { exigeArquivos(); db.certAjustes = (db.certAjustes ?? []).filter((a) => a.id !== id); salvar(); },
+    async certHistorico(certificado) { return structuredClone((db.certHistorico ?? []).filter((h) => h.certificado === certificado)); },
+    async importarCertHistorico(certificado, linhas) {
+      exigeArquivos();
+      db.certHistorico = [...(db.certHistorico ?? []).filter((h) => h.certificado !== certificado),
+        ...linhas.map((l) => ({ id: novoId(), certificado, ...l, importado_por: eu().nome, created_at: new Date().toISOString() }))];
+      salvar();
+      return linhas.length;
+    },
 
     async notificacoes() {
       const visiveis = (await this.dashboards()).map((d) => d.id);

@@ -332,6 +332,23 @@ async function criarApiSupabase() {
       const { error } = await sb.from("bi_cert_ajustes").delete().eq("id", id);
       if (error) throw new Error(erroCert(error.message));
     },
+    // histórico importado da planilha (null = seção 13 do schema ainda não rodada)
+    async certHistorico(certificado) {
+      const { data, error } = await sb.from("bi_cert_historico").select("*").eq("certificado", certificado).order("ordem");
+      if (error) {
+        if (/bi_cert_historico|schema cache|does not exist/i.test(error.message)) return null;
+        throw new Error(erroCert(error.message));
+      }
+      return data;
+    },
+    async importarCertHistorico(certificado, linhas) {
+      const { data, error } = await sb.rpc("bi_cert_historico_importar", { p_certificado: certificado, p_linhas: linhas });
+      if (error) {
+        if (/bi_cert_historico|schema cache|does not exist/i.test(error.message)) throw new Error("The certificate history is not set up yet: run section 13 of supabase/schema.sql in the Supabase SQL Editor.");
+        throw new Error(erroCert(error.message));
+      }
+      return data;
+    },
 
     // ----------------------------------------------------------- notificações
     // null = recurso ainda não instalado no banco (schema.sql, seção 5)
