@@ -153,6 +153,13 @@ const COLS = {
 };
 const COLS_HIST = [["compra", "BRC contract"], ["id_cert", "CP ID"], ["fornecedor", "Producer"], ["fazenda", "Farm"],
   ["vencimento", "Due date", "d"], ["sacas", "Bags", "n"], ["_usado", "Used", "n"], ["_sobra", "Leftover", "n"]];
+// filtros da aba History; "disponivel" = sobra de compras já vencidas, fora o produtor bloqueado
+const hojeIso = () => new Date().toISOString().slice(0, 10);
+const FILTROS_HIST = {
+  sobra: (h) => h._sobra >= 0.5,
+  disponivel: (h) => h._sobra >= 0.5 && !h._bloqueado && (h.vencimento ?? "") <= hojeIso(),
+  inicial: (h) => h._inicial >= 0.5,
+};
 const NUMERICOS = ["n", "n2"];
 
 const cabecalho = (cols, ordem) => cols.map(([k, rot, tipo]) => `<th class="${NUMERICOS.includes(tipo) ? "num" : ""}"><button type="button" class="ordenar" data-ordem="${k}">${esc(rot)}${ordem?.[0] === k ? (ordem[1] > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("");
@@ -237,7 +244,7 @@ export async function renderCert(link, alvo, ctx) {
   const vendaPorContrato = new Map(base.vendas.map((r) => [r.contrato, { mes: mesVenda(r), cliente: clienteDoAlerta(r) }]));
 
   // a aba fica a mesma quando a página recarrega depois de salvar algo
-  let aba = abaAberta.get(link) ?? "compra", busca = "", mes = "", fonte = "", ordem = null;
+  let aba = abaAberta.get(link) ?? "compra", busca = "", mes = "", fonte = "", ordem = null, filtroHist = "";
 
   const desenhar = () => {
     const todas = aba === "venda" ? vendas : compras;
@@ -263,10 +270,10 @@ export async function renderCert(link, alvo, ctx) {
         : "No history imported yet, so the position starts at zero. Import the control spreadsheet in the History tab."}</span></div>` : ""}
 
       <div class="pos-kpis">
-        ${cert.inicio ? kpi("Opening stock", fmtN(inicial), `end of <span>${esc(fimHistorico)}</span>${cert.bloqueado && hist.excluido ? ` · excl. <span>${esc(cert.bloqueado.nome)}</span>` : ""}`) : ""}
-        ${kpi("Purchased", fmtN(soma(cc, "_sacas")), contratos(cc.length))}
-        ${kpi("Sold (export)", fmtN(soma(vc, "_sacas")), contratos(vc.length))}
-        ${kpi("Balance today", fmtN(saldoHoje), `up to <span>${esc(fmtMes(atual + "-01"))}</span> · ${saldoHoje < 0 ? "short" : "long"}`)}
+        ${cert.inicio ? kpi("Opening stock", fmtN(inicial), `end of <span>${esc(fimHistorico)}</span>${cert.bloqueado && hist.excluido ? ` · excl. <span>${esc(cert.bloqueado.nome)}</span>` : ""}`, "", "historico:inicial") : ""}
+        ${kpi("Purchased", fmtN(soma(cc, "_sacas")), contratos(cc.length), "", "compra")}
+        ${kpi("Sold (export)", fmtN(soma(vc, "_sacas")), contratos(vc.length), "", "venda")}
+        ${kpi("Balance today", fmtN(saldoHoje), `up to <span>${esc(fmtMes(atual + "-01"))}</span> · ${saldoHoje < 0 ? "short" : "long"}`, "", "historico:disponivel")}
         ${kpi("Final balance", fmtN(saldoFinal), meses.length ? `after <span>${esc(fmtMes(meses[meses.length - 1].ym + "-01"))}</span>` : "—")}
         ${pior ? kpi("Lowest balance ahead", fmtN(pior.acumulado), `in <span>${esc(fmtMes(pior.ym + "-01"))}</span>`, pior.acumulado < 0 ? "pos-kpi-critico" : "") : ""}
       </div>
@@ -296,6 +303,18 @@ export async function renderCert(link, alvo, ctx) {
     fb.addEventListener("input", () => { busca = fb.value; desenhar(); const n = $("#certBusca", alvo); n.focus(); n.setSelectionRange(busca.length, busca.length); });
     $("#certMes", alvo)?.addEventListener("change", (e) => { mes = e.target.value; desenhar(); });
     $("#certFonte", alvo)?.addEventListener("change", (e) => { fonte = e.target.value; desenhar(); });
+    $("#certFiltroHist", alvo)?.addEventListener("change", (e) => { filtroHist = e.target.value; desenhar(); });
+    // indicadores: abrem embaixo a aba (e o filtro) com os contratos que formam o número
+    $$("[data-ir]", alvo).forEach((k) => {
+      const ir = () => {
+        [aba, filtroHist = ""] = k.dataset.ir.split(":");
+        abaAberta.set(link, aba); mes = ""; busca = ""; fonte = ""; ordem = null;
+        desenhar();
+        $(".pos-filtros", alvo)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+      k.addEventListener("click", ir);
+      k.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), ir()));
+    });
     $("#certLimparMes", alvo)?.addEventListener("click", () => { mes = ""; desenhar(); });
     $$("[data-mes]", alvo).forEach((tr) => tr.addEventListener("click", () => {
       mes = mes === tr.dataset.mes ? "" : tr.dataset.mes;
@@ -315,6 +334,7 @@ export async function renderCert(link, alvo, ctx) {
     $("#certNovaCompra", alvo)?.addEventListener("click", () => abrirCompra(null, historico, cert, ctx));
     $$("[data-editar-compra]", alvo).forEach((b) => b.addEventListener("click", () => abrirCompra(historico.find((h) => String(h.id) === b.dataset.editarCompra), historico, cert, ctx)));
     $$("[data-remover-compra]", alvo).forEach((b) => b.addEventListener("click", () => removerCompra(hist.linhas.find((h) => String(h.id) === b.dataset.removerCompra), cert, ctx)));
+    $$("[data-usar]", alvo).forEach((b) => b.addEventListener("click", () => abrirUso(hist.linhas.find((h) => h._chave === b.dataset.usar), vendas, hist, cert, ctx)));
     $$("[data-vincular]", alvo).forEach((b) => b.addEventListener("click", () => abrirVinculo(vendas.find((r) => r.contrato === b.dataset.vincular), hist, cert, ctx)));
     $$("[data-acao]", alvo).forEach((b) => b.addEventListener("click", () => executarAcao(b.dataset, todas, cert, ctx)));
   };
@@ -353,7 +373,7 @@ export async function renderCert(link, alvo, ctx) {
   // Aba History: a planilha de controle, compra BRC por compra BRC, com as
   // exportações que ela abasteceu e a sobra; em cima, o resumo por produtor
   const corpoHistorico = (abas, t) => {
-    let linhas = hist.linhas.filter((h) => !t || [h.compra, h.id_cert, h.fornecedor, h.fazenda, ...h.vinculos.map((v) => v.venda), ...h._novos.map((v) => v.venda)]
+    let linhas = hist.linhas.filter((h) => FILTROS_HIST[filtroHist]?.(h) ?? true).filter((h) => !t || [h.compra, h.id_cert, h.fornecedor, h.fazenda, ...h.vinculos.map((v) => v.venda), ...h._novos.map((v) => v.venda)]
       .some((x) => String(x ?? "").toLowerCase().includes(t)));
     // planilha na ordem dela, depois as incluídas pela tela e as do Digisul pelo vencimento
     const peso = { planilha: 0, manual: 1, digisul: 2 };
@@ -365,6 +385,10 @@ export async function renderCert(link, alvo, ctx) {
     return `<div class="pos-filtros">
         ${abas}
         <label class="busca sm">${icon("search")}<input type="search" id="certBusca" placeholder="Search contract, producer, export…" value="${esc(busca)}"></label>
+        <select id="certFiltroHist" aria-label="Filter"><option value="">All contracts</option>
+          <option value="sobra" ${filtroHist === "sobra" ? "selected" : ""}>With leftover</option>
+          <option value="disponivel" ${filtroHist === "disponivel" ? "selected" : ""}>Available today</option>
+          ${cert.inicio ? `<option value="inicial" ${filtroHist === "inicial" ? "selected" : ""}>In the opening stock</option>` : ""}</select>
         ${editar ? `<button class="btn" id="certNovaCompra">${icon("plus")}<span>Add purchase</span></button>` : ""}
         ${ctx.gerente ? `<button class="btn" id="certImportar">${icon("upload")}<span>Import spreadsheet</span></button>` : ""}
       </div>
@@ -388,6 +412,7 @@ export async function renderCert(link, alvo, ctx) {
         <span><strong>${fmtN(soma(linhas, "sacas"))}</strong> bags</span>
         <span><strong>${fmtN(soma(linhas, "_usado"))}</strong> used</span>
         <span><strong>${fmtN(soma(linhas, "_sobra"))}</strong> leftover</span>
+        ${filtroHist === "disponivel" && Math.abs(soma(linhas, "_sobra") - saldoHoje) >= 0.5 ? `<span class="muted" title="Exports already shipped but not linked, or links to exports still to ship">Balance today: <strong>${fmtN(saldoHoje)}</strong></span>` : ""}
       </div>
       <div class="tabela-wrap pos-tabela pos-contratos"><table class="tabela tabela-num">
         <thead><tr>${cabecalho(COLS_HIST, ordem)}<th>Exports</th><th>Source</th>${editar ? "<th></th>" : ""}</tr></thead>
@@ -397,7 +422,7 @@ export async function renderCert(link, alvo, ctx) {
             ...h._novos.map((v) => chipVenda(v, vendaPorContrato.get(v.venda), quemLancou(v))),
           ].join("") : `<span class="muted">—</span>`}</td>
           <td>${origemHist(h)}</td>
-          ${editar ? `<td>${h._origem === "digisul" ? "" : `<button type="button" class="link" data-editar-compra="${h.id}">${icon("edit")}Edit</button>
+          ${editar ? `<td class="cert-acoes">${h._sobra >= 0.5 ? `<button type="button" class="link" data-usar="${esc(h._chave)}" title="Use bags of this leftover in an export">${icon("link")}Use</button>` : ""}${h._origem === "digisul" ? "" : `<button type="button" class="link" data-editar-compra="${h.id}">${icon("edit")}Edit</button>
             ${h._origem === "manual" ? `<button type="button" class="link" data-remover-compra="${h.id}">${icon("trash")}Remove</button>` : ""}`}</td>` : ""}</tr>`).join("")
           : `<tr><td colspan="${COLS_HIST.length + 2 + (editar ? 1 : 0)}" class="vazio-td">No contracts match the search.</td></tr>`}</tbody>
       </table></div>`}`;
@@ -406,7 +431,8 @@ export async function renderCert(link, alvo, ctx) {
 }
 
 // `sub` é HTML (o mês fica num elemento à parte, para a tradução da tela)
-const kpi = (titulo, valor, sub, cls = "") => `<div class="pos-kpi pos-kpi-est ${cls}">
+// `ir` = aba (e filtro) que o clique no indicador abre embaixo
+const kpi = (titulo, valor, sub, cls = "", ir = "") => `<div class="pos-kpi pos-kpi-est ${cls} ${ir ? "cert-kpi-link" : ""}" ${ir ? `data-ir="${ir}" role="button" tabindex="0"` : ""}>
   <span class="pos-kpi-t">${esc(titulo)}</span><span class="pos-kpi-v">${esc(valor)}</span><span class="pos-kpi-s">${sub}</span></div>`;
 const num = (v, forte = false) => `<td class="num ${v < 0 ? "neg" : ""} ${forte ? "forte" : ""}">${Math.abs(v) < 0.5 ? `<span class="zero">–</span>` : fmtN(v)}</td>`;
 
@@ -660,6 +686,75 @@ function abrirVinculo(r, hist, cert, ctx) {
       if (soma(linhas, "sacas") + totalPlanilha > alvoSacas + 0.5) throw new Error(`The links add up to more than the ${fmtN(alvoSacas)} bags of the export.`);
       await ctx.api.salvarCertVinculos(cert.codigo, r.contrato, linhas);
       toast(linhas.length ? "Shipment links saved." : "Shipment links removed.");
+      ctx.recarregar();
+    },
+  });
+}
+
+// Usa sacas da sobra de uma compra numa exportação (o mesmo vínculo do "Link", visto
+// pelo lado da compra). Exportação que ainda não conta para o certificado passa a
+// contar com as sacas vinculadas (inclusão manual).
+function abrirUso(h, vendas, hist, cert, ctx) {
+  if (!h) return;
+  // incluída à mão com parte das sacas: o teto é o contrato inteiro (a inclusão acompanha os vínculos)
+  const parcial = (r) => r._ajuste?.acao === "incluir" && r._ajuste.sacas != null;
+  const teto = (r) => (r._conta && !parcial(r) ? r._sacas ?? 0 : Number(r.sacas) || 0);
+  const faltam = (r) => teto(r) - (r._vinculado ?? 0);
+  const desta = (r) => hist.novos.find((v) => v.venda === r.contrato && (v.historico_id != null ? `h:${v.historico_id}` : `d:${v.compra}`) === h._chave)?.sacas ?? 0;
+  const opcoes = vendas.filter((r) => faltam(r) >= 0.5 || desta(r) > 0)
+    .sort((a, b) => b._conta - a._conta || String(a._mes ?? "").localeCompare(String(b._mes ?? "")) || a.contrato.localeCompare(b.contrato, "en", { numeric: true }));
+  let escolhida = null;
+  const lista = (q) => {
+    const achadas = opcoes.filter((r) => !q || [r.contrato, r._cliente, r.importador, r.alertas].some((x) => String(x ?? "").toLowerCase().includes(q))).slice(0, 60);
+    if (!achadas.length) return `<p class="muted pos-nota">No export with bags still without a BRC purchase.</p>`;
+    return `<div class="tabela-wrap pos-tabela cert-lista"><table class="tabela tabela-num">
+      <thead><tr><th></th><th>Contract</th><th>Client (alert)</th><th>Shipment</th><th class="num">Bags</th><th class="num">Without BRC</th><th></th></tr></thead>
+      <tbody>${achadas.map((r) => `<tr class="clicavel" data-escolher="${esc(r.contrato)}">
+        <td><input type="radio" name="venda" value="${esc(r.contrato)}" ${escolhida === r.contrato ? "checked" : ""} aria-label="${esc(r.contrato)}"></td>
+        <td>${esc(r.contrato)}</td><td>${esc(r._cliente ?? "—")}</td><td>${esc(r._mes ? mesExtenso(r._mes + "-01") : "—")}</td>
+        <td class="num">${fmtN(teto(r))}</td><td class="num">${fmtN(faltam(r) + desta(r))}</td>
+        <td>${r._conta ? "" : `<span class="pill pill-alerta" title="Not in the position yet: it is included with the bags you link">Not in ${esc(cert.codigo)}</span>`}</td></tr>`).join("")}</tbody></table></div>`;
+  };
+  modal({
+    titulo: "Use leftover in an export",
+    botao: "Link",
+    largura: "modal-lg",
+    corpo: `<p><strong>${esc(h.compra)}</strong> <span class="muted">${esc(["", h.fornecedor, `${fmtN(h._sobra)} bags left`].filter((x) => x != null).join(" · "))}</span></p>
+      <p class="muted">Choose the export these bags go to. An export that is not in the ${esc(cert.codigo)} position yet is included with the bags you link.</p>
+      <label class="busca">${icon("search")}<input type="search" id="usoBusca" placeholder="Search contract, supplier, client…" autocomplete="off"></label>
+      <div id="usoLista">${lista("")}</div>
+      <div class="cert-inc-campos">
+        <label class="campo"><span>Bags *</span><input type="number" name="sacas" min="0" step="0.01" required></label>
+      </div>`,
+    onOpen(form) {
+      const box = $("#usoLista", form);
+      const ligar = () => $$("[data-escolher]", box).forEach((tr) => tr.addEventListener("click", () => {
+        escolhida = tr.dataset.escolher;
+        $$("input[name=venda]", box).forEach((i) => { i.checked = i.value === escolhida; });
+        const r = opcoes.find((x) => x.contrato === escolhida);
+        form.sacas.value = Math.round(Math.min(h._sobra + desta(r), faltam(r) + desta(r)) * 100) / 100;
+      }));
+      $("#usoBusca", form).addEventListener("input", (e) => { box.innerHTML = lista(e.target.value.trim().toLowerCase()); ligar(); });
+      ligar();
+    },
+    async onSubmit(form) {
+      const r = opcoes.find((x) => x.contrato === escolhida);
+      if (!r) throw new Error("Choose an export from the list.");
+      const sacas = Number(form.sacas.value) || 0;
+      if (!(sacas > 0)) throw new Error("Bags must be greater than zero.");
+      if (sacas > h._sobra + desta(r) + 0.5) throw new Error(`Only ${fmtN(h._sobra + desta(r))} bags left in this purchase.`);
+      if (sacas > faltam(r) + desta(r) + 0.5) throw new Error(`This export has only ${fmtN(faltam(r) + desta(r))} bags without a BRC purchase.`);
+      // os outros vínculos do embarque continuam; o desta compra passa a ser `sacas`
+      const linhas = hist.novos.filter((v) => v.venda === r.contrato && (v.historico_id != null ? `h:${v.historico_id}` : `d:${v.compra}`) !== h._chave)
+        .map((v) => ({ historico_id: v.historico_id, compra: v.compra, sacas: v.sacas }))
+        .concat({ historico_id: h._origem === "digisul" ? null : h.id, compra: h.compra, sacas });
+      await ctx.api.salvarCertVinculos(cert.codigo, r.contrato, linhas);
+      if (!r._conta || parcial(r)) {
+        await ctx.api.salvarCertAjuste({ certificado: cert.codigo, tipo: "venda", contrato: r.contrato, acao: "incluir",
+          sacas: soma(linhas, "sacas") + (hist.porVenda.get(r.contrato) ?? 0) - soma(hist.novos.filter((v) => v.venda === r.contrato), "sacas"),
+          obs: `${cert.codigo} bags from ${linhas.map((l) => l.compra).join(", ")}` });
+      }
+      toast(r._conta ? "Shipment links saved." : `Shipment links saved and export included in ${cert.codigo}.`);
       ctx.recarregar();
     },
   });
