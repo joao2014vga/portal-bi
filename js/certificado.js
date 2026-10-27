@@ -8,6 +8,7 @@
 //   portal:cert-cp   C.A.F.E. Practices
 import { esc, $, $$, icon, toast, modal, confirmar, tempoRelativo } from "./ui.js";
 import { fmtN, fmtMes, fmtData, segmentos, ligarSegmentos, vigiarNegativos, carregarXlsx } from "./position.js";
+import { t as traduzir } from "./i18n.js";
 
 export const ehPainelCert = (link) => /^portal:cert-/.test(link ?? "");
 
@@ -339,6 +340,7 @@ export async function renderCert(link, alvo, ctx) {
     }));
     $("#certIncluir", alvo)?.addEventListener("click", () => abrirInclusao(compras, vendas, cert, ctx));
     $("#certImportar", alvo)?.addEventListener("click", () => abrirImportacao(cert, ctx, hist.linhas.filter((h) => h._origem === "planilha").length, hist.novos.length));
+    $("#certExportar", alvo)?.addEventListener("click", (ev) => exportarExcel(ev.currentTarget, { cert, hist, meses, inicial, fimHistorico, vendaPorContrato }));
     $("#certNovaCompra", alvo)?.addEventListener("click", () => abrirCompra(null, historico, cert, ctx));
     $$("[data-editar-compra]", alvo).forEach((b) => b.addEventListener("click", () => abrirCompra(historico.find((h) => String(h.id) === b.dataset.editarCompra), historico, cert, ctx)));
     $$("[data-remover-compra]", alvo).forEach((b) => b.addEventListener("click", () => removerCompra(hist.linhas.find((h) => String(h.id) === b.dataset.removerCompra), cert, ctx)));
@@ -398,6 +400,7 @@ export async function renderCert(link, alvo, ctx) {
           <option value="disponivel" ${filtroHist === "disponivel" ? "selected" : ""}>Available today</option>
           ${cert.inicio ? `<option value="inicial" ${filtroHist === "inicial" ? "selected" : ""}>In the opening stock</option>` : ""}</select>
         ${editar ? `<button class="btn" id="certNovaCompra">${icon("plus")}<span>Add purchase</span></button>` : ""}
+        ${hist.linhas.length ? `<button class="btn" id="certExportar" title="Download the history, links, producers and monthly position">${icon("download")}<span>Export to Excel</span></button>` : ""}
         ${ctx.gerente ? `<button class="btn" id="certImportar">${icon("upload")}<span>Import spreadsheet</span></button>` : ""}
       </div>
       ${ctx.gerente && historico !== null && vinculos === null ? `<div class="aviso-inline alerta">${icon("alert")}<span>To edit the history and link shipments here, run section 14 of supabase/schema.sql in the Supabase SQL Editor.</span></div>` : ""}
@@ -766,4 +769,68 @@ function abrirUso(h, vendas, hist, cert, ctx) {
       ctx.recarregar();
     },
   });
+}
+
+// Baixa o histórico em Excel (cópia de segurança e para quem não usa o portal):
+// compras com a sobra, um vínculo por linha, resumo por produtor e a posição por mês
+async function exportarExcel(botao, { cert, hist, meses, inicial, fimHistorico, vendaPorContrato }) {
+  botao.disabled = true;
+  try {
+    const XLSX = await carregarXlsx();
+    const T = (s) => traduzir(s);
+    const data = (iso) => (iso ? new Date(`${iso.slice(0, 10)}T12:00:00`) : null);
+    const n = (v) => Math.round((Number(v) || 0) * 100) / 100;
+    const origem = (h) => T(h._origem === "digisul" ? "Digisul" : h._origem === "manual" ? "Manual" : "Spreadsheet");
+    const aba = (cab, linhas, larguras) => {
+      const ws = XLSX.utils.aoa_to_sheet([cab.map(T), ...linhas], { cellDates: true, dateNF: "dd/mm/yyyy" });
+      ws["!cols"] = larguras.map((wch) => ({ wch }));
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length, c: cab.length - 1 } }) };
+      return ws;
+    };
+    const linhas = [...hist.linhas].sort((a, b) => (a.ordem ?? 1e9) - (b.ordem ?? 1e9) || String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")));
+
+    const compras = aba(["BRC contract", "CP ID", "Producer", "Farm", "Due date", "Bags", "Used", "Leftover", "Status", "Over limit", "Source", "Note", "Exports"],
+      linhas.map((h) => [h.compra, h.id_cert ?? "", h.fornecedor ?? "", h.fazenda ?? "", data(h.vencimento), n(h.sacas), n(h._usado), n(h._sobra),
+        T(h._vencida ? "Due" : "Not due yet"), h._bloqueado ? T("Yes") : "", origem(h), h.obs ?? "",
+        [...h.vinculos, ...h._novos].map((v) => `${v.venda} (${fmtN(v.sacas)})`).join(", ")]),
+      [18, 12, 34, 18, 12, 10, 10, 10, 12, 10, 12, 24, 60]);
+
+    const vinculos = aba(["BRC contract", "Producer", "Export", "Client (alert)", "Shipment", "Bags", "Source", "Linked by", "Date"],
+      linhas.flatMap((h) => [
+        ...h.vinculos.map((v) => ({ v, quem: null })),
+        ...h._novos.map((v) => ({ v, quem: v })),
+      ].map(({ v, quem }) => {
+        const d = vendaPorContrato.get(v.venda);
+        return [h.compra, h.fornecedor ?? "", v.venda, d?.cliente ?? "", d?.mes ? data(`${d.mes}-01`) : null, n(v.sacas),
+          T(quem ? "Portal" : "Spreadsheet"), quem?.autor ?? "", quem?.created_at ? data(quem.created_at) : null];
+      })),
+      [18, 34, 18, 30, 12, 10, 12, 22, 12]);
+    // embarque é mês: mostra "nov/2026"
+    for (const [ref, c] of Object.entries(vinculos)) if (/^E\d+$/.test(ref) && ref !== "E1" && c.v != null) c.z = "mmm/yyyy";
+
+    const p = hist.produtores;
+    const produtores = aba(["Producer", "Contracts", "Bags", "Used", "Leftover due", "Not due yet", "Opening stock", "Over limit"],
+      [...p.map((x) => [x.nome, x.n, n(x.sacas), n(x.usado), n(x.estoque), n(x.futuro), n(x.inicial), x.bloqueado ? T("Yes") : ""]),
+        [T("Total"), p.reduce((s, x) => s + x.n, 0), n(soma(p, "sacas")), n(soma(p, "usado")), n(soma(p, "estoque")), n(soma(p, "futuro")), n(inicial), ""]],
+      [40, 10, 12, 12, 14, 12, 14, 10]);
+
+    const posicao = aba(["Month", "Purchases", "Sales", "Net", "Running balance"],
+      [...(inicial ? [[`${T("Opening stock")} (${fimHistorico ?? ""})`, null, null, null, n(inicial)]] : []),
+        ...meses.map((l) => [fmtMes(`${l.ym}-01`), n(l.compras), n(-l.vendas), n(l.saldo), n(l.acumulado)])],
+      [24, 12, 12, 12, 16]);
+    for (const ws of [compras, vinculos, produtores, posicao]) {
+      for (const [ref, c] of Object.entries(ws)) if (ref[0] !== "!" && c.t === "n" && !/^[A-Z]+1$/.test(ref)) c.z ??= "#,##0;(#,##0)";
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, compras, T("History").slice(0, 31));
+    XLSX.utils.book_append_sheet(wb, vinculos, T("Links").slice(0, 31));
+    XLSX.utils.book_append_sheet(wb, produtores, T("By producer").slice(0, 31));
+    XLSX.utils.book_append_sheet(wb, posicao, T("Position").slice(0, 31));
+    XLSX.writeFile(wb, `${cert.codigo} ${T("History")} ${hojeIso()}.xlsx`);
+  } catch (e) {
+    toast(e.message, "erro");
+  } finally {
+    botao.disabled = false;
+  }
 }

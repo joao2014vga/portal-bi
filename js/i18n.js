@@ -511,6 +511,8 @@ const PT = {
   "Available": "Disponível", "Bags from it": "Sacas dela", "No purchase with leftover in the history.": "Nenhuma compra com sobra no histórico.",
   "To buy": "A comprar", "to cover up to": "para cobrir até", "covered up to": "coberto até",
   "no shortfall ahead": "sem falta à frente", "in the month": "no mês",
+  "Export to Excel": "Exportar para Excel", "Download the history, links, producers and monthly position": "Baixar o histórico, os vínculos, os produtores e a posição por mês",
+  "History": "Histórico", "Links": "Vínculos", "Due": "Vencida", "Yes": "Sim", "Linked by": "Lançado por", "Date": "Data", "Portal": "Portal",
   "With leftover": "Com sobra", "Available today": "Disponível hoje",
   "In the opening stock": "No saldo inicial", "Balance today:": "Saldo hoje:",
   "Exports already shipped but not linked, or links to exports still to ship":
