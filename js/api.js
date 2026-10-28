@@ -367,6 +367,11 @@ async function criarApiSupabase() {
         : await sb.from("bi_cert_historico").insert({ ...linha, ordem, origem: "manual" });
       if (error) throw new Error(erroCertEdicao(error.message));
     },
+    // tira um vínculo da planilha de uma compra do histórico (devolve as sacas para a sobra)
+    async desvincularCertHistorico(id, { vinculos, usado, obs }) {
+      const { error } = await sb.from("bi_cert_historico").update({ vinculos, usado, obs }).eq("id", id);
+      if (error) throw new Error(erroCertEdicao(error.message));
+    },
     async removerCertCompra(id) {
       const { error } = await sb.from("bi_cert_historico").delete().eq("id", id);
       if (error) throw new Error(erroCertEdicao(error.message));

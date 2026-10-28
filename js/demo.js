@@ -287,6 +287,12 @@ export function criarDemo() {
       else db.certHistorico.push({ id: novoId(), ...linha, origem: "manual", vinculos: [], importado_por: eu().nome, created_at: new Date().toISOString() });
       salvar();
     },
+    async desvincularCertHistorico(id, campos) {
+      exigeArquivos();
+      const h = (db.certHistorico ?? []).find((x) => x.id === id);
+      if (h) Object.assign(h, campos, { alterado_por: eu().nome, updated_at: new Date().toISOString() });
+      salvar();
+    },
     async removerCertCompra(id) {
       exigeArquivos();
       db.certHistorico = (db.certHistorico ?? []).filter((h) => h.id !== id);

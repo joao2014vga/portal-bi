@@ -483,6 +483,11 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .cert-falta { color: var(--alerta); }
 .cert-abertura td { background: var(--sup-2); font-style: italic; }
 .cert-grupo td { background: var(--brand-claro); }
+.cert-abas { margin: 4px 0 18px; }
+.cert-abas .seg { display: flex; width: 100%; padding: 4px; border-radius: 11px; }
+.cert-abas .seg button { flex: 1; font-size: 14.5px; padding: 10px 18px; border-radius: 8px; }
+.cert-abas .seg button.on { color: var(--brand); }
+.cert-mes-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cert-bloqueado td { opacity: .6; }
 /* exportações de cada compra: quebram em várias linhas numa coluna de largura fixa */
 .tabela-num td.cert-vinculos { white-space: normal; text-align: left; }
