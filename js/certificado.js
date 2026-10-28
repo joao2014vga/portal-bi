@@ -305,6 +305,7 @@ export async function renderCert(link, alvo, ctx) {
     alvo.innerHTML = `<div class="pos">
       <header class="cert-banner">
         <div class="cert-banner-topo">
+          <a class="cert-banner-voltar" href="#/" title="Back" aria-label="Back">${icon("back")}</a>
           <img class="cert-banner-logo" src="assets/logo_brascof.png" alt="Brascof">
           <div class="cert-banner-txt">
             <div class="cert-banner-titulo"><h1>${esc(cert.nome)} (${esc(cert.codigo)})</h1>

@@ -486,6 +486,8 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 /* cabeçalho da página do certificado: faixa verde com a logo, o título e as abas */
 .cert-banner { background: #1d4a3d; color: #fff; border-radius: 12px; padding: 18px 24px 0; margin-bottom: 18px; }
 .cert-banner-topo { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.cert-banner-voltar { display: grid; place-items: center; width: 36px; height: 36px; margin-right: -4px; border-radius: 50%; color: #fff; flex: none; }
+.cert-banner-voltar:hover { background: rgba(255,255,255,.14); }
 .cert-banner-logo { width: 62px; height: 62px; border-radius: 50%; background: #fff; object-fit: contain; padding: 3px; flex: none; }
 .cert-banner-txt { flex: 1; min-width: 240px; }
 .cert-banner-titulo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

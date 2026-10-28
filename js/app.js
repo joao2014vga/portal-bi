@@ -489,9 +489,11 @@ async function telaDashboard(id) {
   const demo = d.link.startsWith("demo:");
   const sistema = ehSistema(d);
   const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link); // painel desenhado pelo próprio portal (Position, Certificados)
+  // a página do certificado tem o próprio cabeçalho (com a volta), sem a barra do visor
+  const semBarra = ehPainelCert(d.link);
   await shell(`
     <div class="visor">
-      <div class="visor-barra">
+      ${semBarra ? "" : `<div class="visor-barra">
         <a class="btn-icon" href="#/" title="Back" aria-label="Back">${icon("back")}</a>
         <div class="visor-titulo">
           <h1>${esc(d.titulo)}</h1>
@@ -502,7 +504,7 @@ async function telaDashboard(id) {
           <button class="btn btn-ghost" id="telaCheia">${icon("expand")}<span>Full screen</span></button>
           ${demo || nativo ? "" : `<a class="btn btn-ghost" href="${esc(powerBiEmIngles(d.link))}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}
         </div>
-      </div>
+      </div>`}
       ${d.nota ? `<div class="nota nota-${esc(d.nota_tipo)}">${icon(NIVEL_ICON[d.nota_tipo])}<span>${esc(d.nota)}</span></div>` : ""}
       ${nativo ? `<div class="visor-frame visor-nativo" id="frame"></div>` : `<div class="visor-frame" id="frame">
         <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(sistema ? semCache(d.link) : powerBiEmIngles(d.link))}"`}
@@ -510,7 +512,7 @@ async function telaDashboard(id) {
       </div>`}
     </div>`, { banner: false, cheio: true, ativo: sistema ? `d${d.id}` : "" });
 
-  $("#telaCheia").addEventListener("click", () => {
+  $("#telaCheia")?.addEventListener("click", () => {
     const el = $("#frame");
     (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   });
