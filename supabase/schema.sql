@@ -1125,3 +1125,36 @@ create policy bi_position_detalhe_select on public.bi_position_detalhe for selec
     or (tipo = 'comercial' and public.bi_ve_painel('portal:position-commercial'))
     or (tipo not in ('vendas', 'compras', 'fisica_itens', 'comercial') and tipo not like 'cert\_%' and public.bi_ve_painel('portal:position-contracts'))
   );
+
+-- ---------------------------------------------------------------------
+-- 16. TROCA DA FONTE OFICIAL: CARDS COM A DATA REAL
+-- Ao trocar a fonte, os cards da Position passam a mostrar na hora a data
+-- da última carga da nova fonte (sem notificação). Depois disso, cada
+-- atualização da fonte oficial (Digisul a cada 2 h, ou upload) segue marcando.
+-- ---------------------------------------------------------------------
+create or replace function public.bi_position_definir_fonte(p_fonte text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_quando timestamptz;
+begin
+  if not public.bi_is_admin() then
+    raise exception 'Access denied';
+  end if;
+  if p_fonte not in ('planilha', 'api') then
+    raise exception 'Invalid source';
+  end if;
+  insert into public.bi_config (chave, valor, atualizado_em) values ('position_fonte', to_jsonb(p_fonte), now())
+  on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();
+
+  select max(created_at) into v_quando from public.bi_position_cargas where fonte = p_fonte;
+  if v_quando is not null then
+    perform set_config('bi.sem_notificacao', '1', true);
+    update public.bi_dashboards set atualizado_em = v_quando where link like 'portal:position-%';
+    perform set_config('bi.sem_notificacao', '', true);
+  end if;
+end;
+$$;
+revoke all on function public.bi_position_definir_fonte(text) from public, anon;
+grant execute on function public.bi_position_definir_fonte(text) to authenticated;
