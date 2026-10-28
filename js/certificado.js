@@ -244,7 +244,7 @@ export async function renderCert(link, alvo, ctx) {
   const saldoFinal = meses.length ? meses[meses.length - 1].acumulado : inicial;
   const fimHistorico = cert.inicio ? fmtMes(mesAnterior(cert.inicio) + "-01") : null;
   // exportações do Digisul, para mostrar embarque e cliente nos vínculos do histórico
-  const vendaPorContrato = new Map(base.vendas.map((r) => [r.contrato, { mes: mesVenda(r), cliente: clienteDoAlerta(r) }]));
+  const vendaPorContrato = new Map(base.vendas.map((r) => [r.contrato, { mes: mesVenda(r), cliente: clienteDoAlerta(r), sacas: r.sacas }]));
 
   // a aba fica a mesma quando a página recarrega depois de salvar algo
   let aba = abaAberta.get(link) ?? "compra", busca = "", mes = "", fonte = "", ordem = null, filtroHist = "";
@@ -401,6 +401,32 @@ export async function renderCert(link, alvo, ctx) {
     const importado = historico?.find((h) => (h.origem ?? "planilha") === "planilha");
     const p = hist.produtores;
     const editar = ctx.gerente && vinculos !== null;
+    // busca por exportação (BRAS): em cima, de quais compras BRC ela saiu; na tabela,
+    // só os vínculos com ela
+    const doVinculo = (v) => !!t && String(v.venda ?? "").toLowerCase().includes(t);
+    const usos = new Map();
+    for (const h of hist.linhas) {
+      for (const v of [...h.vinculos, ...h._novos]) if (doVinculo(v)) {
+        if (!usos.has(v.venda)) usos.set(v.venda, []);
+        usos.get(v.venda).push({ h, sacas: v.sacas, quem: h._novos.includes(v) ? quemLancou(v) : null });
+      }
+    }
+    const porExportacao = [...usos].sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }));
+    const quadroExportacao = !porExportacao.length ? "" : `<div class="pos-card">
+        <div class="pos-card-h"><h2>BRC purchases used by the export</h2></div>
+        <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+          <thead><tr><th>BRC contract</th><th>CP ID</th><th>Producer</th><th>Farm</th><th>Due date</th><th class="num">Bags used</th></tr></thead>
+          <tbody>${porExportacao.map(([venda, us]) => {
+            const d = vendaPorContrato.get(venda);
+            const ligadas = soma(us, "sacas");
+            return `<tr class="cert-grupo"><td colspan="5"><strong>${esc(venda)}</strong>
+                <span class="muted">${esc([d?.cliente, d?.mes ? mesExtenso(d.mes + "-01") : null, d?.sacas != null ? `${fmtN(d.sacas)} bags` : d ? null : "Not found in Digisul"].filter(Boolean).join(" · "))}</span></td>
+                ${num(ligadas, true)}</tr>
+              ${us.map(({ h, sacas, quem }) => `<tr ${quem ? `title="${esc(`Linked in the portal · ${quem}`)}"` : ""}><td>${esc(h.compra)}</td><td>${esc(h.id_cert ?? "—")}</td>
+                <td>${esc(h.fornecedor ?? "—")}</td><td>${esc(h.fazenda ?? "—")}</td><td>${esc(h.vencimento ? fmtData(h.vencimento.slice(0, 10)) : "—")}</td>${num(sacas)}</tr>`).join("")}`;
+          }).join("")}</tbody>
+        </table></div>
+      </div>`;
     return `<div class="pos-filtros">
         ${abas}
         <label class="busca sm">${icon("search")}<input type="search" id="certBusca" placeholder="Search contract, producer, export…" value="${esc(busca)}"></label>
@@ -415,6 +441,7 @@ export async function renderCert(link, alvo, ctx) {
       ${ctx.gerente && historico !== null && vinculos === null ? `<div class="aviso-inline alerta">${icon("alert")}<span>To edit the history and link shipments here, run section 14 of supabase/schema.sql in the Supabase SQL Editor.</span></div>` : ""}
       ${!hist.linhas.length ? `<div class="vazio">${icon("file")}<h3>No history imported</h3>
         <p>Import the Controle CAFE Pratices spreadsheet (CONTROLE sheet): each BRC purchase, the exports it went to and the leftover.</p></div>` : `
+      ${porExportacao.length ? quadroExportacao : `
       ${importado ? `<p class="muted pos-nota">${esc(["Spreadsheet imported", importado.importado_por, fmtData(importado.created_at.slice(0, 10))].filter(Boolean).join(" · "))}</p>` : ""}
       <p class="muted pos-nota">The leftover of the purchases due before the control starts is the opening stock; later purchases come from Digisul in their due month.</p>
       <p class="muted pos-nota">To say which purchases an export came from, use “Link” on the export in the Export sales tab.</p>
@@ -426,7 +453,7 @@ export async function renderCert(link, alvo, ctx) {
             <td class="num">${fmtN(x.n)}</td>${num(x.sacas)}${num(x.usado)}${num(x.estoque)}${num(x.futuro)}${num(x.inicial, true)}</tr>`).join("")}</tbody>
           <tfoot><tr><td>Total</td><td class="num">${fmtN(soma(p, "n"))}</td>${num(soma(p, "sacas"))}${num(soma(p, "usado"))}${num(soma(p, "estoque"))}${num(soma(p, "futuro"))}${num(inicial, true)}</tr></tfoot>
         </table></div>
-      </div>
+      </div>`}
       <div class="pos-resumo">
         <span><strong>${fmtN(linhas.length)}</strong> ${linhas.length === 1 ? "contract" : "contracts"}</span>
         <span><strong>${fmtN(soma(linhas, "sacas"))}</strong> bags</span>
@@ -437,9 +464,9 @@ export async function renderCert(link, alvo, ctx) {
         <thead><tr>${cabecalho(COLS_HIST, ordem)}<th>Exports</th><th>Source</th>${editar ? "<th></th>" : ""}</tr></thead>
         <tbody>${linhas.length ? linhas.map((h) => `<tr class="${h._bloqueado ? "cert-bloqueado" : ""}">${COLS_HIST.map(([k, , tipo]) => celula(h, k, tipo)).join("")}
           <td class="cert-vinculos"><div>${h.vinculos.length || h._novos.length ? [
-            ...h.vinculos.map((v) => chipVenda(v, vendaPorContrato.get(v.venda))),
-            ...h._novos.map((v) => chipVenda(v, vendaPorContrato.get(v.venda), quemLancou(v))),
-          ].join("") : `<span class="muted">—</span>`}</div></td>
+            ...h.vinculos.filter((v) => !porExportacao.length || doVinculo(v)).map((v) => chipVenda(v, vendaPorContrato.get(v.venda))),
+            ...h._novos.filter((v) => !porExportacao.length || doVinculo(v)).map((v) => chipVenda(v, vendaPorContrato.get(v.venda), quemLancou(v))),
+          ].join("") || `<span class="muted">—</span>` : `<span class="muted">—</span>`}</div></td>
           <td>${origemHist(h)}</td>
           ${editar ? `<td class="cert-acoes">${h._sobra >= 0.5 ? `<button type="button" class="link" data-usar="${esc(h._chave)}" title="Use bags of this leftover in an export">${icon("link")}Use</button>` : ""}${h._origem === "digisul" ? "" : `<button type="button" class="link" data-editar-compra="${h.id}">${icon("edit")}Edit</button>
             ${h._origem === "manual" ? `<button type="button" class="link" data-remover-compra="${h.id}">${icon("trash")}Remove</button>` : ""}`}</td>` : ""}</tr>`).join("")

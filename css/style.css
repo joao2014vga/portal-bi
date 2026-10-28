@@ -482,6 +482,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 #vinTotal { font-size: 14px; }
 .cert-falta { color: var(--alerta); }
 .cert-abertura td { background: var(--sup-2); font-style: italic; }
+.cert-grupo td { background: var(--brand-claro); }
 .cert-bloqueado td { opacity: .6; }
 /* exportações de cada compra: quebram em várias linhas numa coluna de largura fixa */
 .tabela-num td.cert-vinculos { white-space: normal; text-align: left; }
