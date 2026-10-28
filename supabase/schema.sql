@@ -1158,3 +1158,72 @@ end;
 $$;
 revoke all on function public.bi_position_definir_fonte(text) from public, anon;
 grant execute on function public.bi_position_definir_fonte(text) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 17. CARDS DA POSITION COM A HORA DO DIGISUL
+-- Cada atualização pelo Digisul (2 em 2 h ou "Atualizar agora") marca a data
+-- nos cards da Position, mesmo com a planilha como fonte oficial; o upload da
+-- planilha também marca. Sem notificação: avisos e alerta de fixação continuam
+-- só para a fonte oficial. O resto é igual à versão da seção 11.
+-- ---------------------------------------------------------------------
+create or replace function public.bi_position_publicar_api(p_data_ref date, p_resumo jsonb, p_detalhes jsonb, p_origem text, p_alerta text default null)
+returns bigint
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id bigint;
+  v_tipo text;
+  v_novo_dia boolean;
+  v_avisa boolean;
+begin
+  v_novo_dia := not exists (select 1 from public.bi_position_cargas where fonte = 'api' and data_ref = p_data_ref);
+  -- aviso de painel atualizado e alerta de fixação: só no 1º do dia, com o Digisul como fonte oficial
+  v_avisa := v_novo_dia and (select valor #>> '{}' from public.bi_config where chave = 'position_fonte') = 'api';
+  insert into public.bi_position_cargas (data_ref, nome_arquivo, resumo, enviado_por, fonte, created_by)
+  values (p_data_ref, 'Digisul API', p_resumo, p_origem, 'api', null)
+  on conflict (data_ref) where fonte = 'api'
+  do update set resumo = excluded.resumo, enviado_por = excluded.enviado_por, created_at = now()
+  returning id into v_id;
+
+  for v_tipo in select jsonb_object_keys(p_detalhes) loop
+    insert into public.bi_position_detalhe (fonte, tipo, carga_id, linhas, updated_at)
+    values ('api', v_tipo, v_id, p_detalhes -> v_tipo, now())
+    on conflict (fonte, tipo) do update set carga_id = excluded.carga_id, linhas = excluded.linhas, updated_at = now();
+  end loop;
+
+  -- data nos cards (Position e certificados), sem notificação, qualquer que seja a fonte oficial
+  -- (o Overview fica de fora quando vai avisar: o aviso sai da atualização logo abaixo)
+  perform set_config('bi.sem_notificacao', '1', true);
+  update public.bi_dashboards set atualizado_em = now()
+   where link like 'portal:position-%' and not (v_avisa and link = 'portal:position-overview');
+  if p_detalhes ? 'cert_compras' then
+    update public.bi_dashboards set atualizado_em = now() where link like 'portal:cert-%';
+  end if;
+  perform set_config('bi.sem_notificacao', '', true);
+
+  if v_avisa then
+    update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-overview';
+    if nullif(trim(p_alerta), '') is not null then
+      insert into public.bi_notificacoes (dashboard_id, titulo, mensagem)
+      select id, 'Fixation alert', left(p_alerta, 300) from public.bi_dashboards where link = 'portal:position-contracts';
+    end if;
+  end if;
+  return v_id;
+end;
+$$;
+revoke all on function public.bi_position_publicar_api(date, jsonb, jsonb, text, text) from public, anon, authenticated;
+grant execute on function public.bi_position_publicar_api(date, jsonb, jsonb, text, text) to service_role;
+
+-- Acerta já os cards com a última atualização do Digisul (sem notificação)
+do $$
+declare
+  v_quando timestamptz := (select max(created_at) from public.bi_position_cargas where fonte = 'api');
+begin
+  if v_quando is not null then
+    perform set_config('bi.sem_notificacao', '1', true);
+    update public.bi_dashboards set atualizado_em = v_quando
+     where link like 'portal:position-%' and (atualizado_em is null or atualizado_em < v_quando);
+    perform set_config('bi.sem_notificacao', '', true);
+  end if;
+end;
+$$;
