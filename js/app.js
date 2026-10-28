@@ -223,15 +223,16 @@ function telaDefinirSenha() {
 // =====================================================================
 const logo = () => `<span class="logo"><img src="assets/logo_brascof.png" alt=""></span>`;
 
-async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}) {
-  document.body.className = cheio ? "pg-app pg-cheio" : "pg-app";
+// topo: false tira a barra do portal (página com cabeçalho próprio e volta para o início)
+async function shell(conteudo, { ativo = "", banner = true, cheio = false, topo = true } = {}) {
+  document.body.className = (cheio ? "pg-app pg-cheio" : "pg-app") + (topo ? "" : " pg-sem-topo");
   const p = estado.perfil;
   const banners = banner ? await bannersVigentes() : [];
   estado.sistemas ??= (await api.dashboards()).filter((d) => d.ativo && ehSistema(d));
   if (estado.arquivos === undefined) estado.arquivos = (await api.arquivos().catch(() => null)) ?? false;
   const menuArquivos = estado.arquivos && (gerenciaArquivos() || estado.arquivos.length);
   app.innerHTML = `
-  <header class="topo">
+  ${topo ? `<header class="topo">
     <a class="topo-marca" href="#/">${logo()}<span>${esc(CONFIG.NOME_PORTAL)}</span></a>
     <nav class="topo-nav">
       <a href="#/" class="${ativo === "inicio" ? "on" : ""}">${icon("home")}<span>Home</span></a>
@@ -254,7 +255,7 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}
       <span class="topo-nome">${esc(p.nome.split(" ")[0] || p.email)}</span>
       <button class="btn-icon" id="sair" title="Sign out" aria-label="Sign out">${icon("logout")}</button>
     </div>
-  </header>
+  </header>` : ""}
   ${MODO_DEMO ? `<div class="faixa-demo">Demo mode — sample data stored in this browser only. <button class="link" id="resetDemo">Reset data</button></div>` : ""}
   ${banners.map((b) => `
     <div class="banner banner-${esc(b.nivel)}" data-banner="${b.id}">
@@ -265,7 +266,7 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false } = {}
     </div>`).join("")}
   <main class="conteudo">${conteudo}</main>`;
 
-  $("#sair").addEventListener("click", async () => { await api.sair(); estado.perfil = null; location.hash = "#/"; });
+  $("#sair")?.addEventListener("click", async () => { await api.sair(); estado.perfil = null; location.hash = "#/"; });
   $("#resetDemo")?.addEventListener("click", () => { api.reset(); estado.perfil = null; location.reload(); });
   $$("[data-fecha-banner]").forEach((b) => b.addEventListener("click", () => {
     const id = b.dataset.fechaBanner;
@@ -510,7 +511,7 @@ async function telaDashboard(id) {
         <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(sistema ? semCache(d.link) : powerBiEmIngles(d.link))}"`}
           allowfullscreen loading="eager"></iframe>
       </div>`}
-    </div>`, { banner: false, cheio: true, ativo: sistema ? `d${d.id}` : "" });
+    </div>`, { banner: false, cheio: true, topo: !semBarra, ativo: sistema ? `d${d.id}` : "" });
 
   $("#telaCheia")?.addEventListener("click", () => {
     const el = $("#frame");

@@ -345,6 +345,8 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pg-cheio .conteudo { max-width: none; padding: 0; }
 .visor { display: flex; flex-direction: column; height: calc(100vh - 60px); }
 .pg-cheio .faixa-demo ~ .conteudo .visor { height: calc(100vh - 60px - 31px); }
+.pg-sem-topo .visor { height: 100vh; }
+.pg-sem-topo .faixa-demo ~ .conteudo .visor { height: calc(100vh - 31px); }
 .visor-barra { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--sup); border-bottom: 1px solid var(--borda); }
 .visor-titulo { flex: 1; min-width: 0; }
 .visor-titulo h1 { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
