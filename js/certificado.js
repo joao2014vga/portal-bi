@@ -248,6 +248,8 @@ export async function renderCert(link, alvo, ctx) {
 
   // a aba fica a mesma quando a página recarrega depois de salvar algo
   let aba = abaAberta.get(link) ?? "posicao", busca = buscaAberta.get(link) ?? "", mes = "", fonte = "", ordem = null, filtroHist = "";
+  let venceDe = "", venceAte = "";
+  const abertos = new Set();
 
   const desenhar = () => {
     buscaAberta.set(link, busca);
@@ -255,7 +257,7 @@ export async function renderCert(link, alvo, ctx) {
     const t = busca.trim().toLowerCase();
     const cols = COLS[aba];
     const abas = `<div class="cert-abas">${segmentos("certAba", [["posicao", "Long / short"], ["compra", `Purchases (${cc.length})`],
-      ["venda", `Export sales (${vc.length})`], ["historico", `History (${hist.linhas.length})`], ["produtor", `By producer (${hist.produtores.length})`]], aba)}</div>`;
+      ["venda", `Export sales (${vc.length})`], ["historico", `History (${hist.linhas.length})`], ["produtor", "By producer"]], aba)}</div>`;
 
     // compra necessária: quanto falta para cobrir as entregas até o mês (o clicado na
     // tabela; sem clique, o primeiro mês daqui em diante que fica short). Compras que
@@ -343,8 +345,17 @@ export async function renderCert(link, alvo, ctx) {
       aba = b.dataset.verMes; abaAberta.set(link, aba); busca = ""; fonte = ""; ordem = null;
       desenhar();
     }));
+    $("#certVenceDe", alvo)?.addEventListener("change", (e) => { venceDe = e.target.value; if (venceAte && venceDe > venceAte) venceAte = venceDe; desenhar(); });
+    $("#certVenceAte", alvo)?.addEventListener("change", (e) => { venceAte = e.target.value; if (venceDe && venceAte && venceDe > venceAte) venceDe = venceAte; desenhar(); });
+    $("#certLimparVence", alvo)?.addEventListener("click", () => { venceDe = ""; venceAte = ""; desenhar(); });
+    $("#certAbrirTodos", alvo)?.addEventListener("click", (e) => {
+      const nomes = $$("[data-produtor]", alvo).map((tr) => tr.dataset.produtor);
+      if (e.currentTarget.dataset.abrir) nomes.forEach((n) => abertos.add(n)); else abertos.clear();
+      desenhar();
+    });
     $$("[data-produtor]", alvo).forEach((tr) => tr.addEventListener("click", () => {
-      aba = "historico"; abaAberta.set(link, aba); busca = tr.dataset.produtor; filtroHist = ""; ordem = null;
+      const n = tr.dataset.produtor;
+      if (!abertos.delete(n)) abertos.add(n);
       desenhar();
     }));
     $$("[data-desvincular]", alvo).forEach((b) => b.addEventListener("click", () => {
@@ -477,17 +488,40 @@ export async function renderCert(link, alvo, ctx) {
       </table></div>`}`;
   };
 
-  // Aba By producer: o histórico somado por produtor; o clique abre as compras dele
+  // Aba By producer: as compras BRC do histórico somadas por produtor, no período de
+  // vencimento escolhido (vencimento = pagamento do café); o "+" abre as compras dele
   const corpoProdutor = () => {
-    const p = hist.produtores;
-    if (!p.length) return `<div class="vazio">${icon("file")}<h3>No history imported</h3><p>Import the control spreadsheet in the History tab.</p></div>`;
-    return `<div class="pos-card">
-        <div class="pos-card-h"><h2>By producer</h2><p class="muted">Click a producer to see the purchases in the History tab.</p></div>
-        <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
-          <thead><tr><th>Producer</th><th class="num">Contracts</th><th class="num">Bags</th><th class="num">Used</th><th class="num">Leftover due</th><th class="num">Not due yet</th><th class="num">Opening stock</th></tr></thead>
-          <tbody>${p.map((x) => `<tr class="clicavel" data-produtor="${esc(x.nome)}"><td>${esc(x.nome)}${x.bloqueado ? ` <span class="pill pill-critico" title="Over the volume we can use: the leftover is not counted">Over limit</span>` : ""}</td>
-            <td class="num">${fmtN(x.n)}</td>${num(x.sacas)}${num(x.usado)}${num(x.estoque)}${num(x.futuro)}${num(x.inicial, true)}</tr>`).join("")}</tbody>
-          <tfoot><tr><td>Total</td><td class="num">${fmtN(soma(p, "n"))}</td>${num(soma(p, "sacas"))}${num(soma(p, "usado"))}${num(soma(p, "estoque"))}${num(soma(p, "futuro"))}${num(inicial, true)}</tr></tfoot>
+    if (!hist.linhas.length) return `<div class="vazio">${icon("file")}<h3>No history imported</h3><p>Import the control spreadsheet in the History tab.</p></div>`;
+    const ym = (h) => (h.vencimento ?? "").slice(0, 7);
+    const mesesVenc = [...new Set(hist.linhas.map(ym).filter(Boolean))].sort();
+    const noPeriodo = hist.linhas.filter((h) => (!venceDe || ym(h) >= venceDe) && (!venceAte || (ym(h) && ym(h) <= venceAte)));
+    const grupos = new Map();
+    for (const h of noPeriodo) (grupos.get(h._produtor) ?? grupos.set(h._produtor, []).get(h._produtor)).push(h);
+    const p = [...grupos].map(([nome, hs]) => ({ nome, hs: hs.sort((a, b) => ym(a).localeCompare(ym(b)) || a.compra.localeCompare(b.compra, "en", { numeric: true })),
+      sacas: hs.reduce((s, h) => s + (Number(h.sacas) || 0), 0), usado: soma(hs, "_usado"), sobra: soma(hs, "_sobra"), bloqueado: hs.some((h) => h._bloqueado) }))
+      .sort((a, b) => b.sobra - a.sobra || a.nome.localeCompare(b.nome));
+    const opcoes = (atual) => mesesVenc.map((m) => `<option value="${m}" ${m === atual ? "selected" : ""}>${esc(fmtMes(m + "-01"))}</option>`).join("");
+    const todosAbertos = p.length && p.every((x) => abertos.has(x.nome));
+    return `<div class="pos-filtros">
+        <label class="cert-periodo"><span>Due from</span><select id="certVenceDe" aria-label="Due from"><option value="">First</option>${opcoes(venceDe)}</select></label>
+        <label class="cert-periodo"><span>to</span><select id="certVenceAte" aria-label="Due to"><option value="">Last</option>${opcoes(venceAte)}</select></label>
+        ${venceDe || venceAte ? `<button type="button" class="link" id="certLimparVence">${icon("x")}All due dates</button>` : ""}
+        ${p.length ? `<button type="button" class="btn" id="certAbrirTodos" data-abrir="${todosAbertos ? "" : "1"}">${todosAbertos ? "Collapse all" : "Expand all"}</button>` : ""}
+      </div>
+      <div class="pos-card">
+        <div class="pos-card-h"><h2>By producer</h2><p class="muted">Due date = coffee payment date. Click a producer to see its BRC purchases.</p></div>
+        <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num cert-produtores">
+          <thead><tr><th>Producer</th><th>Due date</th><th class="num">Contracts</th><th class="num">Bags</th><th class="num">Used in exports</th><th class="num">Leftover</th></tr></thead>
+          <tbody>${p.length ? p.map((x) => {
+            const aberto = abertos.has(x.nome);
+            return `<tr class="clicavel cert-prod" data-produtor="${esc(x.nome)}" aria-expanded="${aberto}">
+                <td><span class="cert-mais">${aberto ? "−" : "+"}</span>${esc(x.nome)}${x.bloqueado ? ` <span class="pill pill-critico" title="Over the volume we can use: the leftover is not counted">Over limit</span>` : ""}</td>
+                <td></td><td class="num">${fmtN(x.hs.length)}</td>${num(x.sacas)}${num(x.usado)}${num(x.sobra, true)}</tr>
+              ${aberto ? x.hs.map((h) => `<tr class="cert-brc ${h._bloqueado ? "cert-bloqueado" : ""}">
+                <td>${esc(h.compra)}${h.id_cert ? ` <span class="muted">· ${esc(h.id_cert)}</span>` : ""}${h.fazenda ? ` <span class="muted">· ${esc(h.fazenda)}</span>` : ""}</td>
+                <td>${esc(h.vencimento ? fmtData(h.vencimento.slice(0, 10)) : "—")}</td><td></td>${num(Number(h.sacas) || 0)}${num(h._usado)}${num(h._sobra)}</tr>`).join("") : ""}`;
+          }).join("") : `<tr><td colspan="6" class="vazio-td">No purchases due in this period.</td></tr>`}</tbody>
+          ${p.length ? `<tfoot><tr><td>Total</td><td></td><td class="num">${fmtN(noPeriodo.length)}</td>${num(soma(p, "sacas"))}${num(soma(p, "usado"))}${num(soma(p, "sobra"), true)}</tr></tfoot>` : ""}
         </table></div>
       </div>`;
   };

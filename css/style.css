@@ -488,6 +488,11 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .cert-abas .seg button { flex: 1; font-size: 14.5px; padding: 10px 18px; border-radius: 8px; }
 .cert-abas .seg button.on { color: var(--brand); }
 .cert-mes-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cert-periodo { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--texto-2); }
+.cert-prod td { font-weight: 600; }
+.cert-mais { display: inline-block; width: 18px; color: var(--brand); font-weight: 700; }
+.cert-brc td { background: var(--sup-2); font-size: 12.5px; }
+.cert-brc td:first-child { padding-left: 40px; }
 .cert-bloqueado td { opacity: .6; }
 /* exportações de cada compra: quebram em várias linhas numa coluna de largura fixa */
 .tabela-num td.cert-vinculos { white-space: normal; text-align: left; }
