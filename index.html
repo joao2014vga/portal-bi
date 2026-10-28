@@ -9,13 +9,45 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css" id="cssPortal">
 </head>
 <body class="pg-carregando">
   <div id="app">
     <div class="carregando" role="status"><span class="spinner"></span>Loading…</div>
   </div>
   <noscript>Please enable JavaScript to use the portal.</noscript>
-  <script type="module" src="js/app.js"></script>
+  <script>
+    // O GitHub Pages deixa cada arquivo 10 min no cache do navegador. Logo depois de uma
+    // publicação, o navegador podia juntar um .js novo com outro antigo e o portal travava
+    // em "Loading…". Cada publicação muda o Last-Modified de todos os arquivos: ele vira a
+    // versão (?v=) de todos os módulos (mapa de importação) e do CSS, e tudo vem da mesma
+    // publicação. Arquivo .js novo na pasta js/: acrescente o nome em MODULOS.
+    (function () {
+      var MODULOS = ["app", "api", "ui", "i18n", "config", "demo", "position", "position-calc", "certificado"];
+      var feito = false;
+      function iniciar(v) {
+        if (feito) return;
+        feito = true;
+        if (v) {
+          var mapa = { imports: {} };
+          MODULOS.forEach(function (m) { mapa.imports["./js/" + m + ".js"] = "./js/" + m + ".js?v=" + v; });
+          var im = document.createElement("script");
+          im.type = "importmap";
+          im.textContent = JSON.stringify(mapa);
+          document.head.appendChild(im);
+          document.getElementById("cssPortal").href = "css/style.css?v=" + v;
+        }
+        var s = document.createElement("script");
+        s.type = "module";
+        s.src = "js/app.js" + (v ? "?v=" + v : "");
+        document.body.appendChild(s);
+      }
+      // sem resposta rápida, abre do jeito de antes
+      setTimeout(function () { iniciar(""); }, 2500);
+      fetch("js/app.js", { method: "HEAD", cache: "no-store" })
+        .then(function (r) { var lm = Date.parse(r.headers.get("last-modified") || ""); iniciar(isNaN(lm) ? "" : String(lm / 1000)); })
+        .catch(function () { iniciar(""); });
+    })();
+  </script>
 </body>
 </html>
