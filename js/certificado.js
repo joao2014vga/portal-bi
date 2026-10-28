@@ -6,7 +6,7 @@
 //
 // Páginas (link cadastrado em bi_dashboards):
 //   portal:cert-cp   C.A.F.E. Practices
-import { esc, $, $$, icon, toast, modal, confirmar, tempoRelativo } from "./ui.js";
+import { esc, $, $$, icon, toast, modal, confirmar, tempoRelativo, cabecalho as cabecalhoPagina } from "./ui.js";
 import { fmtN, fmtMes, fmtData, ligarSegmentos, vigiarNegativos, carregarXlsx } from "./position.js";
 import { t as traduzir, LOCALE } from "./i18n.js";
 
@@ -258,7 +258,7 @@ export async function renderCert(link, alvo, ctx) {
     const todas = aba === "venda" ? vendas : compras;
     const t = busca.trim().toLowerCase();
     const cols = COLS[aba];
-    const abas = `<nav class="cert-banner-abas" role="tablist" id="certAba">${[["posicao", "Long / short"], ["compra", `Purchases (${cc.length})`],
+    const abas = `<nav class="cab-abas" role="tablist" id="certAba">${[["posicao", "Long / short"], ["compra", `Purchases (${cc.length})`],
       ["venda", `Export sales (${vc.length})`], ["historico", `History (${hist.linhas.length})`], ["produtor", "By producer"]].map(([k, t]) =>
       `<button type="button" role="tab" data-k="${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${esc(t)}</button>`).join("")}</nav>`;
 
@@ -303,25 +303,17 @@ export async function renderCert(link, alvo, ctx) {
 
     const corpo = { posicao: corpoPosicao, historico: () => corpoHistorico(t), produtor: corpoProdutor }[aba] ?? (() => corpoContratos(todas, cols, t));
     alvo.innerHTML = `<div class="pos">
-      <header class="cert-banner">
-        <div class="cert-banner-topo">
-          <a class="cert-banner-voltar" href="#/" title="Back" aria-label="Back">${icon("back")}</a>
-          <img class="cert-banner-logo" src="assets/logo_brascof.png" alt="Brascof">
-          <div class="cert-banner-txt">
-            <div class="cert-banner-titulo"><h1>${esc(cert.nome)} (${esc(cert.codigo)})</h1>
-              ${base.atualizado_em ? `<span class="cert-banner-data" data-sem-traducao>${esc(new Date(base.atualizado_em).toLocaleDateString(LOCALE, { day: "numeric", month: "short", year: "numeric" }))}</span>` : ""}</div>
-            <p>Digisul data updated <strong>${esc(tempoRelativo(base.atualizado_em))}</strong>
-              ${cert.inicio ? `<span>· contracts starting <span>${esc(fmtMes(cert.inicio + "-01"))}</span></span>` : ""}
-              <span>· all figures in 60 kg bags</span></p>
-          </div>
-          <div class="cert-banner-acoes">
-            <button class="btn" id="certImagem" title="Download the indicators and the long / short table as an image, in English">${icon("image")}<span>Save image</span></button>
-            ${ctx.gerente ? `<button class="btn" id="certSync" title="Fetch Digisul now">${icon("refresh")}<span>Update now</span></button>
-            <button class="btn btn-primary" id="certIncluir">${icon("plus")}<span>Include contract</span></button>` : ""}
-          </div>
-        </div>
-        ${abas}
-      </header>
+      ${cabecalhoPagina({
+        titulo: `${cert.nome} (${cert.codigo})`,
+        data: base.atualizado_em ? new Date(base.atualizado_em).toLocaleDateString(LOCALE, { day: "numeric", month: "short", year: "numeric" }) : "",
+        sub: `Digisul data updated <strong>${esc(tempoRelativo(base.atualizado_em))}</strong>
+          ${cert.inicio ? `<span>· contracts starting <span>${esc(fmtMes(cert.inicio + "-01"))}</span></span>` : ""}
+          <span>· all figures in 60 kg bags</span>`,
+        acoes: `<button class="btn" id="certImagem" title="Download the indicators and the long / short table as an image, in English">${icon("image")}<span>Save image</span></button>
+          ${ctx.gerente ? `<button class="btn" id="certSync" title="Fetch Digisul now">${icon("refresh")}<span>Update now</span></button>
+          <button class="btn btn-primary" id="certIncluir">${icon("plus")}<span>Include contract</span></button>` : ""}`,
+        abas,
+      })}
 
       ${orfaos.length ? `<div class="aviso-inline alerta">${icon("alert")}<span>Included or excluded manually but no longer found in Digisul: <strong>${esc(orfaos.map((a) => a.contrato).join(", "))}</strong></span></div>` : ""}
       ${cert.inicio && !hist.gravadas ? `<div class="aviso-inline alerta">${icon("alert")}<span>${historico === null
@@ -344,7 +336,7 @@ export async function renderCert(link, alvo, ctx) {
         [aba, filtroHist = ""] = k.dataset.ir.split(":");
         abaAberta.set(link, aba); mes = ""; busca = ""; fonte = ""; ordem = null;
         desenhar();
-        $(".cert-banner", alvo)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        $(".cab", alvo)?.scrollIntoView({ behavior: "smooth", block: "start" });
       };
       k.addEventListener("click", ir);
       k.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), ir()));

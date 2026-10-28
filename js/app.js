@@ -2,7 +2,7 @@ import { CONFIG } from "./config.js";
 import { api, MODO_DEMO, ACAO_URL, ERRO_URL } from "./api.js";
 import {
   esc, $, $$, icon, toast, modal, confirmar, tempoRelativo, dataBR, dataHoraBR,
-  toLocalInput, fromLocalInput, statusAtualizacao, FREQ_LABEL, NIVEL_ICON, iniciais, saudacao, storage, tamanhoArquivo,
+  toLocalInput, fromLocalInput, statusAtualizacao, FREQ_LABEL, NIVEL_ICON, iniciais, saudacao, storage, tamanhoArquivo, cabecalho,
 } from "./ui.js";
 import { ehPainelPosition, renderPosition } from "./position.js";
 import { ehPainelCert, renderCert } from "./certificado.js";
@@ -433,10 +433,10 @@ async function telaAvisos() {
   const agora = new Date();
   const lista = (await api.avisos()).filter((a) => a.tipo === "mural" && a.ativo && new Date(a.inicio) <= agora && (!a.fim || new Date(a.fim) > agora));
   await shell(`
-    <section class="ola"><div><h1>Announcements</h1><p class="muted">Communications from the BI team.</p></div></section>
+    ${cabecalho({ titulo: "Announcements", sub: "Communications from the BI team." })}
     ${lista.length ? `<div class="mural mural-lista">${lista.map(cardAviso).join("")}</div>`
       : `<div class="vazio">${icon("megaphone")}<h3>No announcements at this time</h3></div>`}
-  `, { ativo: "avisos" });
+  `, { ativo: "avisos", topo: false });
 }
 
 // =====================================================================
@@ -447,8 +447,8 @@ async function telaArquivos() {
   if (!lista) { location.hash = "#/"; return; }
   const visiveis = lista.filter((a) => a.ativo);
   await shell(`
-    <section class="ola"><div><h1>Files</h1><p class="muted">Spreadsheets and documents shared by the BI team.</p></div>
-      ${gerenciaArquivos() ? `<a class="btn" href="#/admin/arquivos">${icon("upload")} Manage files</a>` : ""}</section>
+    ${cabecalho({ titulo: "Files", sub: "Spreadsheets and documents shared by the BI team.",
+      acoes: gerenciaArquivos() ? `<a class="btn" href="#/admin/arquivos">${icon("upload")}<span>Manage files</span></a>` : "" })}
     ${visiveis.length ? `<div class="arq-lista">${visiveis.map((a) => `
       <article class="arq">
         <span class="arq-ic">${icon("file")}</span>
@@ -462,7 +462,7 @@ async function telaArquivos() {
       </article>`).join("")}</div>`
       : `<div class="vazio">${icon("file")}<h3>No files available</h3>
         <p>${gerenciaArquivos() ? "Upload the first file under Manage files." : "There are no files shared with you yet."}</p></div>`}
-  `, { ativo: "arquivos" });
+  `, { ativo: "arquivos", topo: false });
 
   $$("[data-baixar]").forEach((b) => b.addEventListener("click", async () => {
     const a = visiveis.find((x) => x.id === Number(b.dataset.baixar));
@@ -490,28 +490,24 @@ async function telaDashboard(id) {
   const demo = d.link.startsWith("demo:");
   const sistema = ehSistema(d);
   const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link); // painel desenhado pelo próprio portal (Position, Certificados)
-  // a página do certificado tem o próprio cabeçalho (com a volta), sem a barra do visor
-  const semBarra = ehPainelCert(d.link);
+  // a página do certificado desenha o próprio cabeçalho (com as abas e os botões dela)
+  const cabProprio = ehPainelCert(d.link);
   await shell(`
     <div class="visor">
-      ${semBarra ? "" : `<div class="visor-barra">
-        <a class="btn-icon" href="#/" title="Back" aria-label="Back">${icon("back")}</a>
-        <div class="visor-titulo">
-          <h1>${esc(d.titulo)}</h1>
-          ${sistema ? "" : `<div class="status status-${st.cls}">${icon("clock")}<span>${esc(st.texto)}</span>
-            ${d.atualizado_em ? `<span class="muted">· ${esc(dataHoraBR(d.atualizado_em))} · ${esc(FREQ_LABEL[d.frequencia])}</span>` : ""}</div>`}
-        </div>
-        <div class="visor-acoes">
-          <button class="btn btn-ghost" id="telaCheia">${icon("expand")}<span>Full screen</span></button>
-          ${demo || nativo ? "" : `<a class="btn btn-ghost" href="${esc(powerBiEmIngles(d.link))}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}
-        </div>
-      </div>`}
+      ${cabProprio ? "" : cabecalho({
+        titulo: d.titulo,
+        data: !sistema && d.atualizado_em ? dataBR(d.atualizado_em) : "",
+        sub: sistema ? "" : `<span class="cab-status cab-status-${st.cls}">${icon("clock")}<span>${esc(st.texto)}</span></span>
+          ${d.atualizado_em ? `<span>· ${esc(dataHoraBR(d.atualizado_em))} · ${esc(FREQ_LABEL[d.frequencia])}</span>` : ""}`,
+        acoes: `<button class="btn" id="telaCheia">${icon("expand")}<span>Full screen</span></button>
+          ${demo || nativo ? "" : `<a class="btn" href="${esc(powerBiEmIngles(d.link))}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}`,
+      })}
       ${d.nota ? `<div class="nota nota-${esc(d.nota_tipo)}">${icon(NIVEL_ICON[d.nota_tipo])}<span>${esc(d.nota)}</span></div>` : ""}
       ${nativo ? `<div class="visor-frame visor-nativo" id="frame"></div>` : `<div class="visor-frame" id="frame">
         <iframe title="${esc(d.titulo)}" ${demo ? `srcdoc="${esc(demoRelatorio(d))}"` : `src="${esc(sistema ? semCache(d.link) : powerBiEmIngles(d.link))}"`}
           allowfullscreen loading="eager"></iframe>
       </div>`}
-    </div>`, { banner: false, cheio: true, topo: !semBarra, ativo: sistema ? `d${d.id}` : "" });
+    </div>`, { banner: false, cheio: true, topo: false, ativo: sistema ? `d${d.id}` : "" });
 
   $("#telaCheia")?.addEventListener("click", () => {
     const el = $("#frame");
@@ -553,12 +549,16 @@ async function telaAdmin(aba) {
   const adm = estado.perfil.is_admin;
   const corpo = await render();
   await shell(`
-    <section class="ola"><div><h1>${adm ? "Administration" : "Manage files"}</h1>
-      <p class="muted">${adm ? "Manage reports, user access and announcements." : "Upload files and choose who can download them."}</p></div></section>
-    <nav class="abas" role="tablist">
-      ${ABAS.filter(([k]) => adm || k === "arquivos").map(([k, t, ic]) => `<a role="tab" href="#/admin/${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}${t}</a>`).join("")}
-    </nav>
-    <div class="admin-corpo">${corpo.html}</div>`, { ativo: adm ? "admin" : "arquivos", banner: false });
+    ${cabecalho({
+      titulo: adm ? "Administration" : "Manage files",
+      sub: adm ? "Manage reports, user access and announcements." : "Upload files and choose who can download them.",
+      // quem só gerencia arquivos volta para a lista de arquivos
+      voltar: adm ? "#/" : "#/arquivos",
+      abas: `<nav class="cab-abas" role="tablist">
+        ${ABAS.filter(([k]) => adm || k === "arquivos").map(([k, t, ic]) => `<a role="tab" href="#/admin/${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}${t}</a>`).join("")}
+      </nav>`,
+    })}
+    <div class="admin-corpo">${corpo.html}</div>`, { ativo: adm ? "admin" : "arquivos", banner: false, topo: false });
   corpo.bind?.();
 }
 

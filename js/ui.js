@@ -196,3 +196,21 @@ export const storage = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* sem storage */ } },
   del(k) { try { localStorage.removeItem(k); } catch { /* sem storage */ } },
 };
+
+// Cabeçalho das páginas (fora a inicial, que tem a barra do portal): faixa verde com
+// a volta, a logo, o título, a data num selo, a linha de apoio (HTML), os botões à
+// direita (HTML) e as abas embaixo (HTML, um <nav class="cab-abas">)
+export function cabecalho({ titulo, data = "", sub = "", acoes = "", abas = "", voltar = "#/" }) {
+  return `<header class="cab">
+    <div class="cab-topo">
+      <a class="cab-voltar" href="${esc(voltar)}" title="Back" aria-label="Back">${icon("back")}</a>
+      <img class="cab-logo" src="assets/logo_brascof.png" alt="Brascof">
+      <div class="cab-txt">
+        <div class="cab-titulo"><h1>${esc(titulo)}</h1>${data ? `<span class="cab-data" data-sem-traducao>${esc(data)}</span>` : ""}</div>
+        ${sub ? `<p>${sub}</p>` : ""}
+      </div>
+      ${acoes ? `<div class="cab-acoes">${acoes}</div>` : ""}
+    </div>
+    ${abas}
+  </header>`;
+}
