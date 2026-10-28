@@ -9,6 +9,7 @@
 //   portal:position-overview   posição por mês de vencimento + variação do dia
 //   portal:position-physical   posição física por mês e por qualidade
 //   portal:position-contracts  contratos em aberto, contrato a contrato
+//   portal:position-commercial Dashboard Commercial (vendas de exportação; era um Power BI)
 import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } from "./ui.js";
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
@@ -218,6 +219,7 @@ export async function renderPosition(link, alvo, ctx) {
   const painel = {
     "portal:position-overview": painelOverview, "portal:position-physical": painelFisica, "portal:position-contracts": painelContratos,
     "portal:position-sales": painelVendas, "portal:position-purchases": painelCompras, "portal:position-diffs": painelDiffs,
+    "portal:position-commercial": painelComercial,
   }[link];
   if (!painel) { alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Unknown Position view</h3></div>`; return; }
   alvo.innerHTML = `<div class="pos">${topo}<div id="posCorpo"></div></div>`;
@@ -1721,6 +1723,270 @@ async function painelDiffs(alvo, carga, ctx) {
         rotulos: meses.map(rotMes), unidade,
         difs: meses.map((m) => { const v = media(porMes.get(m), "dif"); return v == null ? null : arred(v); }),
         sacas: meses.map((m) => arred(porMes.get(m).sacas)),
+      });
+    }
+  };
+  await desenhar();
+}
+
+// =====================================================================
+// DASHBOARD COMMERCIAL — antes um relatório do Power BI sobre a aba ExpSales.
+// Mesmas medidas de lá: diferencial médio = média simples por linha (Conilon ÷ 100),
+// sacas = Sacas, entregues = Saída (sc), a entregar = Saldo (sc), cliente padronizado.
+// =====================================================================
+const TIPO_PADRAO = {
+  FC: ["BCSW", "BC1", "BC+", "BC2", "BC3"], GC: ["BC4", "BC5", "BC6", "BC17"], GRINDERS: ["BC8", "BC9"],
+  LG: ["BC10", "BC11", "BC12", "BC13"], CONILON: ["BC14", "BC15", "BC16"],
+};
+const ORDEM_TIPO = Object.keys(TIPO_PADRAO);
+const ORDEM_PADRAO = Object.values(TIPO_PADRAO).flat();
+const tipoPadrao = (p) => ORDEM_TIPO.find((k) => TIPO_PADRAO[k].includes(p)) ?? null;
+const ordemTipo = (a, b) => ORDEM_TIPO.indexOf(a) - ORDEM_TIPO.indexOf(b);
+const ordemPadrao = (a, b) => (ORDEM_PADRAO.indexOf(a) + 1 || 99) - (ORDEM_PADRAO.indexOf(b) + 1 || 99) || a.localeCompare(b);
+// "JULY 2026" / "JULHO DE 2026"
+const rotMesLongo = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleString(LOCALE, { month: "long", year: "numeric", timeZone: "UTC" }).toUpperCase();
+const fmtDif = (v) => (v == null ? "—" : fmtN(v, 2));
+
+function medidasComercial(linhas) {
+  const m = { sacas: 0, saida: 0, saldo: 0, contratos: 0, dif: null, difA: null, difC: 0 };
+  const ctr = new Set(), s = { g: [0, 0], a: [0, 0], c: [0, 0] };
+  for (const r of linhas) {
+    m.sacas += r.sacas ?? 0; m.saida += r.saida ?? 0; m.saldo += r.saldo ?? 0; ctr.add(r.contrato);
+    if (r._dif == null) continue;
+    s.g[0] += r._dif; s.g[1]++;
+    if (r._esp === "ARABICA") { s.a[0] += r._dif; s.a[1]++; } else if (r._esp === "CONILON") { s.c[0] += r._dif; s.c[1]++; }
+  }
+  m.contratos = ctr.size;
+  if (s.g[1]) m.dif = s.g[0] / s.g[1];
+  if (s.a[1]) m.difA = s.a[0] / s.a[1];
+  if (s.c[1]) m.difC = s.c[0] / s.c[1];  // sem Conilon no filtro: 0, como no Power BI
+  return m;
+}
+
+// valores escritos em cima das barras e dos pontos
+const rotulosGrafico = {
+  id: "rotulos",
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart, t = tema();
+    ctx.save();
+    ctx.font = "11px system-ui, sans-serif"; ctx.fillStyle = t.tinta2; ctx.textAlign = "center";
+    chart.data.datasets.forEach((ds, i) => {
+      chart.getDatasetMeta(i).data.forEach((el, j) => {
+        const v = ds.data[j];
+        if (v == null) return;
+        ctx.textBaseline = v < 0 ? "top" : "bottom";
+        ctx.fillText(fmtN(v, 2), el.x, el.y + (v < 0 ? 4 : -4));
+      });
+    });
+    ctx.restore();
+  },
+};
+
+async function graficoQualidades(canvas, itens, aoClicar) {
+  const Chart = await carregarChart();
+  const t = tema();
+  const c = new Chart(canvas, {
+    type: "bar",
+    data: { labels: itens.map((x) => x.padrao), datasets: [{ data: itens.map((x) => arred(x.m.dif)), backgroundColor: t.s1, borderRadius: 3, maxBarThickness: 34 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, layout: { padding: { top: 18, bottom: 4 } },
+      onClick: (_, els) => { if (els.length) aoClicar(itens[els[0].index].padrao); },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
+      scales: {
+        x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
+        y: { grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 } }, grace: "8%" },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: (ctx) => `${tr("Quality")} ${ctx[0].label}`,
+          label: (ctx) => {
+            const { m } = itens[ctx.dataIndex];
+            return [` ${tr("Avg diff")}: ${fmtDif(m.dif)}`, ` ${tr("Delivered")}: ${fmtN(m.saida)} ${tr("bags")}`, ` ${tr("To deliver")}: ${fmtN(m.saldo)} ${tr("bags")}`];
+          },
+        } },
+      },
+    },
+    plugins: [rotulosGrafico],
+  });
+  graficos.push(c);
+}
+
+async function graficoHistorico(canvas, { rotulos, arabica, conilon }) {
+  const Chart = await carregarChart();
+  const t = tema();
+  const linha = (rot, dados, cor) => ({ label: tr(rot), data: dados, borderColor: cor, backgroundColor: cor, borderWidth: 2, tension: 0.35,
+    pointRadius: 3, pointHoverRadius: 5, pointBorderColor: t.sup, pointBorderWidth: 2, spanGaps: true });
+  const c = new Chart(canvas, {
+    type: "line",
+    data: { labels: rotulos, datasets: [linha("Avg diff Arabica", arabica, t.s1), linha("Avg diff Conilon", conilon, t.s2)] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, layout: { padding: { top: 18 } },
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
+        y: { grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 } }, grace: "10%" },
+      },
+      plugins: {
+        legend: { position: "bottom", align: "start", labels: { color: t.tinta2, boxWidth: 10, boxHeight: 10, padding: 14, font: { size: 12 } } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtDif(ctx.raw)}` } },
+      },
+    },
+    plugins: [rotulosGrafico],
+  });
+  graficos.push(c);
+}
+
+async function painelComercial(alvo, carga, ctx) {
+  let dados = null;
+  try { dados = (await ctx.api.positionDetalhe(["comercial"])).comercial ?? null; } catch { /* cai no aviso abaixo */ }
+  if (!dados) {
+    alvo.innerHTML = `<p class="muted pos-nota pos-nota-bloco">${icon("info")} Upload the Position again (or update from Digisul) to build this view — it needs every row of the ExpSales sheet.</p>`;
+    return;
+  }
+  for (const r of dados) {
+    r._esp = norm(r.especie);
+    r._dif = r.diferencial == null ? null : r._esp === "CONILON" ? r.diferencial / 100 : r.diferencial;
+    r._cliente = clientePadronizado(r);
+    r._tipo = tipoPadrao(r.padrao);
+    r._emb = mesIso(r.embarque);
+    r._inc = mesIso(r.inclusao);
+  }
+  // segmentações do Power BI: [chave, rótulo, valor da linha, ordem, texto da opção]
+  // (as listas só mostram linhas com grupo de qualidade, como lá)
+  const alfa = (a, b) => a.localeCompare(b);
+  const FILTROS = [
+    ["tipo", "Quality group", (r) => r._tipo, ordemTipo],
+    ["eom", "EOM Ship", (r) => r._emb, alfa, rotMesLongo],
+    ["padrao", "Quality", (r) => r.padrao, ordemPadrao],
+    ["peneira", "Screen", (r) => r.peneira, alfa],
+    ["cliente", "Client", (r) => r._cliente, alfa],
+    ["especie", "Variety", (r) => r.especie, alfa],
+  ];
+  const filtro = Object.fromEntries(FILTROS.map(([k]) => [k, ""]));
+  const hoje = mesIso(hojeIso());
+  let de = `${hoje.slice(0, 4)}-01`, ate = hoje;
+  const abertos = new Set();
+  const passa = (r, exceto) => FILTROS.every(([k, , val]) => k === exceto || !filtro[k] || val(r) === filtro[k]);
+
+  // a embarcar: mês de embarque > grupo > qualidade > peneira. Como o filtro "Sacas a Entregar ≥ 1"
+  // do Power BI, vale no nível mais fino: só entram as linhas de combinações com saldo ≥ 1,
+  // e as médias dos níveis de cima são calculadas só sobre elas.
+  const NIVEIS = [
+    [(r) => r._emb ?? "", alfa, (v) => (v ? rotMesLongo(v) : tr("No date"))],
+    [(r) => r._tipo ?? "", ordemTipo, (v) => v || "—"],
+    [(r) => r.padrao ?? "", ordemPadrao, (v) => v || "—"],
+    [(r) => r.peneira ?? "", alfa, (v) => v || "—"],
+  ];
+  const linhasArvore = (rows, nivel, caminho) => {
+    const [chave, ordem, rotulo] = NIVEIS[nivel];
+    const grupos = new Map();
+    for (const r of rows) { const k = chave(r); (grupos.get(k) ?? grupos.set(k, []).get(k)).push(r); }
+    return [...grupos.keys()].sort(ordem).flatMap((k) => {
+      const g = grupos.get(k), mg = medidasComercial(g);
+      const id =`${caminho}\u0001${k}`, folha = nivel === NIVEIS.length - 1, aberto = !folha && abertos.has(id);
+      const tog = folha ? `<span class="pos-com-folha"></span>`
+        : `<button type="button" class="pos-com-tog" data-no="${esc(id)}" aria-expanded="${aberto}" title="${aberto ? "Collapse" : "Expand"}">${aberto ? "⊟" : "⊞"}</button>`;
+      return [`<tr class="pos-com-n${nivel}"><td style="padding-left:${10 + nivel * 18}px">${tog}${esc(rotulo(k))}</td>${celNum(mg.saldo)}
+        <td class="num">${fmtDif(mg.difA)}</td><td class="num">${fmtDif(mg.difC)}</td></tr>`,
+        ...(aberto ? linhasArvore(g, nivel + 1, id) : [])];
+    });
+  };
+
+  const desenhar = async () => {
+    limparGraficos();
+    const linhas = dados.filter((r) => passa(r));
+    const m = medidasComercial(linhas);
+    const opcoes = (k, val, ordem) => [...new Set(dados.filter((r) => r._tipo && passa(r, k)).map(val).filter(Boolean))].sort(ordem);
+    // último contrato registrado: o da maior data de inclusão; a data mostrada é a maior emissão
+    const ult = linhas.reduce((u, r) => (r.inclusao && (!u || r.inclusao > u.inclusao || (r.inclusao === u.inclusao && r.contrato > u.contrato)) ? r : u), null);
+    const emissao = linhas.reduce((x, r) => (r.emissao && (!x || r.emissao > x) ? r.emissao : x), null);
+
+    const porCliente = [...linhas.reduce((mp, r) => mp.set(r._cliente, (mp.get(r._cliente) ?? 0) + (r.sacas ?? 0)), new Map())]
+      .filter(([, v]) => v).sort((a, b) => b[1] - a[1]);
+    const maxCli = porCliente[0]?.[1] ?? 0;
+    const folha = (r) => NIVEIS.map(([chave]) => chave(r)).join("\u0001");
+    const saldoFolha = linhas.reduce((mp, r) => mp.set(folha(r), (mp.get(folha(r)) ?? 0) + (r.saldo ?? 0)), new Map());
+    const aEmbarcar = linhas.filter((r) => saldoFolha.get(folha(r)) >= 1);
+    const mE = medidasComercial(aEmbarcar);
+    const arvore = linhasArvore(aEmbarcar, 0, "");
+
+    // diferencial médio por qualidade, do maior para o menor
+    const porPadrao = [...linhas.reduce((mp, r) => (r.padrao ? mp.set(r.padrao, [...(mp.get(r.padrao) ?? []), r]) : mp), new Map())]
+      .map(([padrao, rows]) => ({ padrao, m: medidasComercial(rows) })).filter((x) => x.m.dif != null).sort((a, b) => b.m.dif - a.m.dif);
+
+    // histórico pelo mês da data de inclusão
+    const meses = mesesEntre(de, ate).filter((mes) => linhas.some((r) => r._inc === mes));
+    const porMes = new Map(meses.map((mes) => [mes, medidasComercial(linhas.filter((r) => r._inc === mes))]));
+    const temConilon = (mes) => linhas.some((r) => r._inc === mes && r._esp === "CONILON" && r._dif != null);
+
+    const algumFiltro = FILTROS.some(([k]) => filtro[k]);
+    alvo.innerHTML = `
+    <div class="pos-com-cab">
+      <h2>${esc(filtro.cliente || tr("Dashboard Commercial"))}</h2>
+      ${ult ? `<span class="muted"><span>Last contract:</span> <strong>${esc(ult.contrato)}</strong> (${esc(fmtData(emissao))})</span>` : ""}
+    </div>
+    <div class="pos-filtros">
+      ${FILTROS.map(([k, rot, val, ordem, fmt]) => `<label class="pos-mes"><span>${esc(tr(rot))}</span><select data-filtro="${k}">
+        <option value="">${esc(tr("All"))}</option>${opcoes(k, val, ordem).map((v) => `<option value="${esc(v)}" ${v === filtro[k] ? "selected" : ""}>${esc(fmt ? fmt(v) : v)}</option>`).join("")}
+      </select></label>`).join("")}
+      ${algumFiltro ? `<button type="button" class="btn" id="comLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
+    </div>
+    <div class="pos-kpis pos-kpis-fix">
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Total contracts</span><span class="pos-kpi-v">${fmtN(m.contratos)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Total bags</span><span class="pos-kpi-v">${fmtN(m.sacas)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Avg diff Arabica</span><span class="pos-kpi-v">${fmtDif(m.difA)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Avg diff Conilon</span><span class="pos-kpi-v">${fmtDif(m.difC)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Bags to be delivered</span><span class="pos-kpi-v">${fmtN(m.saldo)}</span></div>
+    </div>
+    <div class="pos-duas">
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Bags per client</h2><p class="muted">Click a client to filter the page.</p></div>
+        <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+          <tbody>${porCliente.length ? porCliente.map(([cli, v]) => `<tr class="pos-clic${cli === filtro.cliente ? " on" : ""}" data-cliente="${esc(cli)}"><td>${esc(cli)}</td><td class="num">${barra(v, maxCli)}</td></tr>`).join("")
+            : `<tr><td class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+        </table></div>
+      </section>
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>To be shipped</h2><p class="muted">⊞ opens the quality group, the quality and the screen.</p></div>
+        <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num pos-com-arvore">
+          <thead><tr><th>Shipment</th><th class="num">Bags to be delivered</th><th class="num">Avg diff Arabica</th><th class="num">Avg diff Conilon</th></tr></thead>
+          <tbody>${arvore.join("") || `<tr><td colspan="4" class="vazio-td">Nothing left to ship for these filters.</td></tr>`}</tbody>
+          ${arvore.length ? `<tfoot><tr class="total"><th scope="row">Total</th>${celNum(mE.saldo, { forte: true })}<td class="num forte">${fmtDif(mE.difA)}</td><td class="num forte">${fmtDif(mE.difC)}</td></tr></tfoot>` : ""}
+        </table></div>
+      </section>
+    </div>
+    <div class="pos-duas">
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Avg diff per quality</h2><p class="muted">Simple average of the contract lines; Conilon diffs ÷ 100. Click a bar to filter the page.</p></div>
+        ${porPadrao.length ? `<div class="pos-grafico"><canvas id="gComQual" role="img" aria-label="Average diff per quality"></canvas></div>` : `<p class="vazio-td">No data for these filters.</p>`}
+      </section>
+      <section class="pos-card">
+        <div class="pos-card-h pos-card-h-linha"><div><h2>Historical diff</h2><p class="muted">By month of the inclusion date.</p></div>
+          <div class="pos-filtros"><label class="pos-mes"><span>From</span><input type="month" id="comDe" value="${de}"></label>
+          <label class="pos-mes"><span>To</span><input type="month" id="comAte" value="${ate}"></label></div></div>
+        ${meses.length ? `<div class="pos-grafico"><canvas id="gComHist" role="img" aria-label="Average diff by month"></canvas></div>` : `<p class="vazio-td">No contracts included in this period.</p>`}
+      </section>
+    </div>`;
+
+    $$("select[data-filtro]", alvo).forEach((s) => s.addEventListener("change", () => { filtro[s.dataset.filtro] = s.value; desenhar(); }));
+    $("#comLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => { filtro[k] = ""; }); desenhar(); });
+    $$("tr[data-cliente]", alvo).forEach((l) => l.addEventListener("click", () => {
+      filtro.cliente = filtro.cliente === l.dataset.cliente ? "" : l.dataset.cliente; desenhar();
+    }));
+    $$(".pos-com-tog", alvo).forEach((b) => b.addEventListener("click", () => {
+      if (!abertos.delete(b.dataset.no)) abertos.add(b.dataset.no);
+      desenhar();
+    }));
+    $("#comDe", alvo)?.addEventListener("change", (e) => { if (!e.target.value) return; de = e.target.value; if (de > ate) ate = de; desenhar(); });
+    $("#comAte", alvo)?.addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; desenhar(); });
+
+    if (porPadrao.length) await graficoQualidades($("#gComQual", alvo), porPadrao, (p) => { filtro.padrao = filtro.padrao === p ? "" : p; desenhar(); });
+    if (meses.length) {
+      await graficoHistorico($("#gComHist", alvo), {
+        rotulos: meses.map(rotMes),
+        arabica: meses.map((mes) => (porMes.get(mes).difA == null ? null : arred(porMes.get(mes).difA))),
+        conilon: meses.map((mes) => (temConilon(mes) ? arred(porMes.get(mes).difC) : null)),
       });
     }
   };

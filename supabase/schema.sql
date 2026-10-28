@@ -1100,3 +1100,28 @@ end;
 $$;
 revoke all on function public.bi_cert_historico_importar(text, jsonb) from public, anon;
 grant execute on function public.bi_cert_historico_importar(text, jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 15. DASHBOARD COMMERCIAL (antes no Power BI)
+-- Vendas de exportação a partir da aba ExpSales inteira (tipo 'comercial'),
+-- pela planilha ou pelo Digisul. Cria o painel na categoria Position e libera
+-- a leitura dessas linhas para quem vê o painel. O resto da política continua igual.
+-- ---------------------------------------------------------------------
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select c.id, 'Dashboard Commercial', 'Export sales: contracts, bags, average diffs, bags per client and what is left to ship.',
+       'portal:position-commercial', 'diaria', true, 7
+from public.bi_categorias c
+where c.nome = 'Position'
+  and not exists (select 1 from public.bi_dashboards d where d.link = 'portal:position-commercial');
+
+drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
+create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated
+  using (
+    public.bi_gerencia_arquivos()
+    or (tipo = 'vendas' and (public.bi_ve_painel('portal:position-sales') or public.bi_ve_painel('portal:position-diffs')))
+    or (tipo = 'compras' and public.bi_ve_painel('portal:position-purchases'))
+    or (tipo like 'cert\_%' and public.bi_ve_painel('portal:cert-'))
+    or (tipo = 'fisica_itens' and public.bi_ve_painel('portal:position-physical'))
+    or (tipo = 'comercial' and public.bi_ve_painel('portal:position-commercial'))
+    or (tipo not in ('vendas', 'compras', 'fisica_itens', 'comercial') and tipo not like 'cert\_%' and public.bi_ve_painel('portal:position-contracts'))
+  );

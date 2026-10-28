@@ -650,3 +650,15 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
   .tabela .vazio-td { flex: 1; }
   .mural, .mural-lista { grid-template-columns: 1fr; }
 }
+/* Dashboard Commercial */
+.pos-com-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap; }
+.pos-com-cab h2 { font-size: 18px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; margin: 0; }
+.pos-com-alto { max-height: 420px; }
+.pos-clic { cursor: pointer; }
+.pos-clic:hover td { background: var(--sup-2); }
+.pos-clic.on td { background: color-mix(in srgb, var(--brand) 12%, var(--sup)); font-weight: 600; }
+.pos-com-arvore .pos-com-tog { background: none; border: 0; color: var(--brand); font-size: 15px; cursor: pointer; padding: 0 6px 0 0; line-height: 1; }
+.pos-com-arvore .pos-com-folha { display: inline-block; width: 21px; }
+.pos-com-arvore .pos-com-n0 td:first-child { font-weight: 600; }
+.pos-com-alto th, .pos-com-alto tr[data-cliente] td:first-child { white-space: normal; }
+.pos-com-alto tr[data-cliente] td:first-child { overflow-wrap: anywhere; }

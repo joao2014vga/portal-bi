@@ -239,6 +239,18 @@ const PT = {
   "Sum of the lines: {n} bags.": "Soma das linhas: {n} sacas.", "No contracts or lots in this cell.": "Nenhum contrato ou lote nesta célula.",
   "Upload the Position again (or update from Digisul) to see what makes up each number.":
     "Envie a posição de novo (ou atualize pelo Digisul) para ver o que forma cada número.",
+  // Dashboard Commercial
+  "Dashboard Commercial": "Dashboard Comercial", "Last contract:": "Último contrato:", "Variety": "Espécie", "Clear filters": "Limpar filtros",
+  "Total contracts": "Total de contratos", "Total bags": "Total de sacas", "Avg diff Arabica": "Diff médio Arábica", "Avg diff Conilon": "Diff médio Conilon",
+  "Bags to be delivered": "Sacas a entregar", "Bags per client": "Sacas por cliente", "To be shipped": "A embarcar",
+  "Avg diff per quality": "Diff médio por qualidade", "Historical diff": "Diff histórico", "By month of the inclusion date.": "Pelo mês da data de inclusão.",
+  "Click a client to filter the page.": "Clique num cliente para filtrar a página.",
+  "⊞ opens the quality group, the quality and the screen.": "⊞ abre o grupo de qualidade, a qualidade e a peneira.",
+  "Simple average of the contract lines; Conilon diffs ÷ 100. Click a bar to filter the page.":
+    "Média simples das linhas de contrato; diferencial do Conilon ÷ 100. Clique numa barra para filtrar a página.",
+  "Nothing left to ship for these filters.": "Nada a embarcar com esses filtros.", "No contracts included in this period.": "Nenhum contrato incluído nesse período.",
+  "Upload the Position again (or update from Digisul) to build this view — it needs every row of the ExpSales sheet.":
+    "Envie a posição de novo (ou atualize pelo Digisul) para montar esta visão — ela usa todas as linhas da aba ExpSales.",
   "Show breakdown": "Mostrar detalhamento", "Hide breakdown": "Ocultar detalhamento", "vs previous": "vs anterior",
 
   // ---------------------------------------------------------------- Estufados / aguardando embarque

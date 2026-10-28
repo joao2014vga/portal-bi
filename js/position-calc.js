@@ -257,6 +257,14 @@ export const DETALHES = {
     // realizadas (com BL) e as que ainda têm saldo a embarcar
     aberto: (r) => !!r.data_bl || r.saldo > 0,
   },
+  // Dashboard Commercial (era o Power BI): a aba ExpSales inteira, como o fExpSales de lá
+  comercial: {
+    aba: ABAS.expsales,
+    cols: [["contrato", "Contrato"], ["alertas", "Alertas"], ["referencia", "Referência"], ["embarque", "Embarque", "d"],
+      ["padrao", "Padrão"], ["peneira", "Peneira"], ["especie", "Espécie"], ["sacas", "Sacas", "n"], ["saida", "Saída (sc)", "n"],
+      ["saldo", "Saldo (sc)", "n"], ["diferencial", "Diferencial", "n"], ["inclusao", "Data de Inclusão", "d"], ["emissao", "Emissão", "d"]],
+    aberto: () => true,
+  },
   compras: {
     aba: ABAS.purchases,
     cols: [["contrato", "Contrato"], ["fornecedor", "Fornecedor"], ["emissao", "Emissão", "d"], ["safra", "Safra"], ["sacas", "Sacas Total", "n"],
