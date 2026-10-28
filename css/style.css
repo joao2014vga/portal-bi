@@ -685,3 +685,6 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-com-arvore .pos-com-n0 td:first-child { font-weight: 600; }
 .pos-com-alto th, .pos-com-alto tr[data-cliente] td:first-child { white-space: normal; }
 .pos-com-alto tr[data-cliente] td:first-child { overflow-wrap: anywhere; }
+/* por mês da bolsa: número clicável abre os contratos */
+.tabela td.pos-cel-clic { cursor: pointer; }
+.tabela td.pos-cel-clic:hover { outline: 2px solid var(--brand); outline-offset: -2px; }

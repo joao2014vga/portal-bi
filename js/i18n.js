@@ -239,6 +239,10 @@ const PT = {
   "Sum of the lines: {n} bags.": "Soma das linhas: {n} sacas.", "No contracts or lots in this cell.": "Nenhum contrato ou lote nesta célula.",
   "Upload the Position again (or update from Digisul) to see what makes up each number.":
     "Envie a posição de novo (ou atualize pelo Digisul) para ver o que forma cada número.",
+  // contratos atrás de cada número do "por mês da bolsa"
+  "Click to see the contracts": "Clique para ver os contratos", "Click a number to see the contracts.": "Clique num número para ver os contratos.",
+  "all months": "todos os meses", "No contracts.": "Nenhum contrato.",
+  "Purchases to fix minus sales to fix (sales count as negative).": "Compras a fixar menos vendas a fixar (as vendas entram negativas).",
   // Dashboard Commercial
   "Dashboard Commercial": "Dashboard Comercial", "Last contract:": "Último contrato:", "Variety": "Espécie", "Clear filters": "Limpar filtros",
   "Total contracts": "Total de contratos", "Total bags": "Total de sacas", "Avg diff Arabica": "Diff médio Arábica", "Avg diff Conilon": "Diff médio Conilon",

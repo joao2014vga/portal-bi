@@ -982,6 +982,8 @@ async function painelContratos(alvo, carga, ctx) {
       ligarSegmentos(alvo, "segAba", (k) => { aba = k; qualidade = ""; busca = ""; mes = ""; fix = ""; ordem = null; desenhar(); });
       ligarSegmentos(alvo, "segBolsaMes", (k) => { bolsaSel = k; desenhar(); });
       ligarSegmentos(alvo, "segUnidade", (k) => { unidade = k; desenhar(); });
+      $$(".pos-cel-clic", alvo).forEach((td) => td.addEventListener("click", () =>
+        abrirContratosBolsa(detalhes, { bolsa: bolsaSel, unidade }, td.dataset.col, td.dataset.yms)));
       return;
     }
     if (aba === "logistica") {
@@ -1129,13 +1131,17 @@ function painelBolsa(detalhes, termm, { bolsa, unidade }, abas) {
   const tot = lista.reduce((t, l) => { for (const k of Object.keys(t)) t[k] += l[k]; return t; },
     { cT: 0, cF: 0, cA: 0, eT: 0, eF: 0, eA: 0, iT: 0, iF: 0, iA: 0, fut: 0 });
   const f = (v) => (emLotes ? fmtLotes(v) : fmtN(v));
-  const c = (v, forte = false) => `<td class="num ${forte ? "forte" : ""}">${Math.abs(v) < 0.05 ? `<span class="zero">–</span>` : f(v)}</td>`;
+  // célula com número abre os contratos que a formam (abrirContratosBolsa); futuros não têm contrato
+  const c = (v, forte = false, col = null, yms = "") => (Math.abs(v) < 0.05
+    ? `<td class="num ${forte ? "forte" : ""}"><span class="zero">–</span></td>`
+    : `<td class="num ${forte ? "forte" : ""}${col ? " pos-cel-clic" : ""}"${col ? ` data-col="${col}" data-yms="${yms}" title="${esc(tr("Click to see the contracts"))}"` : ""}>${f(v)}</td>`);
   const vendas = (l, k) => l["e" + k] + l["i" + k];
   const corpo = (l, total = false) => {
     const aFixar = l.cA - vendas(l, "A");
-    return `${c(l.cT, total)}${c(l.cF, total)}${c(l.cA, total)}
-      <td class="num ${total ? "forte" : ""}" title="${esc(`${tr("Export")}: ${f(l.eT)} · ${tr("Domestic")}: ${f(l.iT)}`)}">${Math.abs(vendas(l, "T")) < 0.05 ? `<span class="zero">–</span>` : f(vendas(l, "T"))}</td>
-      ${c(vendas(l, "F"), total)}${c(vendas(l, "A"), total)}${c(l.fut, total)}${c(aFixar, true)}`;
+    const yms = total ? lista.map((x) => x.ym).join(",") : l.ym;
+    return `${c(l.cT, total, "cT", yms)}${c(l.cF, total, "cF", yms)}${c(l.cA, total, "cA", yms)}
+      ${c(vendas(l, "T"), total, "vT", yms).replace("<td ", `<td title="${esc(`${tr("Export")}: ${f(l.eT)} · ${tr("Domestic")}: ${f(l.iT)}`)}" `)}
+      ${c(vendas(l, "F"), total, "vF", yms)}${c(vendas(l, "A"), total, "vA", yms)}${c(l.fut, total)}${c(aFixar, true, "net", yms)}`;
   };
   return `
     <div class="pos-filtros">
@@ -1143,7 +1149,7 @@ function painelBolsa(detalhes, termm, { bolsa, unidade }, abas) {
       ${segmentos("segBolsaMes", [["NY", "NY (Arabica)"], ["LONDRES", "London (Robusta)"]], bolsa)}
       ${segmentos("segUnidade", [["lotes", "Lots"], ["sacas", "Bags"]], unidade)}
     </div>
-    <p class="muted pos-nota">${icon("info")} <span>Open contracts by exchange month (purchases by "Mês Bolsa", sales by "Fixar Mês"). Sales are shown as positive quantities. Futures: net lots of the TermM (negative = sold). Net to fix = purchases to fix − sales to fix. Past months only appear while they still have lots to fix (marked in red).</span></p>
+    <p class="muted pos-nota">${icon("info")} <span>Open contracts by exchange month (purchases by "Mês Bolsa", sales by "Fixar Mês"). Sales are shown as positive quantities. Futures: net lots of the TermM (negative = sold). Net to fix = purchases to fix − sales to fix. Past months only appear while they still have lots to fix (marked in red).</span> <span>Click a number to see the contracts.</span></p>
     <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
       <thead>
         <tr><th rowspan="2">Exchange month</th><th colspan="3">Purchases</th><th colspan="3">Sales (export + domestic)</th>
@@ -1154,6 +1160,46 @@ function painelBolsa(detalhes, termm, { bolsa, unidade }, abas) {
         : `<tr><td colspan="9" class="vazio-td">No open contracts for this exchange.</td></tr>`}</tbody>
       ${lista.length ? `<tfoot><tr class="total"><th scope="row">Total</th>${corpo(tot, true)}</tr></tfoot>` : ""}
     </table></div>`;
+}
+
+// Contratos atrás de uma célula do "por mês da bolsa": mesma conta do painel
+// (lotes: Qtd. Lotes / Lotes Fixado / Lotes a Fixar; sacas: Sacas / Sacas − a fixar / a fixar)
+const TIPOS_BOLSA = [["purchases", "Purchase", "fornecedor"], ["expsales", "Export", "importador"], ["intsales", "Domestic", "cliente"]];
+function abrirContratosBolsa(detalhes, { bolsa, unidade }, col, yms) {
+  const emLotes = unidade === "lotes";
+  const meses = new Set(yms.split(","));
+  const [lado, med] = col === "net" ? ["*", "A"] : [col[0], col[1]];
+  const val = (r, k) => (emLotes
+    ? ({ T: r.lotes, F: r.lotes_fixados, A: r.lotes_a_fixar }[k] ?? 0)
+    : ({ T: r.sacas ?? 0, F: (r.sacas ?? 0) - (r.a_fixar ?? 0), A: r.a_fixar ?? 0 }[k]));
+  const linhas = TIPOS_BOLSA.filter(([tipo]) => lado === "*" || (lado === "c") === (tipo === "purchases")).flatMap(([tipo, rot, parc]) =>
+    (detalhes[tipo] ?? []).filter((r) => norm(r.bolsa) === bolsa && meses.has(r[CAMPO_MES[tipo]]?.slice(0, 7)) && Math.abs(val(r, med)) >= 0.005)
+      .map((r) => ({ r, tipo, rot, parc: r[parc], sinal: col === "net" && tipo !== "purchases" ? -1 : 1 })));
+  linhas.sort((a, b) => (a.tipo === "purchases" ? 0 : 1) - (b.tipo === "purchases" ? 0 : 1) || Math.abs(val(b.r, med)) - Math.abs(val(a.r, med)));
+  const f = (v) => (emLotes ? fmtLotes(v) : fmtN(v));
+  const soma = (k, comSinal = false) => linhas.reduce((s, x) => s + val(x.r, k) * (comSinal ? x.sinal : 1), 0);
+  const rotCol = { T: "Total", F: "Fixed", A: "To fix" }[med];
+  const titulo = `${col === "net" ? tr("Net to fix") : `${tr(lado === "c" ? "Purchases" : "Sales")} · ${tr(rotCol)}`} · ${
+    meses.size === 1 ? `${codigoBolsa(yms)} ${fmtMes(yms + "-01")}` : tr("all months")}`;
+  modal({
+    titulo,
+    largura: "modal-lg",
+    corpo: `<div class="pos-alt-resumo"><span><span>Contracts</span>: <strong>${fmtN(new Set(linhas.map((x) => x.r.contrato)).size)}</strong></span>
+        <span>${esc(tr(rotCol))}: <strong class="pos-alt-ef">${f(col === "net" ? soma("A", true) : soma(med))}</strong> ${esc(tr(emLotes ? "lots" : "bags"))}</span></div>
+      ${col === "net" ? `<p class="muted pos-nota">Purchases to fix minus sales to fix (sales count as negative).</p>` : ""}
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+        <thead><tr><th>Contract</th><th>Type</th><th>Counterparty</th><th>Quality</th><th>Month</th><th>Fixation</th>
+          <th class="num">Total</th><th class="num">Fixed</th><th class="num">To fix</th></tr></thead>
+        <tbody>${linhas.length ? linhas.map(({ r, tipo, rot, parc, sinal }) => `<tr><td>${esc(r.contrato)}</td><td>${esc(tr(rot))}</td><td>${esc(parc ?? "—")}</td>
+            <td>${esc(r.padrao ?? "—")}</td><td>${esc(fmtMes(r[CAMPO_MES[tipo]]))}</td><td>${esc(r.status_fix ?? "—")}</td>
+            ${["T", "F", "A"].map((k) => `<td class="num${k === med ? " forte" : ""}">${f(val(r, k) * (k === "A" ? sinal : 1))}</td>`).join("")}</tr>`).join("")
+          : `<tr><td colspan="9" class="vazio-td">No contracts.</td></tr>`}</tbody>
+        ${linhas.length ? `<tfoot><tr class="total"><th scope="row" colspan="6">Total</th>
+          ${col === "net" ? `<td></td><td></td>` : `<td class="num">${f(soma("T"))}</td><td class="num">${f(soma("F"))}</td>`}<td class="num">${f(soma("A", col === "net"))}</td></tr></tfoot>` : ""}
+      </table></div>`,
+  });
+  const m = $$(".modal").at(-1);
+  if (m) { m.classList.add("pos"); marcarNegativos(m); }
 }
 
 // Estufado e pendente de saída do estoque (regra da área de exportação): Prev. Carga
