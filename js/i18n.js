@@ -524,6 +524,7 @@ const PT = {
   "Remove this link: the bags go back to the leftover of the purchase": "Tirar este vínculo: as sacas voltam para a sobra da compra",
   "Remove this link? The bags go back to the leftover of the purchase.": "Tirar este vínculo? As sacas voltam para a sobra da compra.",
   "Link removed: the bags are back in the leftover.": "Vínculo removido: as sacas voltaram para a sobra.",
+  "Selected": "Selecionados", "({n} of {n})": "({n} de {n})", "Due date = coffee payment date. Click a producer to see its BRC purchases; tick the ones to add up in “Selected”.": "Vencimento = data de pagamento do café. Clique num produtor para ver as compras BRC dele; marque os que entram na soma “Selecionados”.",
   "Due from": "Vencimento de", "Due to": "Vencimento até", "First": "Primeiro", "Last": "Último", "All due dates": "Todos os vencimentos",
   "Expand all": "Abrir todos", "Collapse all": "Fechar todos", "Used in exports": "Usado nas exportações", "No purchases due in this period.": "Nenhuma compra vence neste período.",
   "Due date = coffee payment date. Click a producer to see its BRC purchases.": "Vencimento = data de pagamento do café. Clique num produtor para ver as compras BRC dele.",

@@ -250,6 +250,8 @@ export async function renderCert(link, alvo, ctx) {
   let aba = abaAberta.get(link) ?? "posicao", busca = buscaAberta.get(link) ?? "", mes = "", fonte = "", ordem = null, filtroHist = "";
   let venceDe = "", venceAte = "";
   const abertos = new Set();
+  // produtores fora da soma "Selected": começa sem o produtor bloqueado
+  const desmarcados = new Set(hist.produtores.filter((x) => x.bloqueado).map((x) => x.nome));
 
   const desenhar = () => {
     buscaAberta.set(link, busca);
@@ -351,6 +353,16 @@ export async function renderCert(link, alvo, ctx) {
     $("#certAbrirTodos", alvo)?.addEventListener("click", (e) => {
       const nomes = $$("[data-produtor]", alvo).map((tr) => tr.dataset.produtor);
       if (e.currentTarget.dataset.abrir) nomes.forEach((n) => abertos.add(n)); else abertos.clear();
+      desenhar();
+    });
+    // caixinhas: marcar não abre o produtor
+    $$("[data-sel]", alvo).forEach((c) => {
+      c.addEventListener("click", (e) => e.stopPropagation());
+      c.addEventListener("change", () => { if (c.checked) desmarcados.delete(c.dataset.sel); else desmarcados.add(c.dataset.sel); desenhar(); });
+    });
+    $("#certSelTodos", alvo)?.addEventListener("change", (e) => {
+      const nomes = $$("[data-sel]", alvo).map((c) => c.dataset.sel);
+      nomes.forEach((n) => (e.target.checked ? desmarcados.delete(n) : desmarcados.add(n)));
       desenhar();
     });
     $$("[data-produtor]", alvo).forEach((tr) => tr.addEventListener("click", () => {
@@ -502,6 +514,8 @@ export async function renderCert(link, alvo, ctx) {
       .sort((a, b) => b.sobra - a.sobra || a.nome.localeCompare(b.nome));
     const opcoes = (atual) => mesesVenc.map((m) => `<option value="${m}" ${m === atual ? "selected" : ""}>${esc(fmtMes(m + "-01"))}</option>`).join("");
     const todosAbertos = p.length && p.every((x) => abertos.has(x.nome));
+    const sel = p.filter((x) => !desmarcados.has(x.nome));
+    const todosMarcados = sel.length === p.length;
     return `<div class="pos-filtros">
         <label class="cert-periodo"><span>Due from</span><select id="certVenceDe" aria-label="Due from"><option value="">First</option>${opcoes(venceDe)}</select></label>
         <label class="cert-periodo"><span>to</span><select id="certVenceAte" aria-label="Due to"><option value="">Last</option>${opcoes(venceAte)}</select></label>
@@ -509,19 +523,23 @@ export async function renderCert(link, alvo, ctx) {
         ${p.length ? `<button type="button" class="btn" id="certAbrirTodos" data-abrir="${todosAbertos ? "" : "1"}">${todosAbertos ? "Collapse all" : "Expand all"}</button>` : ""}
       </div>
       <div class="pos-card">
-        <div class="pos-card-h"><h2>By producer</h2><p class="muted">Due date = coffee payment date. Click a producer to see its BRC purchases.</p></div>
+        <div class="pos-card-h"><h2>By producer</h2><p class="muted">Due date = coffee payment date. Click a producer to see its BRC purchases; tick the ones to add up in “Selected”.</p></div>
         <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num cert-produtores">
-          <thead><tr><th>Producer</th><th>Due date</th><th class="num">Contracts</th><th class="num">Bags</th><th class="num">Used in exports</th><th class="num">Leftover</th></tr></thead>
+          <thead><tr><th class="cert-sel"><input type="checkbox" id="certSelTodos" aria-label="Select all" ${todosMarcados ? "checked" : ""}></th>
+            <th>Producer</th><th>Due date</th><th class="num">Contracts</th><th class="num">Bags</th><th class="num">Used in exports</th><th class="num">Leftover</th></tr></thead>
           <tbody>${p.length ? p.map((x) => {
-            const aberto = abertos.has(x.nome);
-            return `<tr class="clicavel cert-prod" data-produtor="${esc(x.nome)}" aria-expanded="${aberto}">
+            const aberto = abertos.has(x.nome), marcado = !desmarcados.has(x.nome);
+            return `<tr class="clicavel cert-prod ${marcado ? "" : "cert-fora"}" data-produtor="${esc(x.nome)}" aria-expanded="${aberto}">
+                <td class="cert-sel"><input type="checkbox" data-sel="${esc(x.nome)}" aria-label="${esc(x.nome)}" ${marcado ? "checked" : ""}></td>
                 <td><span class="cert-mais">${aberto ? "−" : "+"}</span>${esc(x.nome)}${x.bloqueado ? ` <span class="pill pill-critico" title="Over the volume we can use: the leftover is not counted">Over limit</span>` : ""}</td>
                 <td></td><td class="num">${fmtN(x.hs.length)}</td>${num(x.sacas)}${num(x.usado)}${num(x.sobra, true)}</tr>
-              ${aberto ? x.hs.map((h) => `<tr class="cert-brc ${h._bloqueado ? "cert-bloqueado" : ""}">
+              ${aberto ? x.hs.map((h) => `<tr class="cert-brc ${h._bloqueado ? "cert-bloqueado" : ""} ${marcado ? "" : "cert-fora"}"><td></td>
                 <td>${esc(h.compra)}${h.id_cert ? ` <span class="muted">· ${esc(h.id_cert)}</span>` : ""}${h.fazenda ? ` <span class="muted">· ${esc(h.fazenda)}</span>` : ""}</td>
                 <td>${esc(h.vencimento ? fmtData(h.vencimento.slice(0, 10)) : "—")}</td><td></td>${num(Number(h.sacas) || 0)}${num(h._usado)}${num(h._sobra)}</tr>`).join("") : ""}`;
-          }).join("") : `<tr><td colspan="6" class="vazio-td">No purchases due in this period.</td></tr>`}</tbody>
-          ${p.length ? `<tfoot><tr><td>Total</td><td></td><td class="num">${fmtN(noPeriodo.length)}</td>${num(soma(p, "sacas"))}${num(soma(p, "usado"))}${num(soma(p, "sobra"), true)}</tr></tfoot>` : ""}
+          }).join("") : `<tr><td colspan="7" class="vazio-td">No purchases due in this period.</td></tr>`}</tbody>
+          ${p.length ? `<tfoot>
+            <tr class="cert-selecionados"><td></td><td>Selected <span class="muted">(${sel.length} of ${p.length})</span></td><td></td><td class="num">${fmtN(sel.reduce((s, x) => s + x.hs.length, 0))}</td>${num(soma(sel, "sacas"))}${num(soma(sel, "usado"))}${num(soma(sel, "sobra"), true)}</tr>
+            ${todosMarcados ? "" : `<tr><td></td><td>Total</td><td></td><td class="num">${fmtN(noPeriodo.length)}</td>${num(soma(p, "sacas"))}${num(soma(p, "usado"))}${num(soma(p, "sobra"), true)}</tr>`}</tfoot>` : ""}
         </table></div>
       </div>`;
   };
