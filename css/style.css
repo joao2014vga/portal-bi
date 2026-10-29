@@ -515,7 +515,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .cert-prod td { font-weight: 600; }
 .cert-mais { display: inline-block; width: 18px; color: var(--brand); font-weight: 700; }
 .cert-brc td { background: var(--sup-2); font-size: 12.5px; }
-.cert-brc td:nth-child(2) { padding-left: 40px; }
+.cert-produtores .cert-brc td:nth-child(2), .cert-exportacoes .cert-brc td:first-child { padding-left: 40px; }
 .cert-sel { width: 34px; }
 .cert-fora td { color: var(--texto-3); }
 .cert-selecionados td { color: var(--brand); }
