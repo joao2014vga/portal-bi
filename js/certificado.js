@@ -75,7 +75,7 @@ function montar(base, ajustes, cert) {
   const vendas = todasVendas.filter(doInicio);
   // exportações embarcadas antes do controle: não entram na posição, mas podem ser
   // vinculadas às compras (as sacas saem da sobra e do saldo inicial)
-  const anteriores = todasVendas.filter((r) => !doInicio(r) && r._conta).map((r) => ({ ...r, _anterior: true }));
+  const anteriores = todasVendas.filter((r) => !doInicio(r) && (r._conta || r._ajuste?.acao === "excluir")).map((r) => ({ ...r, _anterior: true }));
   // ajustes de contratos que não vêm mais do Digisul (renomeados ou apagados)
   const orfaos = ajustes.filter((a) => !usados.has(`${a.tipo}|${a.contrato}`));
   return { compras, vendas, anteriores, orfaos };
@@ -198,7 +198,7 @@ export async function renderCert(link, alvo, ctx) {
   const cc = compras.filter((r) => r._conta), vc = vendas.filter((r) => r._conta);
   const hist = montarHistorico(historico, vinculos, compras, cert);
   for (const r of [...vendas, ...anteriores]) r._vinculado = hist.porVenda.get(r.contrato) ?? 0;
-  const vinculaveis = [...vendas, ...anteriores];
+  const vinculaveis = [...vendas, ...anteriores.filter((r) => r._conta)];
   const inicial = hist.inicial;
   const meses = posicaoMensal(cc, vc, inicial, cert.inicio);
   const atual = hojeYm();
@@ -237,7 +237,7 @@ export async function renderCert(link, alvo, ctx) {
   const FILTROS_EXP = {
     "": (r) => r._conta,
     posicao: (r) => r._conta && !r._anterior,
-    antes: (r) => r._anterior,
+    antes: (r) => r._anterior && r._conta,
     falta: (r) => faltaExp(r) >= 0.5,
     excluido: (r) => r._ajuste?.acao === "excluir",
   };
@@ -426,9 +426,9 @@ export async function renderCert(link, alvo, ctx) {
               <td title="${esc(r.alertas ?? "")}">${esc(r._cliente ?? "—")}</td><td>${esc(r.importador ?? "—")}</td>
               <td>${esc(r._mes ? fmtMes(r._mes + "-01") : "—")}</td>${num(tetoExp(r))}${num(r._vinculado ?? 0)}
               <td class="num ${falta >= 0.5 ? "cert-falta" : ""}">${falta >= 0.5 ? esc(fmtN(falta)) : falta <= -0.5 ? `<span class="pill pill-critico" title="More bags linked than the export">${esc(fmtN(-falta))} over</span>` : `<span class="zero">–</span>`}</td>
-              <td>${r._anterior ? `<span class="pill" title="Shipped before the control started: not in the position; the bags it uses come out of the opening stock">Before the control</span>` : origem(r)}</td>
+              <td>${r._anterior && r._conta ? `<span class="pill" title="Shipped before the control started: not in the position; the bags it uses come out of the opening stock">Before the control</span>` : origem(r)}</td>
               <td class="cert-acoes">${editar && r._conta ? `<button type="button" class="link" data-vincular="${esc(r.contrato)}" title="Which BRC purchases this export came from">${icon("link")}Link</button>` : ""}</td>
-              ${editar ? `<td class="cert-acoes">${r._anterior ? "" : acao(r)}</td>` : ""}</tr>
+              ${editar ? `<td class="cert-acoes">${acao(r)}</td>` : ""}</tr>
             ${aberto ? (us.length ? us.map(({ h, sacas, quem }) => `<tr class="cert-brc" ${quem ? `title="${esc(`Linked in the portal · ${quem}`)}"` : ""}>
                 <td>${esc(h.compra)}${quem ? ` <span class="pill">Portal</span>` : ""}</td><td>${esc(h.fornecedor ?? "—")}</td><td>${esc(h.fazenda ?? "—")}</td>
                 <td>${esc(h.vencimento ? fmtData(h.vencimento.slice(0, 10)) : "—")}</td><td></td>${num(sacas)}<td></td><td></td>
@@ -519,10 +519,20 @@ async function executarAcao({ acao: a, contrato }, todas, cert, ctx) {
   if (!r) return;
   try {
     if (a === "excluir") {
-      const ok = await confirmar("Exclude contract", `<strong>${esc(contrato)}</strong><br>Remove this contract from the ${esc(cert.codigo)} position? Digisul still shows the certificate; only the portal changes.`, "Exclude");
-      if (!ok) return;
-      await ctx.api.salvarCertAjuste({ certificado: cert.codigo, tipo: r._tipo, contrato, acao: "excluir" });
-      toast(`Contract excluded from the ${cert.codigo} position.`);
+      // o motivo fica no ajuste (ex.: embarque rejeitado pelo cliente)
+      modal({
+        titulo: "Exclude contract",
+        botao: "Exclude",
+        corpo: `<p><strong>${esc(contrato)}</strong></p>
+          <p class="muted">Remove this contract from ${esc(cert.codigo)}? Digisul still shows it; only the portal changes. Its BRC links stay until you unlink them.</p>
+          <label class="campo"><span>Reason</span><input type="text" name="obs" maxlength="200" placeholder="e.g. rejected by the client"></label>`,
+        async onSubmit(form) {
+          await ctx.api.salvarCertAjuste({ certificado: cert.codigo, tipo: r._tipo, contrato, acao: "excluir", obs: form.obs.value.trim() || null });
+          toast(`Contract excluded from ${cert.codigo}.`);
+          ctx.recarregar();
+        },
+      });
+      return;
     } else {
       const ok = await confirmar(a === "restaurar" ? "Restore contract" : "Remove manual inclusion",
         `<strong>${esc(contrato)}</strong><br>${a === "restaurar" ? `Count this contract in the ${esc(cert.codigo)} position again, as in Digisul?`
@@ -618,7 +628,11 @@ export async function lerHistoricoCert(file) {
   const col = (re) => cab.findIndex((c) => re.test(c));
   const c = { compra: col(/^contrato$/i), id: col(/^id\b/i), forn: col(/^fornecedor/i), sacas: col(/^sacas/i), usado: col(/^usado/i), venc: col(/^vencimento/i) };
   if (c.forn < 0 || c.sacas < 0) throw new Error("Columns “Fornecedor” and “Sacas contrato” not found in the CONTROLE sheet.");
-  const vendas = cab.map((t, i) => (/^BRAS-?\s*\d/i.test(t) ? { i, venda: contratoBras(t) } : null)).filter(Boolean);
+  // exportação rejeitada pelo cliente vem marcada no cabeçalho ("BRAS-0251/26 REJEITADO"):
+  // não conta como vínculo e sai do certificado na importação
+  const colunasBras = cab.map((t, i) => (/^BRAS-?\s*\d/i.test(t)
+    ? { i, venda: contratoBras(t.replace(/[\s-]*REJEIT\w*/i, "")), rejeitada: /REJEIT/i.test(t) } : null)).filter(Boolean);
+  const vendas = colunasBras.filter((v) => !v.rejeitada);
   const n = (v) => (typeof v === "number" ? v : Number(String(v ?? "").replace(",", ".")) || 0);
   const iso = (v) => (typeof v === "number" ? new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10) : null);
   const linhas = [];
@@ -634,6 +648,7 @@ export async function lerHistoricoCert(file) {
     });
   }
   if (!linhas.length) throw new Error("No BRC purchase contract found in the CONTROLE sheet.");
+  linhas.rejeitadas = colunasBras.filter((v) => v.rejeitada).map((v) => v.venda);
   return linhas;
 }
 // "BRAS-191/26-2" → "BRAS-0191/26-2", como no Digisul
@@ -653,7 +668,11 @@ function abrirImportacao(cert, ctx, atuais, nVinculos = 0) {
       if (!file) throw new Error("Please choose the spreadsheet.");
       const linhas = await lerHistoricoCert(file);
       await ctx.api.importarCertHistorico(cert.codigo, linhas);
-      toast(`History imported: ${fmtN(linhas.length)} purchase contracts.`);
+      if (linhas.rejeitadas.length) {
+        await ctx.api.salvarCertAjuste(linhas.rejeitadas.map((contrato) =>
+          ({ certificado: cert.codigo, tipo: "venda", contrato, acao: "excluir", obs: "Rejected (spreadsheet)" })));
+      }
+      toast(`History imported: ${fmtN(linhas.length)} purchase contracts${linhas.rejeitadas.length ? `; ${linhas.rejeitadas.join(", ")} excluded as rejected` : ""}.`);
       ctx.recarregar();
     },
   });
