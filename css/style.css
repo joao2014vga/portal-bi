@@ -688,3 +688,22 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 /* por mês da bolsa: número clicável abre os contratos */
 .tabela td.pos-cel-clic { cursor: pointer; }
 .tabela td.pos-cel-clic:hover { outline: 2px solid var(--brand); outline-offset: -2px; }
+/* Dashboard Commercial: filtros com várias escolhas e destaque do que foi clicado */
+.pos-multi { position: relative; }
+.pos-multi-b { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 120px; max-width: 260px; height: 34px;
+  padding: 4px 10px; border: 1px solid var(--borda); border-radius: 8px; background: var(--sup); color: var(--texto); font: 500 13px var(--fonte); cursor: pointer; }
+.pos-multi-b > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pos-multi-b.ativo { border-color: var(--brand); color: var(--brand); font-weight: 600; }
+.pos-multi-seta { color: var(--texto-3); font-size: 11px; }
+.pos-multi-p { display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 220px; max-width: 360px;
+  background: var(--sup); border: 1px solid var(--borda); border-radius: 10px; box-shadow: var(--sombra); padding: 8px; }
+.pos-multi.aberta .pos-multi-p { display: block; }
+.pos-multi-busca { width: 100%; height: 30px; margin-bottom: 6px; }
+.pos-multi-acoes { display: flex; gap: 12px; padding: 0 4px 6px; border-bottom: 1px solid var(--borda); margin-bottom: 4px; }
+.pos-multi-acoes button { border: 0; background: none; color: var(--brand); font: 500 12px var(--fonte); cursor: pointer; padding: 0; }
+.pos-multi-ops { max-height: 280px; overflow-y: auto; }
+.pos-multi-ops label { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 6px; font-weight: 400; color: var(--texto); cursor: pointer; }
+.pos-multi-ops label:hover { background: var(--sup-2); }
+.pos-multi-ops label[hidden] { display: none; }
+.pos-multi-ops input { width: auto; height: auto; margin: 0; }
+.pos-clic.apagado td { opacity: .45; }

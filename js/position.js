@@ -1828,15 +1828,18 @@ const rotulosGrafico = {
   },
 };
 
-async function graficoQualidades(canvas, itens, aoClicar) {
+// selecao: qualidades escolhidas (as outras barras ficam apagadas); Ctrl+clique soma à escolha
+async function graficoQualidades(canvas, itens, aoClicar, selecao = new Set()) {
   const Chart = await carregarChart();
   const t = tema();
+  const apagada = /^#[0-9a-f]{6}$/i.test(t.s1) ? `${t.s1}55` : t.grade;
+  const cores = itens.map((x) => (!selecao.size || selecao.has(x.padrao) ? t.s1 : apagada));
   const c = new Chart(canvas, {
     type: "bar",
-    data: { labels: itens.map((x) => x.padrao), datasets: [{ data: itens.map((x) => arred(x.m.dif)), backgroundColor: t.s1, borderRadius: 3, maxBarThickness: 34 }] },
+    data: { labels: itens.map((x) => x.padrao), datasets: [{ data: itens.map((x) => arred(x.m.dif)), backgroundColor: cores, borderRadius: 3, maxBarThickness: 34 }] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, layout: { padding: { top: 18, bottom: 4 } },
-      onClick: (_, els) => { if (els.length) aoClicar(itens[els[0].index].padrao); },
+      onClick: (e, els) => { if (els.length) aoClicar(itens[els[0].index].padrao, e.native?.ctrlKey || e.native?.metaKey); },
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
       scales: {
         x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
@@ -1909,11 +1912,23 @@ async function painelComercial(alvo, carga, ctx) {
     ["cliente", "Client", (r) => r._cliente, alfa],
     ["especie", "Variety", (r) => r.especie, alfa],
   ];
-  const filtro = Object.fromEntries(FILTROS.map(([k]) => [k, ""]));
+  // cada filtro é um conjunto de valores escolhidos (vazio = todos), como no Power BI
+  const filtro = Object.fromEntries(FILTROS.map(([k]) => [k, new Set()]));
   const hoje = mesIso(hojeIso());
   let de = `${hoje.slice(0, 4)}-01`, ate = hoje;
   const abertos = new Set();
-  const passa = (r, exceto) => FILTROS.every(([k, , val]) => k === exceto || !filtro[k] || val(r) === filtro[k]);
+  let listaAberta = null; // filtro com a lista de escolha aberta (continua aberta ao redesenhar)
+  const passa = (r, exceto) => FILTROS.every(([k, , val]) => k === exceto || !filtro[k].size || filtro[k].has(val(r)));
+  // clique escolhe só aquele valor (de novo: limpa); Ctrl+clique soma ou tira da seleção
+  const selecionar = (k, v, varios) => {
+    const s = filtro[k];
+    if (varios) { if (!s.delete(v)) s.add(v); }
+    else if (s.size === 1 && s.has(v)) s.clear();
+    else { s.clear(); s.add(v); }
+    desenhar();
+  };
+  // destaque do que foi escolhido no próprio visual (o resto fica apagado)
+  const marca = (k, v) => (!filtro[k].size ? "" : filtro[k].has(v) ? " on" : " apagado");
 
   // a embarcar: mês de embarque > grupo > qualidade > peneira. Como o filtro "Sacas a Entregar ≥ 1"
   // do Power BI, vale no nível mais fino: só entram as linhas de combinações com saldo ≥ 1,
@@ -1933,7 +1948,9 @@ async function painelComercial(alvo, carga, ctx) {
       const id =`${caminho}\u0001${k}`, folha = nivel === NIVEIS.length - 1, aberto = !folha && abertos.has(id);
       const tog = folha ? `<span class="pos-com-folha"></span>`
         : `<button type="button" class="pos-com-tog" data-no="${esc(id)}" aria-expanded="${aberto}" title="${aberto ? "Collapse" : "Expand"}">${aberto ? "⊟" : "⊞"}</button>`;
-      return [`<tr class="pos-com-n${nivel}"><td style="padding-left:${10 + nivel * 18}px">${tog}${esc(rotulo(k))}</td>${celNum(mg.saldo)}
+      // os meses filtram a página (clique e Ctrl+clique)
+      const mes = nivel === 0 && k ? ` data-eom="${esc(k)}"` : "";
+      return [`<tr class="pos-com-n${nivel}${mes ? ` pos-clic${marca("eom", k)}` : ""}"${mes}><td style="padding-left:${10 + nivel * 18}px">${tog}${esc(rotulo(k))}</td>${celNum(mg.saldo)}
         <td class="num">${fmtDif(mg.difA)}</td><td class="num">${fmtDif(mg.difC)}</td></tr>`,
         ...(aberto ? linhasArvore(g, nivel + 1, id) : [])];
     });
@@ -1943,22 +1960,26 @@ async function painelComercial(alvo, carga, ctx) {
     limparGraficos();
     const linhas = dados.filter((r) => passa(r));
     const m = medidasComercial(linhas);
-    const opcoes = (k, val, ordem) => [...new Set(dados.filter((r) => r._tipo && passa(r, k)).map(val).filter(Boolean))].sort(ordem);
+    // opções de cada lista: o que existe com os outros filtros (e o que já está escolhido)
+    const opcoes = (k, val, ordem) => [...new Set([...dados.filter((r) => r._tipo && passa(r, k)).map(val).filter(Boolean), ...filtro[k]])].sort(ordem);
+    // cada visual mostra tudo da própria dimensão (com a escolha em destaque) e filtra pelos outros
+    const semFiltro = (k) => dados.filter((r) => passa(r, k));
     // último contrato registrado: o da maior data de inclusão; a data mostrada é a maior emissão
     const ult = linhas.reduce((u, r) => (r.inclusao && (!u || r.inclusao > u.inclusao || (r.inclusao === u.inclusao && r.contrato > u.contrato)) ? r : u), null);
     const emissao = linhas.reduce((x, r) => (r.emissao && (!x || r.emissao > x) ? r.emissao : x), null);
 
-    const porCliente = [...linhas.reduce((mp, r) => mp.set(r._cliente, (mp.get(r._cliente) ?? 0) + (r.sacas ?? 0)), new Map())]
+    const porCliente = [...semFiltro("cliente").reduce((mp, r) => mp.set(r._cliente, (mp.get(r._cliente) ?? 0) + (r.sacas ?? 0)), new Map())]
       .filter(([, v]) => v).sort((a, b) => b[1] - a[1]);
     const maxCli = porCliente[0]?.[1] ?? 0;
     const folha = (r) => NIVEIS.map(([chave]) => chave(r)).join("\u0001");
-    const saldoFolha = linhas.reduce((mp, r) => mp.set(folha(r), (mp.get(folha(r)) ?? 0) + (r.saldo ?? 0)), new Map());
-    const aEmbarcar = linhas.filter((r) => saldoFolha.get(folha(r)) >= 1);
+    const linhasEmb = semFiltro("eom");
+    const saldoFolha = linhasEmb.reduce((mp, r) => mp.set(folha(r), (mp.get(folha(r)) ?? 0) + (r.saldo ?? 0)), new Map());
+    const aEmbarcar = linhasEmb.filter((r) => saldoFolha.get(folha(r)) >= 1);
     const mE = medidasComercial(aEmbarcar);
     const arvore = linhasArvore(aEmbarcar, 0, "");
 
     // diferencial médio por qualidade, do maior para o menor
-    const porPadrao = [...linhas.reduce((mp, r) => (r.padrao ? mp.set(r.padrao, [...(mp.get(r.padrao) ?? []), r]) : mp), new Map())]
+    const porPadrao = [...semFiltro("padrao").reduce((mp, r) => (r.padrao ? mp.set(r.padrao, [...(mp.get(r.padrao) ?? []), r]) : mp), new Map())]
       .map(([padrao, rows]) => ({ padrao, m: medidasComercial(rows) })).filter((x) => x.m.dif != null).sort((a, b) => b.m.dif - a.m.dif);
 
     // histórico pelo mês da data de inclusão
@@ -1966,18 +1987,30 @@ async function painelComercial(alvo, carga, ctx) {
     const porMes = new Map(meses.map((mes) => [mes, medidasComercial(linhas.filter((r) => r._inc === mes))]));
     const temConilon = (mes) => linhas.some((r) => r._inc === mes && r._esp === "CONILON" && r._dif != null);
 
-    const algumFiltro = FILTROS.some(([k]) => filtro[k]);
+    const algumFiltro = FILTROS.some(([k]) => filtro[k].size);
+    // lista de escolha com caixinhas (várias opções), busca, "todos" e "limpar"
+    const lista = ([k, rot, val, ordem, fmt]) => {
+      const sel = filtro[k], txt = (v) => (fmt ? fmt(v) : v);
+      const resumo = !sel.size ? tr("All") : sel.size === 1 ? txt([...sel][0]) : `${sel.size} ${tr("selected")}`;
+      const ops = opcoes(k, val, ordem);
+      return `<div class="pos-mes pos-multi${listaAberta === k ? " aberta" : ""}" data-multi="${k}"><span>${esc(tr(rot))}</span>
+        <button type="button" class="pos-multi-b${sel.size ? " ativo" : ""}" aria-haspopup="listbox" aria-expanded="${listaAberta === k}"><span>${esc(resumo)}</span><span class="pos-multi-seta" aria-hidden="true">▾</span></button>
+        <div class="pos-multi-p" role="listbox" aria-multiselectable="true">
+          ${ops.length > 8 ? `<input type="search" class="pos-multi-busca" placeholder="${esc(tr("Search…"))}" aria-label="${esc(tr("Search"))}">` : ""}
+          <div class="pos-multi-acoes"><button type="button" data-todos>${esc(tr("Select all"))}</button><button type="button" data-limpar>${esc(tr("Clear"))}</button></div>
+          <div class="pos-multi-ops">${ops.map((v) => `<label><input type="checkbox" value="${esc(v)}" ${sel.has(v) ? "checked" : ""}><span>${esc(txt(v))}</span></label>`).join("")}</div>
+        </div></div>`;
+    };
     alvo.innerHTML = `
     <div class="pos-com-cab">
-      <h2>${esc(filtro.cliente || tr("Dashboard Commercial"))}</h2>
+      <h2>${esc(filtro.cliente.size === 1 ? [...filtro.cliente][0] : tr("Dashboard Commercial"))}</h2>
       ${ult ? `<span class="muted"><span>Last contract:</span> <strong>${esc(ult.contrato)}</strong> (${esc(fmtData(emissao))})</span>` : ""}
     </div>
     <div class="pos-filtros">
-      ${FILTROS.map(([k, rot, val, ordem, fmt]) => `<label class="pos-mes"><span>${esc(tr(rot))}</span><select data-filtro="${k}">
-        <option value="">${esc(tr("All"))}</option>${opcoes(k, val, ordem).map((v) => `<option value="${esc(v)}" ${v === filtro[k] ? "selected" : ""}>${esc(fmt ? fmt(v) : v)}</option>`).join("")}
-      </select></label>`).join("")}
+      ${FILTROS.map(lista).join("")}
       ${algumFiltro ? `<button type="button" class="btn" id="comLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
     </div>
+    <p class="muted pos-nota">${icon("info")} <span>Click a client, a shipment month or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
     <div class="pos-kpis pos-kpis-fix">
       <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Total contracts</span><span class="pos-kpi-v">${fmtN(m.contratos)}</span></div>
       <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Total bags</span><span class="pos-kpi-v">${fmtN(m.sacas)}</span></div>
@@ -1987,9 +2020,9 @@ async function painelComercial(alvo, carga, ctx) {
     </div>
     <div class="pos-duas">
       <section class="pos-card">
-        <div class="pos-card-h"><h2>Bags per client</h2><p class="muted">Click a client to filter the page.</p></div>
+        <div class="pos-card-h"><h2>Bags per client</h2></div>
         <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
-          <tbody>${porCliente.length ? porCliente.map(([cli, v]) => `<tr class="pos-clic${cli === filtro.cliente ? " on" : ""}" data-cliente="${esc(cli)}"><td>${esc(cli)}</td><td class="num">${barra(v, maxCli)}</td></tr>`).join("")
+          <tbody>${porCliente.length ? porCliente.map(([cli, v]) => `<tr class="pos-clic${marca("cliente", cli)}" data-cliente="${esc(cli)}"><td>${esc(cli)}</td><td class="num">${barra(v, maxCli)}</td></tr>`).join("")
             : `<tr><td class="vazio-td">No data for these filters.</td></tr>`}</tbody>
         </table></div>
       </section>
@@ -2004,7 +2037,7 @@ async function painelComercial(alvo, carga, ctx) {
     </div>
     <div class="pos-duas">
       <section class="pos-card">
-        <div class="pos-card-h"><h2>Avg diff per quality</h2><p class="muted">Simple average of the contract lines; Conilon diffs ÷ 100. Click a bar to filter the page.</p></div>
+        <div class="pos-card-h"><h2>Avg diff per quality</h2><p class="muted">Simple average of the contract lines; Conilon diffs ÷ 100.</p></div>
         ${porPadrao.length ? `<div class="pos-grafico"><canvas id="gComQual" role="img" aria-label="Average diff per quality"></canvas></div>` : `<p class="vazio-td">No data for these filters.</p>`}
       </section>
       <section class="pos-card">
@@ -2015,19 +2048,42 @@ async function painelComercial(alvo, carga, ctx) {
       </section>
     </div>`;
 
-    $$("select[data-filtro]", alvo).forEach((s) => s.addEventListener("change", () => { filtro[s.dataset.filtro] = s.value; desenhar(); }));
-    $("#comLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => { filtro[k] = ""; }); desenhar(); });
-    $$("tr[data-cliente]", alvo).forEach((l) => l.addEventListener("click", () => {
-      filtro.cliente = filtro.cliente === l.dataset.cliente ? "" : l.dataset.cliente; desenhar();
-    }));
-    $$(".pos-com-tog", alvo).forEach((b) => b.addEventListener("click", () => {
+    // listas de escolha: abre/fecha no botão; cada caixinha redesenha com a lista ainda aberta
+    $$("[data-multi]", alvo).forEach((caixa) => {
+      const k = caixa.dataset.multi, p = $(".pos-multi-p", caixa);
+      $(".pos-multi-b", caixa).addEventListener("click", () => {
+        listaAberta = listaAberta === k ? null : k;
+        $$("[data-multi]", alvo).forEach((c) => c.classList.toggle("aberta", c.dataset.multi === listaAberta));
+        if (listaAberta) $(".pos-multi-busca", caixa)?.focus();
+      });
+      const aplicar = (valores) => {
+        const rolagem = $(".pos-multi-ops", caixa).scrollTop;
+        filtro[k] = new Set(valores);
+        desenhar().then(() => { const o = $(`[data-multi="${k}"] .pos-multi-ops`, alvo); if (o) o.scrollTop = rolagem; });
+      };
+      $$("input[type=checkbox]", p).forEach((cb) => cb.addEventListener("change", () =>
+        aplicar($$("input[type=checkbox]:checked", p).map((x) => x.value))));
+      $("[data-todos]", p).addEventListener("click", () => aplicar($$("input[type=checkbox]", p).filter((x) => !x.closest("label").hidden).map((x) => x.value)));
+      $("[data-limpar]", p).addEventListener("click", () => aplicar([]));
+      $(".pos-multi-busca", p)?.addEventListener("input", (e) => {
+        const q = norm(e.target.value);
+        $$("label", p).forEach((l) => { l.hidden = !!q && !norm(l.textContent).includes(q); });
+      });
+    });
+    $("#comLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); listaAberta = null; desenhar(); });
+    $$("tr[data-cliente]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("cliente", l.dataset.cliente, e.ctrlKey || e.metaKey)));
+    $$("tr[data-eom]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("eom", l.dataset.eom, e.ctrlKey || e.metaKey)));
+    $$(".pos-com-tog", alvo).forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();  // abrir o mês não filtra
       if (!abertos.delete(b.dataset.no)) abertos.add(b.dataset.no);
       desenhar();
     }));
     $("#comDe", alvo)?.addEventListener("change", (e) => { if (!e.target.value) return; de = e.target.value; if (de > ate) ate = de; desenhar(); });
     $("#comAte", alvo)?.addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; desenhar(); });
 
-    if (porPadrao.length) await graficoQualidades($("#gComQual", alvo), porPadrao, (p) => { filtro.padrao = filtro.padrao === p ? "" : p; desenhar(); });
+    if (porPadrao.length) {
+      await graficoQualidades($("#gComQual", alvo), porPadrao, (p, varios) => selecionar("padrao", p, varios), filtro.padrao);
+    }
     if (meses.length) {
       await graficoHistorico($("#gComHist", alvo), {
         rotulos: meses.map(rotMes),
@@ -2036,5 +2092,14 @@ async function painelComercial(alvo, carga, ctx) {
       });
     }
   };
+  // clique fora da lista aberta fecha (uma vez por página)
+  const fechar = (e) => {
+    if (!alvo.isConnected) { document.removeEventListener("click", fechar); return; }
+    if (listaAberta && !e.target.closest?.("[data-multi]")) {
+      listaAberta = null;
+      $$("[data-multi]", alvo).forEach((c) => c.classList.remove("aberta"));
+    }
+  };
+  document.addEventListener("click", fechar);
   await desenhar();
 }
