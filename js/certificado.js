@@ -70,10 +70,15 @@ function montar(base, ajustes, cert) {
   });
   // só contratos do mês de início do controle em diante
   const doInicio = (r) => !cert.inicio || (r._mes ?? "") >= cert.inicio;
-  const compras = preparar(base.compras, "compra").filter(doInicio), vendas = preparar(base.vendas, "venda").filter(doInicio);
+  const compras = preparar(base.compras, "compra").filter(doInicio);
+  const todasVendas = preparar(base.vendas, "venda");
+  const vendas = todasVendas.filter(doInicio);
+  // exportações embarcadas antes do controle: não entram na posição, mas podem ser
+  // vinculadas às compras (as sacas saem da sobra e do saldo inicial)
+  const anteriores = todasVendas.filter((r) => !doInicio(r) && r._conta).map((r) => ({ ...r, _anterior: true }));
   // ajustes de contratos que não vêm mais do Digisul (renomeados ou apagados)
   const orfaos = ajustes.filter((a) => !usados.has(`${a.tipo}|${a.contrato}`));
-  return { compras, vendas, orfaos };
+  return { compras, vendas, anteriores, orfaos };
 }
 
 // Histórico das compras BRC com o certificado: as linhas gravadas (importadas da
@@ -229,10 +234,11 @@ export async function renderCert(link, alvo, ctx) {
     return;
   }
 
-  const { compras, vendas, orfaos } = montar(base, ajustes, cert);
+  const { compras, vendas, anteriores, orfaos } = montar(base, ajustes, cert);
   const cc = compras.filter((r) => r._conta), vc = vendas.filter((r) => r._conta);
   const hist = montarHistorico(historico, vinculos, compras, cert);
-  for (const r of vendas) r._vinculado = hist.porVenda.get(r.contrato) ?? 0;
+  for (const r of [...vendas, ...anteriores]) r._vinculado = hist.porVenda.get(r.contrato) ?? 0;
+  const vinculaveis = [...vendas, ...anteriores];
   const inicial = hist.inicial;
   const meses = posicaoMensal(cc, vc, inicial, cert.inicio);
   const atual = hojeYm();
@@ -391,8 +397,8 @@ export async function renderCert(link, alvo, ctx) {
     $("#certNovaCompra", alvo)?.addEventListener("click", () => abrirCompra(null, historico, cert, ctx));
     $$("[data-editar-compra]", alvo).forEach((b) => b.addEventListener("click", () => abrirCompra(historico.find((h) => String(h.id) === b.dataset.editarCompra), historico, cert, ctx)));
     $$("[data-remover-compra]", alvo).forEach((b) => b.addEventListener("click", () => removerCompra(hist.linhas.find((h) => String(h.id) === b.dataset.removerCompra), cert, ctx)));
-    $$("[data-usar]", alvo).forEach((b) => b.addEventListener("click", () => abrirUso(hist.linhas.find((h) => h._chave === b.dataset.usar), vendas, hist, cert, ctx)));
-    $$("[data-vincular]", alvo).forEach((b) => b.addEventListener("click", () => abrirVinculo(vendas.find((r) => r.contrato === b.dataset.vincular), hist, cert, ctx)));
+    $$("[data-usar]", alvo).forEach((b) => b.addEventListener("click", () => abrirUso(hist.linhas.find((h) => h._chave === b.dataset.usar), vinculaveis, hist, cert, ctx)));
+    $$("[data-vincular]", alvo).forEach((b) => b.addEventListener("click", () => abrirVinculo(vinculaveis.find((r) => r.contrato === b.dataset.vincular), hist, cert, ctx)));
     $$("[data-acao]", alvo).forEach((b) => b.addEventListener("click", () => executarAcao(b.dataset, todas, cert, ctx)));
   };
 
@@ -447,6 +453,11 @@ export async function renderCert(link, alvo, ctx) {
         usos.get(v.venda).push({ h, sacas: v.sacas, quem: h._novos.includes(v) ? quemLancou(v) : null });
       }
     }
+    // exportações do certificado que batem com a busca e ainda não têm vínculo: entram
+    // no quadro para poder vincular (inclusive as embarcadas antes do controle)
+    if (t.length >= 4) {
+      for (const r of vinculaveis) if (r._conta && r.contrato.toLowerCase().includes(t) && !usos.has(r.contrato) && usos.size < 20) usos.set(r.contrato, []);
+    }
     const porExportacao = [...usos].sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }));
     const quadroExportacao = !porExportacao.length ? "" : `<div class="pos-card">
         <div class="pos-card-h"><h2>BRC purchases used by the export</h2></div>
@@ -454,13 +465,16 @@ export async function renderCert(link, alvo, ctx) {
           <thead><tr><th>BRC contract</th><th>CP ID</th><th>Producer</th><th>Farm</th><th>Due date</th><th class="num">Bags used</th>${editar ? "<th></th>" : ""}</tr></thead>
           <tbody>${porExportacao.map(([venda, us]) => {
             const d = vendaPorContrato.get(venda);
+            const r = vinculaveis.find((x) => x.contrato === venda);
             const ligadas = soma(us, "sacas");
             return `<tr class="cert-grupo"><td colspan="5"><strong>${esc(venda)}</strong>
-                <span class="muted">${esc([d?.cliente, d?.mes ? mesExtenso(d.mes + "-01") : null, d?.sacas != null ? `${fmtN(d.sacas)} bags` : d ? null : "Not found in Digisul"].filter(Boolean).join(" · "))}</span></td>
-                ${num(ligadas, true)}${editar ? "<td></td>" : ""}</tr>
-              ${us.map(({ h, sacas, quem }) => `<tr ${quem ? `title="${esc(`Linked in the portal · ${quem}`)}"` : ""}><td>${esc(h.compra)}</td><td>${esc(h.id_cert ?? "—")}</td>
+                <span class="muted">${esc([d?.cliente, d?.mes ? mesExtenso(d.mes + "-01") : null, d?.sacas != null ? `${fmtN(d.sacas)} bags` : d ? null : "Not found in Digisul"].filter(Boolean).join(" · "))}</span>
+                ${r?._anterior ? ` <span class="pill" title="Shipped before the control started: not in the position; the bags it uses come out of the opening stock">Before the control</span>` : ""}</td>
+                ${num(ligadas, true)}${editar ? `<td class="cert-acoes">${r ? `<button type="button" class="link" data-vincular="${esc(venda)}" title="Which BRC purchases this export came from">${icon("link")}Link</button>` : ""}</td>` : ""}</tr>
+              ${us.length ? us.map(({ h, sacas, quem }) => `<tr ${quem ? `title="${esc(`Linked in the portal · ${quem}`)}"` : ""}><td>${esc(h.compra)}</td><td>${esc(h.id_cert ?? "—")}</td>
                 <td>${esc(h.fornecedor ?? "—")}</td><td>${esc(h.fazenda ?? "—")}</td><td>${esc(h.vencimento ? fmtData(h.vencimento.slice(0, 10)) : "—")}</td>${num(sacas)}
-                ${editar ? `<td class="cert-acoes"><button type="button" class="link" data-desvincular="${esc(JSON.stringify([venda, h._chave]))}" title="Remove this link: the bags go back to the leftover of the purchase">${icon("x")}Unlink</button></td>` : ""}</tr>`).join("")}`;
+                ${editar ? `<td class="cert-acoes"><button type="button" class="link" data-desvincular="${esc(JSON.stringify([venda, h._chave]))}" title="Remove this link: the bags go back to the leftover of the purchase">${icon("x")}Unlink</button></td>` : ""}</tr>`).join("")
+                : `<tr><td colspan="${editar ? 7 : 6}" class="muted">No BRC purchase linked yet.${editar && r ? " Use “Link” to choose the purchases." : ""}</td></tr>`}`;
           }).join("")}</tbody>
         </table></div>
       </div>`;
@@ -863,7 +877,7 @@ function abrirUso(h, vendas, hist, cert, ctx) {
         <td><input type="radio" name="venda" value="${esc(r.contrato)}" ${escolhida === r.contrato ? "checked" : ""} aria-label="${esc(r.contrato)}"></td>
         <td>${esc(r.contrato)}</td><td>${esc(r._cliente ?? "—")}</td><td>${esc(r._mes ? mesExtenso(r._mes + "-01") : "—")}</td>
         <td class="num">${fmtN(teto(r))}</td><td class="num">${fmtN(faltam(r) + desta(r))}</td>
-        <td>${r._conta ? "" : `<span class="pill pill-alerta" title="Not in the position yet: it is included with the bags you link">Not in ${esc(cert.codigo)}</span>`}</td></tr>`).join("")}</tbody></table></div>`;
+        <td>${r._anterior ? `<span class="pill" title="Shipped before the control started: the bags come out of the opening stock">Before the control</span>` : r._conta ? "" : `<span class="pill pill-alerta" title="Not in the position yet: it is included with the bags you link">Not in ${esc(cert.codigo)}</span>`}</td></tr>`).join("")}</tbody></table></div>`;
   };
   modal({
     titulo: "Use leftover in an export",
@@ -899,7 +913,7 @@ function abrirUso(h, vendas, hist, cert, ctx) {
         .map((v) => ({ historico_id: v.historico_id, compra: v.compra, sacas: v.sacas }))
         .concat({ historico_id: h._origem === "digisul" ? null : h.id, compra: h.compra, sacas });
       await ctx.api.salvarCertVinculos(cert.codigo, r.contrato, linhas);
-      if (!r._conta || parcial(r)) {
+      if (!r._anterior && (!r._conta || parcial(r))) {
         await ctx.api.salvarCertAjuste({ certificado: cert.codigo, tipo: "venda", contrato: r.contrato, acao: "incluir",
           sacas: soma(linhas, "sacas") + (hist.porVenda.get(r.contrato) ?? 0) - soma(hist.novos.filter((v) => v.venda === r.contrato), "sacas"),
           obs: `${cert.codigo} bags from ${linhas.map((l) => l.compra).join(", ")}` });
