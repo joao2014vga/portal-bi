@@ -247,6 +247,7 @@ export function criarDemo() {
     },
     async positionModelo() { return JSON.parse(storage.get(CHAVE_MODELO) ?? "null")?.modelo ?? null; },
     async positionFuturos() { return JSON.parse(storage.get(CHAVE_MODELO) ?? "null")?.modelo?.futuros ?? null; },
+    async positionCambios() { return JSON.parse(storage.get(CHAVE_MODELO) ?? "null")?.modelo?.cambios ?? null; },
     async salvarPositionModelo(modelo, nome_arquivo) {
       exigeArquivos();
       storage.set(CHAVE_MODELO, JSON.stringify({ modelo, nome_arquivo, enviado_por: eu().nome, atualizado_em: new Date().toISOString() }));

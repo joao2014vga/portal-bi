@@ -14,7 +14,7 @@ import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } fro
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
   prazoFixacao, alertasFixacao, textoAlertaFixacao, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
-  calcularPosition, basesDaGrade,
+  calcularPosition, basesDaGrade, ABA_CAMBIO,
 } from "./position-calc.js";
 import { t as tr, LOCALE, IDIOMA } from "./i18n.js";
 
@@ -61,7 +61,7 @@ function grade(XLSX, ws) {
 export async function lerPlanilhaPosition(file) {
   const XLSX = await carregarXlsx();
   const wb = XLSX.read(await file.arrayBuffer(), {
-    type: "array", sheets: [...Object.values(ABAS), "OpenFutures", "List"], cellFormula: true, cellHTML: false, cellText: false, cellStyles: false,
+    type: "array", sheets: [...Object.values(ABAS), "OpenFutures", "List", ABA_CAMBIO], cellFormula: true, cellHTML: false, cellText: false, cellStyles: false,
   });
   if (!wb.Sheets[ABAS.termm] && wb.Sheets.OpenFutures) return { futuros: extrairFuturos(XLSX, wb) };
   const faltam = Object.values(ABAS).filter((n) => !wb.Sheets[n]);
@@ -300,8 +300,11 @@ function ligarTopo(alvo, ctx) {
       // fórmulas e futuros desta planilha passam a valer para a atualização pelo Digisul
       if (lida.modelo) {
         try {
-          const antigos = await ctx.api.positionFuturos?.().catch(() => null);
+          const [antigos, cambiosAntigos] = await Promise.all([
+            ctx.api.positionFuturos?.().catch(() => null), ctx.api.positionCambios?.().catch(() => null)]);
           lida.modelo.futuros = manterFuturosDoPortal(lida.modelo.futuros, antigos);
+          // sem a aba Currency Data na planilha, fica o câmbio que já estava guardado
+          lida.modelo.cambios = lida.modelo.cambios ? manterDoPortal(lida.modelo.cambios, cambiosAntigos, mesmoCambio, ABA_CAMBIO) : cambiosAntigos;
           await ctx.api.salvarPositionModelo(lida.modelo, file.name);
           ctx.api.sincronizarPosition().catch(() => { /* o agendamento tenta de novo */ });
         } catch (e) { toast(e.message, "erro"); }
@@ -349,29 +352,59 @@ export function lerEmailFuturos(texto, futuros = []) {
   };
 }
 
-// Futuros lançados pelo portal que a planilha enviada ainda não tem continuam valendo
-// (mesmo Trade No., tipo e lotes = já está na planilha)
-function manterFuturosDoPortal(novos, antigos) {
-  const doPortal = (antigos ?? []).filter((f) => f._portal);
-  const igual = (a, b) => String(a["Trade No."] ?? "") === String(b["Trade No."] ?? "") && norm(a.Tipo) === norm(b.Tipo) && Number(a.Lotes) === Number(b.Lotes);
-  const faltam = doPortal.filter((p) => !novos.some((n) => igual(n, p)));
+// Operações lançadas pelo portal que a planilha enviada ainda não tem continuam valendo
+// (futuros: mesmo Trade No., tipo e lotes; câmbio: mesmo Trade No. e valor em R$ = já está na planilha)
+const mesmoFuturo = (a, b) => String(a["Trade No."] ?? "") === String(b["Trade No."] ?? "") && norm(a.Tipo) === norm(b.Tipo) && Number(a.Lotes) === Number(b.Lotes);
+const mesmoCambio = (a, b) => String(a["Trade No."] ?? "") === String(b["Trade No."] ?? "") && Math.abs(Number(a["Equivalent BRL"]) - Number(b["Equivalent BRL"])) < 0.01;
+function manterDoPortal(novos, antigos, igual, aba) {
+  const faltam = (antigos ?? []).filter((p) => p._portal && !novos.some((n) => igual(n, p)));
   if (faltam.length) {
-    toast(`${faltam.length} futures trade(s) entered in the portal are not in this OpenFutures and were kept: ${faltam.map((f) => f["Trade No."]).join(", ")}. Add them to the spreadsheet.`, "erro");
+    toast(`${faltam.length} ${tr("trade(s) entered in the portal are not in the sheet")} ${aba} ${tr("and were kept")}: ${faltam.map((f) => f["Trade No."]).join(", ")}. ${tr("Add them to the spreadsheet.")}`, "erro");
   }
   return [...novos, ...faltam];
 }
+const manterFuturosDoPortal = (novos, antigos) => manterDoPortal(novos, antigos, mesmoFuturo, "OpenFutures");
 
-const LINHA_PLANILHA = ["Data", "Bolsa", "Tipo", "Mes/Ano", "Lotes", "Valor", "Corretora", "Notas", "Book", "Currency", "Alloc", "Trade No."];
+// E-mail de câmbio (NDF da Marex: "Party B Bought BRL … Sold USD … Exchange Rate … Cash Settled on PTAX").
+// Vai na aba Currency Data, colunas A–L; o portal ainda não usa essa aba, então só monta a linha.
+export const ehEmailCambio = (texto) => /Exchange\s*Rate/i.test(texto) && /Party\s*B\s*(Bought|Sold)/i.test(texto);
+const dataEmail = (s) => {
+  const m = /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(20\d\d)/i.exec(s ?? "");
+  return m ? `${m[3]}-${String(MESES_EN.indexOf(m[2].slice(0, 3).toLowerCase()) + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}` : null;
+};
+export function lerEmailCambio(texto, futuros = []) {
+  const t = String(texto ?? "").replace(/ /g, " ");
+  const campo = (rot) => new RegExp(`${rot}\\s*:?\\s*([^\\n\\t]+)`, "i").exec(t)?.[1]?.trim() ?? null;
+  const ref = /Reference\s*(?:Number|No\.?)\s*:?\s*([A-Z0-9]+-\d+)/i.exec(t)?.[1] ?? null;
+  const comprou = /Party\s*B\s*Bought\s*:?\s*([A-Z]{3})\s*([\d.,]+)/i.exec(t);
+  const vendeu = /Party\s*B\s*Sold\s*:?\s*([A-Z]{3})\s*([\d.,]+)/i.exec(t);
+  // Equivalent BRL: + quando a Brascof (Party B) compra reais, − quando vende
+  const brl = comprou?.[1].toUpperCase() === "BRL" ? numEmail(comprou[2]) : vendeu?.[1].toUpperCase() === "BRL" ? -numEmail(vendeu[2]) : null;
+  const agente = /(?:Party\s*A|Calculation\s*Agent)\s*:?\s*([A-Za-z]+)/i.exec(t)?.[1] ?? null;
+  const prefixo = ref?.split("-")[0];
+  const banco = (prefixo && futuros.find((f) => String(f["Trade No."] ?? "").startsWith(`${prefixo}-`))?.Corretora)
+    || (prefixo && agente ? `${prefixo} ${agente.toUpperCase()}` : null);
+  return {
+    trade: ref, taxa: numEmail(/Exchange\s*Rate\s*:?\s*([\d.,]+)/i.exec(t)?.[1]), brl,
+    fixing: dataEmail(campo("Fixing\\s*Date")), venc: dataEmail(campo("Settlement\\s*Date")), banco,
+    // Notes mais comum: vender dólar cobre pagamento de compras; comprar dólar, recebimento de vendas
+    notas: brl == null ? null : brl > 0 ? "Purchases" : "Sales",
+  };
+}
 
 async function novaOperacaoFuturos(ctx) {
   let futuros = [];
-  try { futuros = (await ctx.api.positionFuturos?.()) ?? []; } catch { /* segue sem as listas de sugestão */ }
+  let cambios = [];
+  try {
+    [futuros, cambios] = await Promise.all([ctx.api.positionFuturos?.(), ctx.api.positionCambios?.().catch(() => null)]);
+    futuros ??= []; cambios ??= [];
+  } catch { /* segue sem as listas de sugestão */ }
   const valores = (k, padrao) => [...new Set([...padrao, ...futuros.map((f) => f[k]).filter(Boolean).map(String)])];
   const opcoes = (lista, atual = "") => lista.map((v) => `<option value="${esc(v)}" ${v === atual ? "selected" : ""}>${esc(v)}</option>`).join("");
   const book = valores("Book", ["Hedge"]);
   const hoje = hojeIso();
   modal({
-    titulo: "New futures trade",
+    titulo: "New futures or FX trade",
     botao: "Save and recalculate",
     largura: "modal-lg",
     corpo: `<p class="muted"><span>Paste the broker confirmation e-mail and click “Read e-mail”.</span>
@@ -379,6 +412,27 @@ async function novaOperacaoFuturos(ctx) {
         <span>Also paste the row in the spreadsheet's OpenFutures (“Copy row”).</span></p>
       <label class="campo"><span>Confirmation e-mail</span><textarea name="email" rows="5" placeholder="Dear …  Reference Number: 0Z1135-03061 …  Sell  Swap EFRS  Coffee 'C'  Dec 2026  286.156 USc/Lb …  7 lots"></textarea></label>
       <div><button type="button" class="btn" id="futLer">${icon("check")}<span>Read e-mail</span></button> <span class="muted" id="futLido"></span></div>
+      <div id="futCambio" hidden>
+        <p class="muted pos-nota">${icon("info")} <span>FX trade (NDF): in the spreadsheet it goes in the Currency Data sheet, not in OpenFutures. The portal keeps it for the FX views to come; also paste the row in Currency Data.</span></p>
+        <p class="muted pos-nota" id="cxRepetido" hidden></p>
+        <div class="fut-grade">
+          <label class="campo"><span>Date (A)</span><input type="date" name="cx_data" value="${hoje}"></label>
+          <label class="campo"><span>Rate USD/BRL (B)</span><input type="number" name="cx_taxa" step="any"></label>
+          <label class="campo"><span>Equivalent BRL (C)</span><input type="number" name="cx_brl" step="any"></label>
+          <label class="campo"><span>Fixing Date (D)</span><input type="date" name="cx_fixing"></label>
+          <label class="campo"><span>Book (E)</span><select name="cx_book">${opcoes(book, "Hedge")}</select></label>
+          <label class="campo"><span>Maturity Date (F)</span><input type="date" name="cx_venc"></label>
+          <label class="campo"><span>Premio (G)</span><input type="number" name="cx_premio" step="any" value="0"></label>
+          <label class="campo"><span>Bank/Acc (H)</span><input type="text" name="cx_banco" list="futCorretoras"></label>
+          <label class="campo"><span>Fix (I)</span><select name="cx_fix">${opcoes(["BRL", "USD"], "BRL")}</select></label>
+          <label class="campo"><span>Notes (J)</span><select name="cx_notas">${opcoes(["Purchases", "Sales", "Cambio/Caixa"])}</select></label>
+          <label class="campo"><span>Contract (K)</span><input type="text" name="cx_contrato" placeholder="BRC-0000/26"></label>
+          <label class="campo"><span>Trade No. (L)</span><input type="text" name="cx_trade"></label>
+        </div>
+        <div class="fut-linha"><span class="muted">Row for the Currency Data sheet (A–L):</span> <code id="cxLinha" data-sem-traducao></code>
+          <button type="button" class="btn" id="cxCopiar">${icon("file")}<span>Copy row</span></button></div>
+      </div>
+      <div id="futFuturos">
       <div class="fut-grade">
         <label class="campo"><span>Date (A) *</span><input type="date" name="data" value="${hoje}" required></label>
         <label class="campo"><span>Exchange (B) *</span><select name="bolsa" required><option value="">—</option>${opcoes(["NY", "LONDRES", "BMF"])}</select></label>
@@ -397,6 +451,7 @@ async function novaOperacaoFuturos(ctx) {
       <p class="muted pos-nota" id="futRepetido" hidden></p>
       <div class="fut-linha"><span class="muted">Row for the spreadsheet (A–L):</span> <code id="futLinha" data-sem-traducao></code>
         <button type="button" class="btn" id="futCopiar">${icon("file")}<span>Copy row</span></button></div>
+      </div>
       <div id="futDoPortal"></div>`,
     onOpen(f) {
       const campos = ["data", "bolsa", "tipo", "mes", "lotes", "valor", "corretora", "notas", "book", "currency", "alloc", "trade"];
@@ -418,7 +473,47 @@ async function novaOperacaoFuturos(ctx) {
       };
       campos.forEach((k) => f[k].addEventListener("input", atualizar));
       campos.forEach((k) => f[k].addEventListener("change", atualizar));
+      // câmbio: só a linha da Currency Data (data dd/mm/aaaa, números no formato do Excel em português)
+      const CX = ["cx_data", "cx_taxa", "cx_brl", "cx_fixing", "cx_book", "cx_venc", "cx_premio", "cx_banco", "cx_fix", "cx_notas", "cx_contrato", "cx_trade"];
+      const linhaCambio = () => CX.map((k) => {
+        const v = f[k].value.trim();
+        if (!v) return "";
+        if (f[k].type === "date") return `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}`;
+        return f[k].type === "number" ? Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 6 }) : v;
+      });
+      const atualizarCambio = () => {
+        $("#cxLinha", f).textContent = linhaCambio().join(" | ");
+        const tr_ = f.cx_trade.value.trim();
+        const iguais = tr_ ? cambios.filter((x) => String(x["Trade No."] ?? "") === tr_) : [];
+        const aviso = $("#cxRepetido", f);
+        aviso.hidden = !iguais.length;
+        aviso.textContent = iguais.length ? `${tr("Trade No. already in Currency Data")}: ${iguais.map((x) => `R$ ${fmtN(x["Equivalent BRL"], 2)} · ${x.Notes ?? "—"} · ${x.Contract ?? "—"}`).join("; ")}.` : "";
+      };
+      CX.forEach((k) => { f[k].addEventListener("input", atualizarCambio); f[k].addEventListener("change", atualizarCambio); });
+      $("#cxCopiar", f).addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(linhaCambio().join("\t")); toast(tr("Row copied: paste it in the spreadsheet's Currency Data.")); }
+        catch { toast(tr("Could not copy — select the row and copy it by hand."), "erro"); }
+      });
+      const modoCambio = (sim) => {
+        $("#futCambio", f).hidden = !sim;
+        $("#futFuturos", f).hidden = sim;
+        f.dataset.modo = sim ? "cambio" : "futuro";
+        $('button[type="submit"]', f).textContent = tr(sim ? "Save FX trade" : "Save and recalculate");
+      };
       $("#futLer", f).addEventListener("click", () => {
+        if (ehEmailCambio(f.email.value)) {
+          const c = lerEmailCambio(f.email.value, futuros);
+          const mapa = { cx_trade: c.trade, cx_taxa: c.taxa, cx_brl: c.brl, cx_fixing: c.fixing, cx_venc: c.venc, cx_banco: c.banco, cx_notas: c.notas };
+          const faltou = [];
+          for (const [k, v] of Object.entries(mapa)) { if (v == null || v === "") faltou.push(k.slice(3)); else f[k].value = String(v); }
+          modoCambio(true);
+          $("#futLido", f).textContent = faltou.length ? `${tr("Not found in the e-mail")}: ${faltou.join(", ")}`
+            : tr("FX e-mail read. Check Notes and fill in the Contract.");
+          atualizarCambio();
+          f.cx_contrato.focus();
+          return;
+        }
+        modoCambio(false);
         const l = lerEmailFuturos(f.email.value, futuros);
         const mapa = { trade: l.trade, tipo: l.tipo, bolsa: l.bolsa, mes: l.mes, valor: l.valor, currency: l.currency, lotes: l.lotes, corretora: l.corretora };
         const faltou = [];
@@ -433,9 +528,24 @@ async function novaOperacaoFuturos(ctx) {
         catch { toast(tr("Could not copy — select the row and copy it by hand."), "erro"); }
       });
       atualizar();
-      listarFuturosDoPortal($("#futDoPortal", f), futuros, ctx);
+      listarDoPortal($("#futDoPortal", f), futuros, cambios, ctx);
     },
     async onSubmit(f) {
+      if (f.dataset.modo === "cambio") {
+        for (const k of ["cx_data", "cx_taxa", "cx_brl", "cx_fixing", "cx_venc", "cx_banco", "cx_trade"]) {
+          if (!f[k].value.trim()) throw new Error(tr("Fill in date, rate, BRL amount, fixing, maturity, bank and Trade No."));
+        }
+        const txt = (k) => f[k].value.trim() || undefined;
+        const cambio = {
+          Date: serialDeIso(f.cx_data.value), "Rate USD/BRL": Number(f.cx_taxa.value), "Equivalent BRL": Number(f.cx_brl.value),
+          "Fixing Date": serialDeIso(f.cx_fixing.value), Book: f.cx_book.value, "Maturity Date": serialDeIso(f.cx_venc.value),
+          Premio: Number(f.cx_premio.value || 0), "Bank/Acc": txt("cx_banco"), Fix: f.cx_fix.value, Notes: f.cx_notas.value,
+          Contract: txt("cx_contrato"), "Trade No.": txt("cx_trade"), _portal: new Date().toISOString(),
+        };
+        await gravarModelo(ctx, (m) => ({ ...m, cambios: [...(m.cambios ?? []), cambio] }));
+        toast(`${tr("FX trade saved")}: ${cambio["Trade No."]}.`);
+        return;
+      }
       for (const k of ["data", "bolsa", "tipo", "mes", "lotes", "valor", "corretora", "notas", "book", "currency", "trade"]) {
         if (!f[k].value.trim()) throw new Error(tr("Fill in all the fields marked with *."));
       }
@@ -445,7 +555,7 @@ async function novaOperacaoFuturos(ctx) {
         Book: f.book.value, Currency: f.currency.value, "Trade No.": f.trade.value.trim(), _portal: new Date().toISOString(),
       };
       if (f.alloc.value.trim()) nova.Alloc = f.alloc.value.trim();
-      await gravarFuturos(ctx, (lista) => [...lista, nova]);
+      await gravarModelo(ctx, (m) => ({ ...m, futuros: [...(m.futuros ?? []), nova] }));
       toast(`${tr("Futures trade saved")}: ${nova["Trade No."]}. ${tr("Recalculating from Digisul…")}`);
       await ctx.api.sincronizarPosition().then(() => toast(tr("Position updated from Digisul."))).catch((e) => toast(e.message, "erro"));
       guardarFonteVista("api");
@@ -454,32 +564,45 @@ async function novaOperacaoFuturos(ctx) {
   });
 }
 
-// troca a lista de futuros do modelo (mantém as fórmulas e o nome da planilha de origem)
-async function gravarFuturos(ctx, mudar) {
+// troca futuros/câmbio do modelo (mantém as fórmulas e o nome da planilha de origem)
+async function gravarModelo(ctx, mudar) {
   const [modelo, info] = await Promise.all([ctx.api.positionModelo(), ctx.api.positionModeloInfo?.().catch(() => null)]);
-  if (!modelo) throw new Error(tr("Upload the full Position spreadsheet once before adding futures in the portal."));
-  await ctx.api.salvarPositionModelo({ ...modelo, futuros: mudar(modelo.futuros ?? []) }, info?.nome_arquivo ?? "Portal");
+  if (!modelo) throw new Error(tr("Upload the full Position spreadsheet once before adding trades in the portal."));
+  await ctx.api.salvarPositionModelo(mudar(modelo), info?.nome_arquivo ?? "Portal");
 }
 
-// operações lançadas pelo portal, com a opção de desfazer
-function listarFuturosDoPortal(alvo, futuros, ctx) {
-  const lista = futuros.filter((x) => x._portal);
-  if (!lista.length) { alvo.innerHTML = ""; return; }
-  alvo.innerHTML = `<h3 class="pos-comp-h">Entered in the portal <span class="muted">· ${lista.length}</span></h3>
+// operações lançadas pelo portal (futuros e câmbio), com a opção de desfazer
+function listarDoPortal(alvo, futuros, cambios, ctx) {
+  const fut = futuros.filter((x) => x._portal), cx = cambios.filter((x) => x._portal);
+  if (!fut.length && !cx.length) { alvo.innerHTML = ""; return; }
+  const lixo = (tipo, i) => `<td><button type="button" class="btn-icon" data-desfazer="${tipo}:${i}" title="${esc(tr("Remove"))}" aria-label="${esc(tr("Remove"))}">${icon("trash")}</button></td>`;
+  alvo.innerHTML = `${fut.length ? `<h3 class="pos-comp-h">Futures entered in the portal <span class="muted">· ${fut.length}</span></h3>
     <div class="tabela-wrap"><table class="tabela tabela-num">
       <thead><tr><th>Trade No.</th><th>Date</th><th>Exchange</th><th>Type</th><th>Month</th><th class="num">Lots</th><th class="num">Price</th><th>Notes</th><th>Alloc</th><th></th></tr></thead>
-      <tbody>${lista.map((x, i) => `<tr><td>${esc(x["Trade No."])}</td><td>${esc(fmtData(isoDeSerial(x.Data)))}</td><td>${esc(x.Bolsa)}</td><td>${esc(x.Tipo)}</td>
+      <tbody>${fut.map((x, i) => `<tr><td>${esc(x["Trade No."])}</td><td>${esc(fmtData(isoDeSerial(x.Data)))}</td><td>${esc(x.Bolsa)}</td><td>${esc(x.Tipo)}</td>
         <td>${esc(fmtMes(isoDeSerial(x["Mes/Ano"])))}</td><td class="num">${fmtLotes(x.Lotes)}</td><td class="num">${fmtN(x.Valor, 3)}</td><td>${esc(x.Notas ?? "—")}</td><td>${esc(x.Alloc ?? "—")}</td>
-        <td><button type="button" class="btn-icon" data-desfazer="${i}" title="${esc(tr("Remove"))}" aria-label="${esc(tr("Remove"))}">${icon("trash")}</button></td></tr>`).join("")}</tbody>
-    </table></div>`;
+        ${lixo("f", i)}</tr>`).join("")}</tbody>
+    </table></div>` : ""}
+    ${cx.length ? `<h3 class="pos-comp-h">FX entered in the portal <span class="muted">· ${cx.length}</span></h3>
+    <div class="tabela-wrap"><table class="tabela tabela-num">
+      <thead><tr><th>Trade No.</th><th>Date</th><th class="num">Rate</th><th class="num">BRL</th><th>Fixing</th><th>Maturity</th><th>Notes</th><th>Contract</th><th></th></tr></thead>
+      <tbody>${cx.map((x, i) => `<tr><td>${esc(x["Trade No."] ?? "—")}</td><td>${esc(fmtData(isoDeSerial(x.Date)))}</td><td class="num">${fmtN(x["Rate USD/BRL"], 4)}</td>
+        <td class="num">${fmtN(x["Equivalent BRL"], 2)}</td><td>${esc(fmtData(isoDeSerial(x["Fixing Date"])))}</td><td>${esc(fmtData(isoDeSerial(x["Maturity Date"])))}</td>
+        <td>${esc(x.Notes ?? "—")}</td><td>${esc(x.Contract ?? "—")}</td>${lixo("c", i)}</tr>`).join("")}</tbody>
+    </table></div>` : ""}`;
   $$("[data-desfazer]", alvo).forEach((b) => b.addEventListener("click", async () => {
-    const x = lista[Number(b.dataset.desfazer)];
-    if (!confirm(`${tr("Remove the futures trade")} ${x["Trade No."]} (${x.Tipo} ${fmtLotes(x.Lotes)} ${tr("lots")})?`)) return;
+    const [tipo, i] = b.dataset.desfazer.split(":");
+    const x = (tipo === "f" ? fut : cx)[Number(i)];
+    const rot = tipo === "f" ? `${x.Tipo} ${fmtLotes(x.Lotes)} ${tr("lots")}` : `R$ ${fmtN(x["Equivalent BRL"], 2)}`;
+    if (!confirm(`${tr(tipo === "f" ? "Remove the futures trade" : "Remove the FX trade")} ${x["Trade No."] ?? ""} (${rot})?`)) return;
     b.disabled = true;
     try {
-      await gravarFuturos(ctx, (todos) => todos.filter((y) => y._portal !== x._portal));
-      toast(tr("Futures trade removed. Recalculating from Digisul…"));
-      await ctx.api.sincronizarPosition().catch((e) => toast(e.message, "erro"));
+      const chave = tipo === "f" ? "futuros" : "cambios";
+      await gravarModelo(ctx, (m) => ({ ...m, [chave]: (m[chave] ?? []).filter((y) => y._portal !== x._portal) }));
+      if (tipo === "f") {
+        toast(tr("Futures trade removed. Recalculating from Digisul…"));
+        await ctx.api.sincronizarPosition().catch((e) => toast(e.message, "erro"));
+      } else toast(tr("FX trade removed."));
       $$(".modal-bg").at(-1)?.querySelector("[data-close]")?.click();
       ctx.recarregar();
     } catch (e) { toast(e.message, "erro"); b.disabled = false; }

@@ -1151,7 +1151,8 @@ export function extrairModelo(XLSX, wb) {
     while (vals.length && vals[vals.length - 1] == null) vals.pop();
     if (vals.length) lista[L] = vals;
   }
-  return { versao: 1, abas, bases, lista, futuros: extrairFuturos(XLSX, wb) };
+  // câmbio (aba Currency Data): ainda não entra no cálculo, fica guardado para uma tela de câmbio
+  return { versao: 1, abas, bases, lista, futuros: extrairFuturos(XLSX, wb), cambios: extrairCambios(XLSX, wb) };
 }
 
 // Títulos (linha 1) e fórmulas das colunas cinzas (linha 2) de uma aba base
@@ -1170,6 +1171,32 @@ function estruturaBase(XLSX, ws) {
 }
 
 // Operações de futuros da aba OpenFutures: só as colunas digitadas (as cinzas o avaliador recalcula)
+// Operações de câmbio da aba Currency Data: só as colunas digitadas (A–N), pelo título.
+// Sem a aba, segue sem (null) — o câmbio ainda não entra em nenhum cálculo.
+export const ABA_CAMBIO = "Currency Data";
+export const COLS_CAMBIO = ["Date", "Rate USD/BRL", "Equivalent BRL", "Fixing Date", "Book", "Maturity Date", "Premio",
+  "Bank/Acc", "Fix", "Notes", "Contract", "Trade No.", "Obs.", "Antic. Date"];
+export function extrairCambios(XLSX, wb) {
+  const ws = wb.Sheets[ABA_CAMBIO];
+  if (!ws?.["!ref"]) return null;
+  const r = XLSX.utils.decode_range(ws["!ref"]);
+  const cols = [];
+  for (let C = 0; C <= r.e.c; C++) {
+    const titulo = String(ws[`${XLSX.utils.encode_col(C)}1`]?.v ?? "").trim();
+    if (COLS_CAMBIO.includes(titulo)) cols.push([XLSX.utils.encode_col(C), titulo]);
+  }
+  const cambios = [];
+  for (let R = 1; R <= r.e.r; R++) {
+    const o = {};
+    for (const [L, titulo] of cols) {
+      const c = ws[`${L}${R + 1}`];
+      if (c && c.t !== "e" && c.v != null && c.v !== "") o[titulo] = c.v;
+    }
+    if (o.Date != null) cambios.push(o);  // sem data é sobra solta na aba (ex.: só um Trade No.)
+  }
+  return cambios;
+}
+
 export function extrairFuturos(XLSX, wb) {
   const ws = wb.Sheets.OpenFutures;
   if (!ws?.["!ref"]) throw new Error('Sheet "OpenFutures" not found.');

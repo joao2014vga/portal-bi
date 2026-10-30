@@ -293,6 +293,12 @@ async function criarApiSupabase() {
       if (error) throw new Error(erroPosition(error.message));
       return data?.futuros ?? null;
     },
+    // câmbio da aba Currency Data (guardado para as telas de câmbio)
+    async positionCambios() {
+      const { data, error } = await sb.from("bi_position_modelo").select("cambios:modelo->cambios").eq("id", 1).maybeSingle();
+      if (error) throw new Error(erroPosition(error.message));
+      return data?.cambios ?? null;
+    },
     async salvarPositionModelo(modelo, nome_arquivo) {
       const { error } = await sb.rpc("bi_position_salvar_modelo", { p_modelo: modelo, p_nome: nome_arquivo });
       if (error) throw new Error(erroPosition(error.message));
