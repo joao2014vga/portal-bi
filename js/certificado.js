@@ -13,10 +13,11 @@ import { t as traduzir, LOCALE } from "./i18n.js";
 export const ehPainelCert = (link) => /^portal:cert-/.test(link ?? "");
 
 // Contrato entra quando o certificador tem o certificado, mesmo junto com outros
-// ("RAINFOREST ALIANCE,EUDR,CAFE PRATICES"). A exportação não preenche o CP no
-// Digisul, então a venda também entra pelo cliente no Alertas ou na qualidade
-// (`cliente`) ou pelo certificado escrito na descrição da qualidade (`descricao`,
-// ex.: "C.A.F.E. PRACTICES VERIFIED") — regra conferida contra o Power BI.
+// ("RAINFOREST ALIANCE,EUDR,CAFE PRATICES"). Até 30/10/2026 a exportação não trazia o
+// CP do Digisul, então a venda emitida até essa data também entra pelo cliente no
+// Alertas ou na qualidade (`cliente`) ou pelo certificado escrito na descrição da
+// qualidade (`descricao`, ex.: "C.A.F.E. PRACTICES VERIFIED") — regra conferida
+// contra o Power BI. As emitidas depois contam só pela certificação.
 const CERTS = {
   "portal:cert-cp": {
     // o controle começa em nov/26 com a sobra da planilha (aba By producer) como saldo inicial
@@ -25,7 +26,9 @@ const CERTS = {
     // produtor que já passou do volume que pode ser usado: a sobra não entra no saldo
     // inicial e as compras dele não contam (dá para incluir uma a uma, se precisar)
     bloqueado: { re: /ALL?YSSON/i, nome: "Allysson" },
-    venda: { cliente: /STARBUCK|\bSBUX\b|\bSTBX\b/i, descricao: /C\.?\s?A\.?\s?F\.?\s?E\.?\s+PRA[CT]?TICES|\bCP\b/i },
+    // a regra vale para os contratos emitidos até `ate`: em 30/10/2026 o Digisul passou a
+    // trazer a certificação das exportações, e os contratos novos contam só por ela
+    venda: { cliente: /STARBUCK|\bSBUX\b|\bSTBX\b/i, descricao: /C\.?\s?A\.?\s?F\.?\s?E\.?\s+PRA[CT]?TICES|\bCP\b/i, ate: "2026-10-30" },
   },
 };
 
@@ -56,7 +59,7 @@ function montar(base, ajustes, cert) {
     const a = aj.get(chave) ?? null;
     if (a) usados.add(chave);
     const peloCertificado = cert.re.test(r.certificado ?? "");
-    const regra = !peloCertificado && tipo === "venda" && !!cert.venda
+    const regra = !peloCertificado && tipo === "venda" && !!cert.venda && (r.emissao ?? "").slice(0, 10) <= cert.venda.ate
       && (cert.venda.cliente.test(`${r.alertas ?? ""} ${r.qualidade ?? ""}`) || cert.venda.descricao.test(r.qualidade ?? ""));
     const bloqueado = tipo === "compra" && !!cert.bloqueado?.re.test(r.fornecedor ?? "");
     const auto = (peloCertificado || regra) && !bloqueado;

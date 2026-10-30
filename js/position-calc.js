@@ -520,7 +520,7 @@ function expSales(a) {
     "Referência": t(a.nom_ref_cli), "Prev. Carga": data(a["Prev Carga"]), "Data Saída": data(a.Data_Saida),
     "Saída (sc)": Math.round(z(a.Saida_sc)), "Devolução": z(a.Devolucao),
     "Saldo (sc)": Math.round(z(a.Sacas) - z(a.Saida_sc) + z(a.Devolucao)),
-    "Certificação": t(a["ifnull(A.Certificador,'')"]), "Emissão": data(a.Emissao), "Data BL": data(a.Data_BL),
+    "Certificação": t(a.Certificacao || a["ifnull(A.Certificador,'')"]), "Emissão": data(a.Emissao), "Data BL": data(a.Data_BL),
     "Safras": t(a.Safras), "Qtd. Embalagem (Vol.)": n(a.Qtd_Embalagem_Vol), "Incoterm": t(a.Incoterm),
     "Condição": t(a.Condicao), "Alertas": tq(a.Alertas),
     // a tela calcula pelo peso faturado; o valor de registro bate em ~86% (o portal só usa sem preço)
