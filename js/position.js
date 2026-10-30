@@ -239,6 +239,7 @@ function barraTopo(carga, ctx) {
     ${ctx.gerente ? `<div class="pos-acoes">
       ${segmentos("posFonte", Object.entries(NOME_FONTE).map(([k, n]) => [k, k === ctx.oficial ? `${n} · official` : n]), ctx.fonte)}
       <button class="btn" id="posSync" title="Fetch Digisul and recalculate now">${icon("refresh")}<span>Update now</span></button>
+      <button class="btn" id="posFuturo" title="Paste the broker confirmation e-mail">${icon("plus")}<span>New futures trade</span></button>
       <button class="btn btn-primary" id="posUpload">${icon("upload")}<span>Upload Position</span></button>
     </div>` : ""}
   </div>`;
@@ -262,6 +263,7 @@ function ligarTopo(alvo, ctx) {
       b.querySelector("span").textContent = "Update now";
     }
   });
+  $("#posFuturo", alvo)?.addEventListener("click", () => novaOperacaoFuturos(ctx));
   $("#posUpload", alvo)?.addEventListener("click", () => modal({
     titulo: "Upload Position",
     botao: "Read and publish",
@@ -277,7 +279,7 @@ function ligarTopo(alvo, ctx) {
         // só a aba OpenFutures: troca os futuros do modelo e recalcula pela API
         const modelo = await ctx.api.positionModelo();
         if (!modelo) throw new Error("Upload the full Position spreadsheet once before sending only the futures.");
-        await ctx.api.salvarPositionModelo({ ...modelo, futuros: lida.futuros }, file.name);
+        await ctx.api.salvarPositionModelo({ ...modelo, futuros: manterFuturosDoPortal(lida.futuros, modelo.futuros) }, file.name);
         toast(`Futures updated: ${fmtN(lida.futuros.length)} trades. Recalculating from Digisul…`);
         await ctx.api.sincronizarPosition().then(() => toast("Position updated from Digisul.")).catch((e) => toast(e.message, "erro"));
         ctx.recarregar();
@@ -298,12 +300,189 @@ function ligarTopo(alvo, ctx) {
       // fórmulas e futuros desta planilha passam a valer para a atualização pelo Digisul
       if (lida.modelo) {
         try {
+          const antigos = await ctx.api.positionFuturos?.().catch(() => null);
+          lida.modelo.futuros = manterFuturosDoPortal(lida.modelo.futuros, antigos);
           await ctx.api.salvarPositionModelo(lida.modelo, file.name);
           ctx.api.sincronizarPosition().catch(() => { /* o agendamento tenta de novo */ });
         } catch (e) { toast(e.message, "erro"); }
       }
       ctx.recarregar();
     },
+  }));
+}
+
+// ---------------------------------------------------------------- Nova operação de futuros
+// Cola o e-mail de confirmação da corretora (ex.: Marex); o portal preenche as colunas
+// A–L da OpenFutures, a pessoa completa Notas, Book e Alloc, e a operação entra nos
+// futuros que a atualização pelo Digisul usa. Fica marcada com "_portal" (a data em que
+// entrou), para poder ser desfeita e para não sumir quando a planilha for enviada.
+const MESES_EN = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const serialDeIso = (iso) => Math.round((Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) - Date.UTC(1899, 11, 30)) / 864e5);
+const isoDeSerial = (n) => (typeof n === "number" ? new Date(Date.UTC(1899, 11, 30) + n * 864e5).toISOString().slice(0, 10) : null);
+const numEmail = (s) => (s == null ? null : Number(String(s).replace(/,/g, "")));  // formato americano: 3,385.00
+
+export function lerEmailFuturos(texto, futuros = []) {
+  const t = String(texto ?? "").replace(/ /g, " ");
+  // os valores vêm depois dos títulos da tabela (o último é "Expiry Date")
+  const dados = t.split(/Expiry\s*Date/i).slice(1).join(" ") || t;
+  const ref = /Reference\s*(?:Number|No\.?)\s*:?\s*([A-Z0-9]+-\d+)/i.exec(t)?.[1] ?? null;
+  const lado = /(?:^|[\s|;])(Buy|Sell)(?![\w/])/i.exec(dados)?.[1] ?? null;
+  const bolsa = /Robusta|London|\bLRC\b|\bRC\b/i.test(dados) ? "LONDRES" : /Coffee\s*['’"]?C\b|Arabica|\bKC\b/i.test(dados) ? "NY" : null;
+  // mês de entrega: mês e ano sem dia na frente (a data de vencimento vem com o dia)
+  const mes = /(?<!\d\s)\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(20\d\d)\b/i.exec(dados);
+  const strike = /([\d.,]+)\s*(USc\s*\/\s*Lb|US\s*cents?|USD\s*\/\s*M?T|\$\s*\/\s*M?T|BRL)/i.exec(dados);
+  const lotes = /([\d.,]+)\s*lots?\b/i.exec(dados);
+  const agente = /Calculation\s*Agent\s*:?\s*([A-Za-z]+)/i.exec(t)?.[1] ?? null;
+  const prefixo = ref?.split("-")[0];
+  // corretora: a mesma das operações já lançadas com essa conta; senão "conta AGENTE"
+  const corretora = (prefixo && futuros.find((f) => String(f["Trade No."] ?? "").startsWith(`${prefixo}-`))?.Corretora)
+    || (prefixo && agente ? `${prefixo} ${agente.toUpperCase()}` : null);
+  return {
+    trade: ref,
+    tipo: lado ? (/sell/i.test(lado) ? "Venda" : "Compra") : null,
+    bolsa,
+    mes: mes ? `${mes[2]}-${String(MESES_EN.indexOf(mes[1].slice(0, 3).toLowerCase()) + 1).padStart(2, "0")}` : null,
+    valor: strike ? numEmail(strike[1]) : null,
+    currency: strike ? (/BRL/i.test(strike[2]) ? "BRL" : "USD") : null,
+    lotes: lotes ? numEmail(lotes[1]) : null,
+    corretora,
+  };
+}
+
+// Futuros lançados pelo portal que a planilha enviada ainda não tem continuam valendo
+// (mesmo Trade No., tipo e lotes = já está na planilha)
+function manterFuturosDoPortal(novos, antigos) {
+  const doPortal = (antigos ?? []).filter((f) => f._portal);
+  const igual = (a, b) => String(a["Trade No."] ?? "") === String(b["Trade No."] ?? "") && norm(a.Tipo) === norm(b.Tipo) && Number(a.Lotes) === Number(b.Lotes);
+  const faltam = doPortal.filter((p) => !novos.some((n) => igual(n, p)));
+  if (faltam.length) {
+    toast(`${faltam.length} futures trade(s) entered in the portal are not in this OpenFutures and were kept: ${faltam.map((f) => f["Trade No."]).join(", ")}. Add them to the spreadsheet.`, "erro");
+  }
+  return [...novos, ...faltam];
+}
+
+const LINHA_PLANILHA = ["Data", "Bolsa", "Tipo", "Mes/Ano", "Lotes", "Valor", "Corretora", "Notas", "Book", "Currency", "Alloc", "Trade No."];
+
+async function novaOperacaoFuturos(ctx) {
+  let futuros = [];
+  try { futuros = (await ctx.api.positionFuturos?.()) ?? []; } catch { /* segue sem as listas de sugestão */ }
+  const valores = (k, padrao) => [...new Set([...padrao, ...futuros.map((f) => f[k]).filter(Boolean).map(String)])];
+  const opcoes = (lista, atual = "") => lista.map((v) => `<option value="${esc(v)}" ${v === atual ? "selected" : ""}>${esc(v)}</option>`).join("");
+  const book = valores("Book", ["Hedge"]);
+  const hoje = hojeIso();
+  modal({
+    titulo: "New futures trade",
+    botao: "Save and recalculate",
+    largura: "modal-lg",
+    corpo: `<p class="muted"><span>Paste the broker confirmation e-mail and click “Read e-mail”.</span>
+        <span>Check the fields, fill in Notes, Book and Alloc, and save: the trade joins the futures used by the Digisul update.</span>
+        <span>Also paste the row in the spreadsheet's OpenFutures (“Copy row”).</span></p>
+      <label class="campo"><span>Confirmation e-mail</span><textarea name="email" rows="5" placeholder="Dear …  Reference Number: 0Z1135-03061 …  Sell  Swap EFRS  Coffee 'C'  Dec 2026  286.156 USc/Lb …  7 lots"></textarea></label>
+      <div><button type="button" class="btn" id="futLer">${icon("check")}<span>Read e-mail</span></button> <span class="muted" id="futLido"></span></div>
+      <div class="fut-grade">
+        <label class="campo"><span>Date (A) *</span><input type="date" name="data" value="${hoje}" required></label>
+        <label class="campo"><span>Exchange (B) *</span><select name="bolsa" required><option value="">—</option>${opcoes(["NY", "LONDRES", "BMF"])}</select></label>
+        <label class="campo"><span>Type (C) *</span><select name="tipo" required><option value="">—</option>${opcoes(["Compra", "Venda"])}</select></label>
+        <label class="campo"><span>Month (D) *</span><input type="month" name="mes" required></label>
+        <label class="campo"><span>Lots (E) *</span><input type="number" name="lotes" step="any" min="0" required></label>
+        <label class="campo"><span>Price (F) *</span><input type="number" name="valor" step="any" required></label>
+        <label class="campo"><span>Broker (G) *</span><input type="text" name="corretora" list="futCorretoras" required>
+          <datalist id="futCorretoras">${opcoes(valores("Corretora", []))}</datalist></label>
+        <label class="campo"><span>Notes (H) *</span><select name="notas" required><option value="">—</option>${opcoes(valores("Notas", ["EXP", "LOW GRADE", "CONILON"]))}</select></label>
+        <label class="campo"><span>Book (I) *</span><select name="book" required>${opcoes(book, "Hedge")}</select></label>
+        <label class="campo"><span>Currency (J) *</span><select name="currency" required>${opcoes(["USD", "BRL"], "USD")}</select></label>
+        <label class="campo"><span>Alloc (K)</span><input type="text" name="alloc" placeholder="BRC-0000/26"></label>
+        <label class="campo"><span>Trade No. (L) *</span><input type="text" name="trade" required></label>
+      </div>
+      <p class="muted pos-nota" id="futRepetido" hidden></p>
+      <div class="fut-linha"><span class="muted">Row for the spreadsheet (A–L):</span> <code id="futLinha" data-sem-traducao></code>
+        <button type="button" class="btn" id="futCopiar">${icon("file")}<span>Copy row</span></button></div>
+      <div id="futDoPortal"></div>`,
+    onOpen(f) {
+      const campos = ["data", "bolsa", "tipo", "mes", "lotes", "valor", "corretora", "notas", "book", "currency", "alloc", "trade"];
+      const linha = () => {
+        const v = Object.fromEntries(campos.map((k) => [k, f[k].value.trim()]));
+        const num = (x) => (x === "" ? "" : Number(x).toLocaleString("pt-BR", { maximumFractionDigits: 6 }));
+        return [v.data ? `${v.data.slice(8, 10)}/${v.data.slice(5, 7)}/${v.data.slice(0, 4)}` : "", v.bolsa, v.tipo,
+          v.mes ? `01/${v.mes.slice(5, 7)}/${v.mes.slice(0, 4)}` : "", num(v.lotes), num(v.valor), v.corretora, v.notas, v.book, v.currency, v.alloc, v.trade];
+      };
+      const atualizar = () => {
+        $("#futLinha", f).textContent = linha().join(" | ");
+        const tr_ = f.trade.value.trim();
+        const iguais = tr_ ? futuros.filter((x) => String(x["Trade No."] ?? "") === tr_) : [];
+        const aviso = $("#futRepetido", f);
+        aviso.hidden = !iguais.length;
+        aviso.textContent = iguais.length
+          ? `${tr("Trade No. already in the futures")}: ${iguais.map((x) => `${x.Tipo} ${fmtLotes(x.Lotes)} ${tr("lots")} · ${x.Notas ?? "—"} · ${x.Alloc ?? "—"}`).join("; ")}. ${tr("The same reference can have more than one row (one per allocation).")}`
+          : "";
+      };
+      campos.forEach((k) => f[k].addEventListener("input", atualizar));
+      campos.forEach((k) => f[k].addEventListener("change", atualizar));
+      $("#futLer", f).addEventListener("click", () => {
+        const l = lerEmailFuturos(f.email.value, futuros);
+        const mapa = { trade: l.trade, tipo: l.tipo, bolsa: l.bolsa, mes: l.mes, valor: l.valor, currency: l.currency, lotes: l.lotes, corretora: l.corretora };
+        const faltou = [];
+        for (const [k, v] of Object.entries(mapa)) { if (v == null || v === "") faltou.push(k); else f[k].value = String(v); }
+        if (l.bolsa === "LONDRES" && !f.notas.value) f.notas.value = "CONILON";
+        $("#futLido", f).textContent = faltou.length ? `${tr("Not found in the e-mail")}: ${faltou.join(", ")}` : tr("All e-mail fields read. Fill in Notes, Book and Alloc.");
+        atualizar();
+        (f.notas.value ? f.alloc : f.notas).focus();
+      });
+      $("#futCopiar", f).addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(linha().join("\t")); toast(tr("Row copied: paste it in the spreadsheet's OpenFutures.")); }
+        catch { toast(tr("Could not copy — select the row and copy it by hand."), "erro"); }
+      });
+      atualizar();
+      listarFuturosDoPortal($("#futDoPortal", f), futuros, ctx);
+    },
+    async onSubmit(f) {
+      for (const k of ["data", "bolsa", "tipo", "mes", "lotes", "valor", "corretora", "notas", "book", "currency", "trade"]) {
+        if (!f[k].value.trim()) throw new Error(tr("Fill in all the fields marked with *."));
+      }
+      const nova = {
+        Data: serialDeIso(f.data.value), Bolsa: f.bolsa.value, Tipo: f.tipo.value, "Mes/Ano": serialDeIso(`${f.mes.value}-01`),
+        Lotes: Number(f.lotes.value), Valor: Number(f.valor.value), Corretora: f.corretora.value.trim(), Notas: f.notas.value,
+        Book: f.book.value, Currency: f.currency.value, "Trade No.": f.trade.value.trim(), _portal: new Date().toISOString(),
+      };
+      if (f.alloc.value.trim()) nova.Alloc = f.alloc.value.trim();
+      await gravarFuturos(ctx, (lista) => [...lista, nova]);
+      toast(`${tr("Futures trade saved")}: ${nova["Trade No."]}. ${tr("Recalculating from Digisul…")}`);
+      await ctx.api.sincronizarPosition().then(() => toast(tr("Position updated from Digisul."))).catch((e) => toast(e.message, "erro"));
+      guardarFonteVista("api");
+      ctx.recarregar();
+    },
+  });
+}
+
+// troca a lista de futuros do modelo (mantém as fórmulas e o nome da planilha de origem)
+async function gravarFuturos(ctx, mudar) {
+  const [modelo, info] = await Promise.all([ctx.api.positionModelo(), ctx.api.positionModeloInfo?.().catch(() => null)]);
+  if (!modelo) throw new Error(tr("Upload the full Position spreadsheet once before adding futures in the portal."));
+  await ctx.api.salvarPositionModelo({ ...modelo, futuros: mudar(modelo.futuros ?? []) }, info?.nome_arquivo ?? "Portal");
+}
+
+// operações lançadas pelo portal, com a opção de desfazer
+function listarFuturosDoPortal(alvo, futuros, ctx) {
+  const lista = futuros.filter((x) => x._portal);
+  if (!lista.length) { alvo.innerHTML = ""; return; }
+  alvo.innerHTML = `<h3 class="pos-comp-h">Entered in the portal <span class="muted">· ${lista.length}</span></h3>
+    <div class="tabela-wrap"><table class="tabela tabela-num">
+      <thead><tr><th>Trade No.</th><th>Date</th><th>Exchange</th><th>Type</th><th>Month</th><th class="num">Lots</th><th class="num">Price</th><th>Notes</th><th>Alloc</th><th></th></tr></thead>
+      <tbody>${lista.map((x, i) => `<tr><td>${esc(x["Trade No."])}</td><td>${esc(fmtData(isoDeSerial(x.Data)))}</td><td>${esc(x.Bolsa)}</td><td>${esc(x.Tipo)}</td>
+        <td>${esc(fmtMes(isoDeSerial(x["Mes/Ano"])))}</td><td class="num">${fmtLotes(x.Lotes)}</td><td class="num">${fmtN(x.Valor, 3)}</td><td>${esc(x.Notas ?? "—")}</td><td>${esc(x.Alloc ?? "—")}</td>
+        <td><button type="button" class="btn-icon" data-desfazer="${i}" title="${esc(tr("Remove"))}" aria-label="${esc(tr("Remove"))}">${icon("trash")}</button></td></tr>`).join("")}</tbody>
+    </table></div>`;
+  $$("[data-desfazer]", alvo).forEach((b) => b.addEventListener("click", async () => {
+    const x = lista[Number(b.dataset.desfazer)];
+    if (!confirm(`${tr("Remove the futures trade")} ${x["Trade No."]} (${x.Tipo} ${fmtLotes(x.Lotes)} ${tr("lots")})?`)) return;
+    b.disabled = true;
+    try {
+      await gravarFuturos(ctx, (todos) => todos.filter((y) => y._portal !== x._portal));
+      toast(tr("Futures trade removed. Recalculating from Digisul…"));
+      await ctx.api.sincronizarPosition().catch((e) => toast(e.message, "erro"));
+      $$(".modal-bg").at(-1)?.querySelector("[data-close]")?.click();
+      ctx.recarregar();
+    } catch (e) { toast(e.message, "erro"); b.disabled = false; }
   }));
 }
 

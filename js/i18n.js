@@ -239,6 +239,26 @@ const PT = {
   "Sum of the lines: {n} bags.": "Soma das linhas: {n} sacas.", "No contracts or lots in this cell.": "Nenhum contrato ou lote nesta célula.",
   "Upload the Position again (or update from Digisul) to see what makes up each number.":
     "Envie a posição de novo (ou atualize pelo Digisul) para ver o que forma cada número.",
+  // nova operação de futuros (e-mail da corretora → OpenFutures)
+  "New futures trade": "Nova operação de futuros", "Paste the broker confirmation e-mail": "Cole o e-mail de confirmação da corretora",
+  "Confirmation e-mail": "E-mail de confirmação", "Read e-mail": "Ler e-mail", "Copy row": "Copiar linha", "Save and recalculate": "Salvar e recalcular",
+  "Recalculating from Digisul…": "Recalculando pelo Digisul…", "Entered in the portal": "Lançadas pelo portal",
+  "Date (A) *": "Data (A) *", "Exchange (B) *": "Bolsa (B) *", "Type (C) *": "Tipo (C) *", "Month (D) *": "Mês/Ano (D) *", "Lots (E) *": "Lotes (E) *",
+  "Price (F) *": "Valor (F) *", "Broker (G) *": "Corretora (G) *", "Notes (H) *": "Notas (H) *", "Book (I) *": "Book (I) *", "Currency (J) *": "Moeda (J) *",
+  "Alloc (K)": "Alloc (K)", "Trade No. (L) *": "Trade No. (L) *", "Price": "Valor", "Notes": "Notas", "Trade No.": "Trade No.", "Alloc": "Alloc",
+  "Row for the spreadsheet (A–L):": "Linha para a planilha (A–L):",
+  "Paste the broker confirmation e-mail and click “Read e-mail”.": "Cole o e-mail de confirmação da corretora e clique em “Ler e-mail”.",
+  "Check the fields, fill in Notes, Book and Alloc, and save: the trade joins the futures used by the Digisul update.":
+    "Confira os campos, complete Notas, Book e Alloc e salve: a operação entra nos futuros usados pela atualização do Digisul.",
+  "Also paste the row in the spreadsheet's OpenFutures (“Copy row”).": "Cole também a linha na aba OpenFutures da planilha (“Copiar linha”).",
+  "Not found in the e-mail": "Não achei no e-mail", "All e-mail fields read. Fill in Notes, Book and Alloc.": "Li todos os campos do e-mail. Complete Notas, Book e Alloc.",
+  "Row copied: paste it in the spreadsheet's OpenFutures.": "Linha copiada: cole na aba OpenFutures da planilha.",
+  "Could not copy — select the row and copy it by hand.": "Não deu para copiar — selecione a linha e copie à mão.",
+  "Fill in all the fields marked with *.": "Preencha todos os campos com *.", "Futures trade saved": "Operação de futuros salva",
+  "Trade No. already in the futures": "Esse Trade No. já está nos futuros",
+  "The same reference can have more than one row (one per allocation).": "A mesma referência pode ter mais de uma linha (uma por alocação).",
+  "Remove the futures trade": "Remover a operação de futuros", "Futures trade removed. Recalculating from Digisul…": "Operação removida. Recalculando pelo Digisul…",
+  "Upload the full Position spreadsheet once before adding futures in the portal.": "Envie a planilha completa da Position uma vez antes de lançar futuros pelo portal.",
   // contratos atrás de cada número do "por mês da bolsa"
   "Click to see the contracts": "Clique para ver os contratos", "Click a number to see the contracts.": "Clique num número para ver os contratos.",
   "all months": "todos os meses", "No contracts.": "Nenhum contrato.",

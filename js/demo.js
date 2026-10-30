@@ -3,6 +3,7 @@
 import { storage } from "./ui.js";
 
 const CHAVE = "portalbi_demo_v1";
+const CHAVE_MODELO = "portalbi_demo_modelo";
 const h = (horas) => new Date(Date.now() - horas * 36e5).toISOString();
 const dias = (d) => new Date(Date.now() + d * 864e5).toISOString();
 
@@ -239,9 +240,17 @@ export function criarDemo() {
     },
     async positionFonte() { return "planilha"; },
     async definirFontePosition() { throw new Error("Not available in demo mode."); },
-    async positionModeloInfo() { return null; },
-    async positionModelo() { return null; },
-    async salvarPositionModelo() { exigeArquivos(); },
+    // modelo (fórmulas + futuros) numa chave própria do navegador: é grande para ficar junto do resto
+    async positionModeloInfo() {
+      const m = JSON.parse(storage.get(CHAVE_MODELO) ?? "null");
+      return m ? { atualizado_em: m.atualizado_em, nome_arquivo: m.nome_arquivo, enviado_por: m.enviado_por, futuros: m.modelo.futuros?.length ?? 0 } : null;
+    },
+    async positionModelo() { return JSON.parse(storage.get(CHAVE_MODELO) ?? "null")?.modelo ?? null; },
+    async positionFuturos() { return JSON.parse(storage.get(CHAVE_MODELO) ?? "null")?.modelo?.futuros ?? null; },
+    async salvarPositionModelo(modelo, nome_arquivo) {
+      exigeArquivos();
+      storage.set(CHAVE_MODELO, JSON.stringify({ modelo, nome_arquivo, enviado_por: eu().nome, atualizado_em: new Date().toISOString() }));
+    },
     async sincronizarPosition() { throw new Error("The Digisul update is not available in demo mode."); },
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       exigeArquivos();

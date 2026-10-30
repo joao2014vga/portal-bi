@@ -707,3 +707,8 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-multi-ops label[hidden] { display: none; }
 .pos-multi-ops input { width: auto; height: auto; margin: 0; }
 .pos-clic.apagado td { opacity: .45; }
+/* Nova operação de futuros (colunas A–L da OpenFutures) */
+.fut-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-top: 12px; }
+@media (max-width: 720px) { .fut-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fut-linha { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
+.fut-linha code { font-size: 12px; background: var(--sup-2); border: 1px solid var(--borda); border-radius: 6px; padding: 4px 8px; overflow-wrap: anywhere; }

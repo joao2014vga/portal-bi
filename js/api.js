@@ -287,6 +287,12 @@ async function criarApiSupabase() {
       if (error) throw new Error(erroPosition(error.message));
       return data?.modelo ?? null;
     },
+    // só a lista de futuros do modelo (para a nova operação de futuros e o upload)
+    async positionFuturos() {
+      const { data, error } = await sb.from("bi_position_modelo").select("futuros:modelo->futuros").eq("id", 1).maybeSingle();
+      if (error) throw new Error(erroPosition(error.message));
+      return data?.futuros ?? null;
+    },
     async salvarPositionModelo(modelo, nome_arquivo) {
       const { error } = await sb.rpc("bi_position_salvar_modelo", { p_modelo: modelo, p_nome: nome_arquivo });
       if (error) throw new Error(erroPosition(error.message));
