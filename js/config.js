@@ -13,7 +13,7 @@ export const CONFIG = {
   NOME_EMPRESA: "Brascof",
 
   // Idioma das telas: "pt" (português) ou "en" (inglês). Ver js/i18n.js.
-  IDIOMA: "pt",
+  IDIOMA: "en",
 
   // Serviço na Vercel que conversa com o Digisul (Payments e atualização do Position)
   API_BRASCOF: "https://brascof-api.vercel.app",
