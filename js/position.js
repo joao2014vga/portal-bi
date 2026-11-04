@@ -302,8 +302,9 @@ function ligarTopo(alvo, ctx) {
       // fórmulas e futuros desta planilha passam a valer para a atualização pelo Digisul
       if (lida.modelo) {
         try {
-          const [antigos, cambiosAntigos] = await Promise.all([
-            ctx.api.positionFuturos?.().catch(() => null), ctx.api.positionCambios?.().catch(() => null)]);
+          // sem conseguir ler os que já estão guardados, não grava: perderia os lançados pela tela
+          const [antigos, cambiosAntigos] = await Promise.all([ctx.api.positionFuturos?.(), ctx.api.positionCambios?.()])
+            .catch((e) => { throw new Error(`${tr("Futures and FX were not replaced: could not read the ones already saved. Upload the spreadsheet again.")} (${e.message})`); });
           lida.modelo.futuros = manterFuturosDoPortal(lida.modelo.futuros, antigos);
           // sem a aba Currency Data na planilha, fica o câmbio que já estava guardado
           lida.modelo.cambios = lida.modelo.cambios ? manterDoPortal(lida.modelo.cambios, cambiosAntigos, mesmoCambio, ABA_CAMBIO) : cambiosAntigos;
@@ -454,7 +455,8 @@ async function novaOperacaoFuturos(ctx) {
       <div class="fut-linha"><span class="muted">Row for the spreadsheet (A–L):</span> <code id="futLinha" data-sem-traducao></code>
         <button type="button" class="btn" id="futCopiar">${icon("file")}<span>Copy row</span></button></div>
       </div>
-      <div id="futDoPortal"></div>`,
+      <div id="futDoPortal"></div>
+      <div id="futHistorico"></div>`,
     onOpen(f) {
       const campos = ["data", "bolsa", "tipo", "mes", "lotes", "valor", "corretora", "notas", "book", "currency", "alloc", "trade"];
       const linha = () => {
@@ -531,6 +533,7 @@ async function novaOperacaoFuturos(ctx) {
       });
       atualizar();
       listarDoPortal($("#futDoPortal", f), futuros, cambios, ctx);
+      listarHistorico($("#futHistorico", f), ctx);
     },
     async onSubmit(f) {
       if (f.dataset.modo === "cambio") {
@@ -575,20 +578,22 @@ async function gravarModelo(ctx, mudar) {
 
 // operações lançadas pelo portal (futuros e câmbio), com a opção de desfazer
 function listarDoPortal(alvo, futuros, cambios, ctx) {
-  const fut = futuros.filter((x) => x._portal), cx = cambios.filter((x) => x._portal);
+  const maisNovo = (a, b) => String(b._portal).localeCompare(String(a._portal));
+  const fut = futuros.filter((x) => x._portal).sort(maisNovo), cx = cambios.filter((x) => x._portal).sort(maisNovo);
   if (!fut.length && !cx.length) { alvo.innerHTML = ""; return; }
+  const lancada = (x) => `<td>${esc(dataHoraBR(x._portal))}</td>`;
   const lixo = (tipo, i) => `<td><button type="button" class="btn-icon" data-desfazer="${tipo}:${i}" title="${esc(tr("Remove"))}" aria-label="${esc(tr("Remove"))}">${icon("trash")}</button></td>`;
   alvo.innerHTML = `${fut.length ? `<h3 class="pos-comp-h">Futures entered in the portal <span class="muted">· ${fut.length}</span></h3>
     <div class="tabela-wrap"><table class="tabela tabela-num">
-      <thead><tr><th>Trade No.</th><th>Date</th><th>Exchange</th><th>Type</th><th>Month</th><th class="num">Lots</th><th class="num">Price</th><th>Notes</th><th>Alloc</th><th></th></tr></thead>
-      <tbody>${fut.map((x, i) => `<tr><td>${esc(x["Trade No."])}</td><td>${esc(fmtData(isoDeSerial(x.Data)))}</td><td>${esc(x.Bolsa)}</td><td>${esc(x.Tipo)}</td>
+      <thead><tr><th>Entered</th><th>Trade No.</th><th>Date</th><th>Exchange</th><th>Type</th><th>Month</th><th class="num">Lots</th><th class="num">Price</th><th>Notes</th><th>Alloc</th><th></th></tr></thead>
+      <tbody>${fut.map((x, i) => `<tr>${lancada(x)}<td>${esc(x["Trade No."])}</td><td>${esc(fmtData(isoDeSerial(x.Data)))}</td><td>${esc(x.Bolsa)}</td><td>${esc(x.Tipo)}</td>
         <td>${esc(fmtMes(isoDeSerial(x["Mes/Ano"])))}</td><td class="num">${fmtLotes(x.Lotes)}</td><td class="num">${fmtN(x.Valor, 3)}</td><td>${esc(x.Notas ?? "—")}</td><td>${esc(x.Alloc ?? "—")}</td>
         ${lixo("f", i)}</tr>`).join("")}</tbody>
     </table></div>` : ""}
     ${cx.length ? `<h3 class="pos-comp-h">FX entered in the portal <span class="muted">· ${cx.length}</span></h3>
     <div class="tabela-wrap"><table class="tabela tabela-num">
-      <thead><tr><th>Trade No.</th><th>Date</th><th class="num">Rate</th><th class="num">BRL</th><th>Fixing</th><th>Maturity</th><th>Notes</th><th>Contract</th><th></th></tr></thead>
-      <tbody>${cx.map((x, i) => `<tr><td>${esc(x["Trade No."] ?? "—")}</td><td>${esc(fmtData(isoDeSerial(x.Date)))}</td><td class="num">${fmtN(x["Rate USD/BRL"], 4)}</td>
+      <thead><tr><th>Entered</th><th>Trade No.</th><th>Date</th><th class="num">Rate</th><th class="num">BRL</th><th>Fixing</th><th>Maturity</th><th>Notes</th><th>Contract</th><th></th></tr></thead>
+      <tbody>${cx.map((x, i) => `<tr>${lancada(x)}<td>${esc(x["Trade No."] ?? "—")}</td><td>${esc(fmtData(isoDeSerial(x.Date)))}</td><td class="num">${fmtN(x["Rate USD/BRL"], 4)}</td>
         <td class="num">${fmtN(x["Equivalent BRL"], 2)}</td><td>${esc(fmtData(isoDeSerial(x["Fixing Date"])))}</td><td>${esc(fmtData(isoDeSerial(x["Maturity Date"])))}</td>
         <td>${esc(x.Notes ?? "—")}</td><td>${esc(x.Contract ?? "—")}</td>${lixo("c", i)}</tr>`).join("")}</tbody>
     </table></div>` : ""}`;
@@ -609,6 +614,30 @@ function listarDoPortal(alvo, futuros, cambios, ctx) {
       ctx.recarregar();
     } catch (e) { toast(e.message, "erro"); b.disabled = false; }
   }));
+}
+
+// histórico permanente das operações lançadas pela tela: entrou, foi para a planilha ou saiu
+// (gravado por um gatilho no banco, schema.sql seção 20; não depende de quem salvou)
+const ACAO_LANCAMENTO = { incluido: "Entered", na_planilha: "In the spreadsheet", removido: "Removed" };
+async function listarHistorico(alvo, ctx) {
+  let hist;
+  try { hist = await ctx.api.positionLancamentos?.(); } catch (e) { alvo.innerHTML = `<p class="muted pos-nota">${esc(e.message)}</p>`; return; }
+  if (hist == null) { alvo.innerHTML = `<p class="muted pos-nota">${icon("info")} <span>${esc(tr("Trade history is not set up yet: run section 20 of schema.sql in Supabase."))}</span></p>`; return; }
+  if (!hist.length) { alvo.innerHTML = ""; return; }
+  const resumo = (h) => {
+    const d = h.dados ?? {};
+    return h.tipo === "futuro"
+      ? `${d.Tipo ?? ""} ${fmtLotes(d.Lotes)} ${tr("lots")} · ${fmtMes(isoDeSerial(d["Mes/Ano"]))} · ${fmtN(d.Valor, 3)}${d.Notas ? ` · ${d.Notas}` : ""}${d.Alloc ? ` · ${d.Alloc}` : ""}`
+      : `R$ ${fmtN(d["Equivalent BRL"], 2)} · ${fmtN(d["Rate USD/BRL"], 4)}${d.Contract ? ` · ${d.Contract}` : ""}`;
+  };
+  alvo.innerHTML = `<h3 class="pos-comp-h">Trade history <span class="muted">· ${hist.length === 100 ? tr("last 100") : hist.length}</span></h3>
+    <div class="tabela-wrap"><table class="tabela">
+      <thead><tr><th>When</th><th>Action</th><th>Kind</th><th>Trade No.</th><th>Trade</th><th>By</th><th>Saved as</th></tr></thead>
+      <tbody>${hist.map((h) => `<tr><td>${esc(dataHoraBR(h.created_at))}</td>
+        <td><span class="pill${{ removido: " pill-critico", na_planilha: " pill-ok" }[h.acao] ?? ""}">${esc(tr(ACAO_LANCAMENTO[h.acao] ?? h.acao))}</span></td>
+        <td>${esc(tr(h.tipo === "futuro" ? "Futures" : "FX"))}</td><td>${esc(h.trade_no ?? "—")}</td><td>${esc(resumo(h))}</td>
+        <td>${esc(h.autor ?? "—")}</td><td>${esc(h.arquivo ?? "—")}</td></tr>`).join("")}</tbody>
+    </table></div>`;
 }
 
 // ---------------------------------------------------------------- Overview
