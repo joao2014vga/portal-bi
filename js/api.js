@@ -299,6 +299,17 @@ async function criarApiSupabase() {
       if (error) throw new Error(erroPosition(error.message));
       return data?.cambios ?? null;
     },
+    // histórico das operações lançadas pela tela (schema.sql, seção 20); null = seção ainda não rodada
+    async positionLancamentos(limite = 100) {
+      const { data, error } = await sb.from("bi_position_lancamentos")
+        .select("id, tipo, acao, trade_no, dados, portal_em, arquivo, autor, created_at")
+        .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limite);
+      if (error) {
+        if (/bi_position_lancamentos/i.test(error.message ?? "")) return null;
+        throw new Error(erroPosition(error.message));
+      }
+      return data;
+    },
     async salvarPositionModelo(modelo, nome_arquivo) {
       const { error } = await sb.rpc("bi_position_salvar_modelo", { p_modelo: modelo, p_nome: nome_arquivo });
       if (error) throw new Error(erroPosition(error.message));
