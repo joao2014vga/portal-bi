@@ -1300,3 +1300,79 @@ create policy bi_corretagem_conf_insert on public.bi_corretagem_conf for insert 
 drop policy if exists bi_corretagem_conf_update on public.bi_corretagem_conf;
 create policy bi_corretagem_conf_update on public.bi_corretagem_conf for update to authenticated
   using (public.bi_ve_painel('/portal-bi/corretagem')) with check (public.bi_ve_painel('/portal-bi/corretagem'));
+
+
+-- =====================================================================
+-- 20. HISTÓRICO DOS LANÇAMENTOS DE FUTUROS E CÂMBIO PELO PORTAL
+-- A lista de futuros e câmbio fica num registro só (bi_position_modelo,
+-- seção 9), regravado inteiro a cada mudança. Este gatilho compara a versão
+-- nova com a anterior e anota cada operação lançada pela tela ("New futures
+-- trade", marca _portal) que entrou ou saiu — qualquer que seja o caminho:
+-- tela, lixeira, upload da planilha ou duas pessoas salvando ao mesmo tempo.
+--   incluido     lançada pela tela
+--   na_planilha  saiu porque a planilha enviada já tem o mesmo Trade No.
+--   removido     saiu e não está na planilha (lixeira, ou gravação por cima)
+-- Ninguém edita nem apaga o histórico: só o gatilho grava. Pré-requisito: seção 9.
+-- =====================================================================
+create table if not exists public.bi_position_lancamentos (
+  id          bigint generated always as identity primary key,
+  tipo        text not null check (tipo in ('futuro', 'cambio')),
+  acao        text not null check (acao in ('incluido', 'na_planilha', 'removido')),
+  trade_no    text,
+  dados       jsonb not null,                       -- a operação como estava
+  portal_em   timestamptz,                          -- quando foi lançada pela tela (_portal)
+  arquivo     text,                                 -- nome_arquivo da gravação que causou a mudança
+  autor       text,                                 -- quem fez essa gravação
+  created_by  uuid,
+  created_at  timestamptz not null default now()
+);
+create index if not exists bi_position_lancamentos_quando on public.bi_position_lancamentos (created_at desc);
+alter table public.bi_position_lancamentos enable row level security;
+drop policy if exists bi_position_lancamentos_select on public.bi_position_lancamentos;
+create policy bi_position_lancamentos_select on public.bi_position_lancamentos for select to authenticated
+  using (public.bi_gerencia_arquivos());
+revoke insert, update, delete on public.bi_position_lancamentos from public, anon, authenticated;
+
+create or replace function public.bi_position_registrar_lancamentos()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  k text;
+  v_tipo text;
+  v_novos jsonb;
+  v_antigos jsonb;
+begin
+  foreach k in array array['futuros', 'cambios'] loop
+    v_tipo := case k when 'futuros' then 'futuro' else 'cambio' end;
+    v_novos := coalesce(new.modelo -> k, '[]'::jsonb);
+    v_antigos := case when tg_op = 'UPDATE' then coalesce(old.modelo -> k, '[]'::jsonb) else '[]'::jsonb end;
+    if jsonb_typeof(v_novos) <> 'array' then v_novos := '[]'::jsonb; end if;
+    if jsonb_typeof(v_antigos) <> 'array' then v_antigos := '[]'::jsonb; end if;
+
+    -- lançadas agora pela tela
+    insert into public.bi_position_lancamentos (tipo, acao, trade_no, dados, portal_em, arquivo, autor, created_by)
+    select v_tipo, 'incluido', n ->> 'Trade No.', n, case when n ->> '_portal' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' then (n ->> '_portal')::timestamptz end, new.nome_arquivo, new.enviado_por, auth.uid()
+    from jsonb_array_elements(v_novos) n
+    where n ? '_portal'
+      and not exists (select 1 from jsonb_array_elements(v_antigos) o where o ->> '_portal' = n ->> '_portal');
+
+    -- saíram da lista do portal
+    insert into public.bi_position_lancamentos (tipo, acao, trade_no, dados, portal_em, arquivo, autor, created_by)
+    select v_tipo,
+           case when exists (select 1 from jsonb_array_elements(v_novos) n
+                             where not n ? '_portal' and n ->> 'Trade No.' = o ->> 'Trade No.') then 'na_planilha' else 'removido' end,
+           o ->> 'Trade No.', o, case when o ->> '_portal' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' then (o ->> '_portal')::timestamptz end, new.nome_arquivo, new.enviado_por, auth.uid()
+    from jsonb_array_elements(v_antigos) o
+    where o ? '_portal'
+      and not exists (select 1 from jsonb_array_elements(v_novos) n where n ->> '_portal' = o ->> '_portal');
+  end loop;
+  return new;
+end;
+$$;
+revoke all on function public.bi_position_registrar_lancamentos() from public, anon, authenticated;
+
+drop trigger if exists bi_position_modelo_lancamentos on public.bi_position_modelo;
+create trigger bi_position_modelo_lancamentos
+  after insert or update of modelo on public.bi_position_modelo
+  for each row execute function public.bi_position_registrar_lancamentos();
