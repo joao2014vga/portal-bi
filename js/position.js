@@ -623,7 +623,11 @@ async function listarHistorico(alvo, ctx) {
   let hist;
   try { hist = await ctx.api.positionLancamentos?.(); } catch (e) { alvo.innerHTML = `<p class="muted pos-nota">${esc(e.message)}</p>`; return; }
   if (hist == null) { alvo.innerHTML = `<p class="muted pos-nota">${icon("info")} <span>${esc(tr("Trade history is not set up yet: run section 20 of schema.sql in Supabase."))}</span></p>`; return; }
-  if (!hist.length) { alvo.innerHTML = ""; return; }
+  if (!hist.length) {
+    alvo.innerHTML = `<h3 class="pos-comp-h">Trade history</h3>
+      <p class="muted pos-nota">${icon("info")} <span>${esc(tr("No trades recorded yet. Every trade saved here from now on stays in this history, even after it goes into the spreadsheet or is removed."))}</span></p>`;
+    return;
+  }
   const resumo = (h) => {
     const d = h.dados ?? {};
     return h.tipo === "futuro"
