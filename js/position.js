@@ -996,7 +996,8 @@ async function abrirComposicaoTermM(ctx, grupo, col, mes, valor) {
   try {
     composicaoTermMCache ??= ctx.api.positionDetalhe(["termm_itens"]).then((d) => d.termm_itens ?? null);
     const ti = await composicaoTermMCache;
-    const atual = ti?.atual ?? null;
+    // gravada encadeada ({ atual, anterior }) ou só a composição (atualização sem a versão anterior)
+    const atual = ti?.atual ?? (ti?.arabica || ti?.robusta ? ti : null);
     if (!atual?.[grupo]) throw new Error("Upload the Position again (or update from Digisul) to see what makes up each number.");
     const j = COLS_TERMM.indexOf(col);
     // linhas da célula numa versão: Map "tipo|chave" → { tipo, chave, parceiro, v }, e em que meses a chave aparece na coluna
@@ -1017,7 +1018,7 @@ async function abrirComposicaoTermM(ctx, grupo, col, mes, valor) {
       }
       return { celula, outros };
     };
-    const agora = daVersao(atual), antes = daVersao(ti.anterior);
+    const agora = daVersao(atual), antes = daVersao(ti?.anterior);
     const linhas = [...agora.celula.values()].filter((l) => Math.abs(l.v) >= 0.005);
     const totalLinhas = linhas.reduce((s, l) => s + l.v, 0);
 
