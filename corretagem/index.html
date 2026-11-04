@@ -63,6 +63,9 @@ dialog::backdrop{background:rgba(20,40,30,.45)}
 .grid3 input,.grid3 select,.obs textarea,td input{padding:6px 8px;border:1px solid #cfdcd4;border-radius:6px;font:inherit;font-size:.82rem;background:#fff}
 td input{width:115px;text-align:right;padding:3px 6px}
 td input.t{width:100%;min-width:150px;text-align:left}
+th.c,td.c{text-align:center;width:44px}
+.chk{width:16px;height:16px;cursor:pointer;accent-color:#2d4a3e;vertical-align:middle}
+tr.ok td{background:#f1f8f3}
 .obs{margin-top:1rem}
 .res{display:flex;flex-wrap:wrap;gap:.5rem 1.75rem;margin-top:.9rem;padding:.7rem 1rem;background:#f5f9f6;border:1px solid #dde8e2;border-radius:10px}
 .res small{display:block;font-size:.66rem;color:#5a7a68}.res b{font-size:1rem}
@@ -286,7 +289,9 @@ function corretoresView(){
     const pcts=[...new Set((E.calc?.linhas||[]).filter(l=>String(l.corretorCod)===String(c.cod)).map(l=>l.pct))].sort((a,b)=>a-b);
     const taxas=pcts.map(p=>fmtN(p,3)+'%').join(' / ');
     const taxaFora=pcts.some(p=>Math.abs(p-PCT_PADRAO)>1e-9);
-    return{...c,taxas,taxaFora,ajustes,esperado,espelho,dif:espelho==null?null:r2(espelho-esperado),status:cf.status||'pending',numero:cf.espelho_numero||''};
+    const okIds=okSet(cf.linhas);
+    const conferidos=(E.calc?.linhas||[]).filter(l=>String(l.corretorCod)===String(c.cod)&&okIds.has(l.id)).length;
+    return{...c,taxas,taxaFora,conferidos,ajustes,esperado,espelho,dif:espelho==null?null:r2(espelho-esperado),status:cf.status||'pending',numero:cf.espelho_numero||''};
   });
 }
 
@@ -336,7 +341,7 @@ function renderCorretores(){
   tab.innerHTML=cab('corretores',cols)+'<tbody>'+cs.map(c=>`
     <tr class="ck" data-cod="${c.cod}">
       <td><b>${esc(c.nome)}</b> ${c.alertas?`<span class="tag" title="Non-standard rate or price not fixed">⚠ ${c.alertas}</span>`:''}${c.numero?`<div class="sub">${esc(c.numero)}</div>`:''}</td>
-      <td class="n">${c.contratos}</td><td class="n ${c.taxaFora?'pos':''}">${c.taxas||'—'}</td><td class="n">${fmtN(c.sacas,0)}</td><td class="n">${fmtR$(c.base)}</td>
+      <td class="n">${c.contratos}${c.conferidos?`<div class="sub ${c.conferidos===c.contratos?'zero':''}">${c.conferidos} ✓</div>`:''}</td><td class="n ${c.taxaFora?'pos':''}">${c.taxas||'—'}</td><td class="n">${fmtN(c.sacas,0)}</td><td class="n">${fmtR$(c.base)}</td>
       <td class="n">${fmtR$(c.corretagem)}</td><td class="n">${c.ajustes?fmtR$(c.ajustes):''}</td>
       <td class="n"><b>${fmtR$(c.esperado)}</b></td><td class="n">${fmtR$(c.espelho)}</td>
       <td class="n ${difClasse(c.dif)}">${difTexto(c.dif)}</td>
@@ -397,7 +402,7 @@ function abrirDet(cod,extra={}){
     linhas:(E.calc?.linhas||[]).filter(l=>String(l.corretorCod)===String(cod)),
     r:{espelho_numero:cf.espelho_numero||'',espelho_valor:cf.espelho_valor==null?null:Number(cf.espelho_valor),status:cf.status||'pending',
        obs:cf.obs||'',linhas:{...(cf.linhas||{})},ajustes:(cf.ajustes||[]).map(a=>({...a}))}};
-  if(extra.novoAjuste)d.r.ajustes.push({id:novoId(),...extra.novoAjuste});
+  if(extra.novoAjuste){d.r.ajustes.push({id:novoId(),...extra.novoAjuste});d.sujo=true;}
   E.det=d;
   $('#detNome').textContent=d.nome;
   $('#detSub').textContent=`Code ${cod} · ${E.mes.split('-').reverse().join('/')}`;
@@ -410,18 +415,29 @@ function abrirDet(cod,extra={}){
   renderDetLinhas();renderDetAjustes();renderDetRes();
   $('#det').showModal();
 }
-$('#detFechar').addEventListener('click',()=>$('#det').close());
+$('#detFechar').addEventListener('click',()=>{
+  if(E.det?.sujo&&!confirm('There are unsaved changes. Close without saving?'))return;
+  $('#det').close();
+});
+// Esc também fecha o diálogo: pede confirmação do mesmo jeito
+$('#det').addEventListener('cancel',ev=>{if(E.det?.sujo&&!confirm('There are unsaved changes. Close without saving?'))ev.preventDefault();});
 
 const calcDet=()=>r2(E.det.linhas.reduce((s,l)=>s+l.corretagem,0));
 function renderDetRes(){
   const R=E.det.r,calc=calcDet(),aj=somaAjustes(R.ajustes),esp=r2(calc+aj);
   const dif=R.espelho_valor==null?null:r2(R.espelho_valor-esp);
-  const vals=Object.values(R.linhas);
+  const vals=valoresDigitados(R.linhas);
+  const ok=E.det.linhas.filter(l=>okSet(R.linhas).has(l.id)).length;
   $('#detRes').innerHTML=`<div><small>Calculated</small><b>${fmtR$(calc)}</b></div><div><small>Manual entries</small><b>${fmtR$(aj)}</b></div>
     <div><small>Expected</small><b>${fmtR$(esp)}</b></div><div><small>Statement</small><b>${fmtR$(R.espelho_valor)}</b></div>
     <div><small>Difference</small><b class="${difClasse(dif)}">${difTexto(dif)}</b></div>
-    ${vals.length?`<div><small>Typed per contract</small><b>${fmtR$(r2(vals.reduce((s,v)=>s+v,0)))}</b></div>`:''}`;
+    ${vals.length?`<div><small>Typed per contract</small><b>${fmtR$(r2(vals.reduce((s,v)=>s+v,0)))}</b></div>`:''}
+    ${E.det.linhas.length?`<div><small>Contracts checked</small><b class="${ok===E.det.linhas.length?'zero':''}">${ok} of ${E.det.linhas.length}</b></div>`:''}`;
 }
+// "linhas" guarda { "<id>": valor no espelho } e, na chave __ok, a lista de contratos já conferidos
+function okSet(linhas){return new Set(Array.isArray(linhas?.__ok)?linhas.__ok:[]);}
+function valoresDigitados(linhas){return Object.entries(linhas||{}).filter(([k,v])=>k!=='__ok'&&typeof v==='number').map(([,v])=>v);}
+function marcarSujo(){E.det.sujo=true;$('#detMsg').textContent='Not saved yet.';}
 // com o valor do espelho preenchido, sugere Checked (diferença até R$ 1) ou Divergent; não mexe em Paid
 function statusAuto(){
   const R=E.det.r;
@@ -432,10 +448,12 @@ function statusAuto(){
 function renderDetLinhas(){
   const d=E.det,tab=$('#detLinhas');
   if(!d.linhas.length){tab.innerHTML='<tbody><tr><td class="empty">No contracts due in this month for this broker.</td></tr></tbody>';return;}
-  tab.innerHTML=`<thead><tr><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Brokerage %</th><th class="n">Calculated</th><th class="n" title="Amount the broker charged for this contract in the statement (optional)">In statement (R$)</th><th class="n">Difference</th><th>Warnings</th></tr></thead><tbody>`+
+  const ok=okSet(d.r.linhas);
+  const todos=d.linhas.every(l=>ok.has(l.id));
+  tab.innerHTML=`<thead><tr><th class="c" title="Tick each contract as you check it against the statement"><input type="checkbox" class="chk" id="okTodos" ${todos?'checked':''} aria-label="Check all"> ✓</th><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Brokerage %</th><th class="n">Calculated</th><th class="n" title="Amount the broker charged for this contract in the statement (optional)">In statement (R$)</th><th class="n">Difference</th><th>Warnings</th></tr></thead><tbody>`+
     d.linhas.map(l=>{
-      const v=d.r.linhas[l.id],dif=v==null?null:r2(v-l.corretagem);
-      return `<tr><td><b>${esc(l.contrato)}</b><div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
+      const v=typeof d.r.linhas[l.id]==='number'?d.r.linhas[l.id]:null,dif=v==null?null:r2(v-l.corretagem);
+      return `<tr class="${ok.has(l.id)?'ok':''}"><td class="c"><input type="checkbox" class="chk" data-ok="${esc(l.id)}" ${ok.has(l.id)?'checked':''} aria-label="Checked ${esc(l.contrato)}"></td><td><b>${esc(l.contrato)}</b><div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
         <td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td><td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td>
         <td class="n"><input data-l="${esc(l.id)}" inputmode="decimal" value="${editavel(v)}" placeholder="—"></td>
         <td class="n ${difClasse(dif)}">${difTexto(dif)}</td><td>${tags(l)}</td></tr>`;
@@ -443,8 +461,19 @@ function renderDetLinhas(){
   $$('input[data-l]',tab).forEach(inp=>inp.addEventListener('change',()=>{
     const n=lerNumero(inp.value);
     if(n==null)delete d.r.linhas[inp.dataset.l];else d.r.linhas[inp.dataset.l]=n;
-    renderDetLinhas();renderDetRes();
+    renderDetLinhas();renderDetRes();marcarSujo();
   }));
+  // marca/desmarca sem redesenhar a tabela (a tela não pula enquanto a pessoa confere)
+  const gravarOk=s=>{
+    if(s.size)d.r.linhas.__ok=[...s];else delete d.r.linhas.__ok;
+    $$('input[data-ok]',tab).forEach(c=>{c.checked=s.has(c.dataset.ok);c.closest('tr').classList.toggle('ok',c.checked);});
+    $('#okTodos').checked=d.linhas.every(l=>s.has(l.id));
+    renderDetRes();marcarSujo();
+  };
+  $$('input[data-ok]',tab).forEach(chk=>chk.addEventListener('change',()=>{
+    const s=okSet(d.r.linhas);chk.checked?s.add(chk.dataset.ok):s.delete(chk.dataset.ok);gravarOk(s);
+  }));
+  $('#okTodos').addEventListener('change',ev=>gravarOk(new Set(ev.target.checked?d.linhas.map(l=>l.id):[])));
 }
 function renderDetAjustes(){
   const A=E.det.r.ajustes,tab=$('#detAjustes');
@@ -458,14 +487,15 @@ function renderDetAjustes(){
     const a=A[Number(inp.dataset.a)];
     if(inp.dataset.c==='valor'){a.valor=lerNumero(inp.value)??0;inp.value=editavel(a.valor);statusAuto();renderDetRes();}
     else a[inp.dataset.c]=inp.value;
+    marcarSujo();
   }));
-  $$('button[data-del]',tab).forEach(b=>b.addEventListener('click',()=>{A.splice(Number(b.dataset.del),1);renderDetAjustes();renderDetRes();}));
+  $$('button[data-del]',tab).forEach(b=>b.addEventListener('click',()=>{A.splice(Number(b.dataset.del),1);renderDetAjustes();renderDetRes();marcarSujo();}));
 }
-$('#detAddAjuste').addEventListener('click',()=>{E.det.r.ajustes.push({id:novoId(),contrato:'',descricao:'',valor:0});renderDetAjustes();});
-$('#detValor').addEventListener('change',ev=>{const R=E.det.r;R.espelho_valor=lerNumero(ev.target.value);ev.target.value=editavel(R.espelho_valor);statusAuto();renderDetRes();});
-$('#detNumero').addEventListener('input',ev=>E.det.r.espelho_numero=ev.target.value);
-$('#detStatus').addEventListener('change',ev=>E.det.r.status=ev.target.value);
-$('#detObs').addEventListener('input',ev=>E.det.r.obs=ev.target.value);
+$('#detAddAjuste').addEventListener('click',()=>{E.det.r.ajustes.push({id:novoId(),contrato:'',descricao:'',valor:0});renderDetAjustes();marcarSujo();});
+$('#detValor').addEventListener('change',ev=>{const R=E.det.r;R.espelho_valor=lerNumero(ev.target.value);ev.target.value=editavel(R.espelho_valor);statusAuto();renderDetRes();marcarSujo();});
+$('#detNumero').addEventListener('input',ev=>{E.det.r.espelho_numero=ev.target.value;marcarSujo();});
+$('#detStatus').addEventListener('change',ev=>{E.det.r.status=ev.target.value;marcarSujo();});
+$('#detObs').addEventListener('input',ev=>{E.det.r.obs=ev.target.value;marcarSujo();});
 
 $('#detSalvar').addEventListener('click',async()=>{
   const d=E.det,btn=$('#detSalvar');
@@ -476,6 +506,7 @@ $('#detSalvar').addEventListener('click',async()=>{
       ajustes:d.r.ajustes.map(a=>({id:a.id||novoId(),contrato:String(a.contrato||'').trim(),descricao:String(a.descricao||'').trim(),valor:Number(a.valor)||0})),
       obs:d.r.obs.trim()||null});
     E.conf[d.cod]=salvo;
+    d.sujo=false;
     $('#detMsg').textContent='Saved ✓';
     $('#detMeta').textContent=`Last change by ${salvo.autor||'—'} on ${new Date(salvo.updated_at).toLocaleString('pt-BR')}`;
     renderTudo();
@@ -489,6 +520,7 @@ function linhasExport(cod){
     const v=E.conf[String(l.corretorCod)]?.linhas?.[l.id];
     return{Type:TIPO[l.tipo],Contract:l.contrato,'Original contract':l.pai,'Due / shipped':fmtData(l.data),Broker:l.corretorNome,'Supplier / client':l.contraparte,
       Branch:l.filial||'',Bags:l.sacas,'Price/Bag':l.preco,Base:l.base,'Brokerage %':l.pct,Brokerage:l.corretagem,'In statement (R$)':v??'',Difference:v==null?'':r2(v-l.corretagem),
+      Checked:okSet(E.conf[String(l.corretorCod)]?.linhas).has(l.id)?'Yes':'',
       Warnings:l.alertas.map(a=>ALERTA[a]).join('; ')};
   });
 }
