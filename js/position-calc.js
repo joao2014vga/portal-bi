@@ -1308,6 +1308,77 @@ export function composicaoFisica(pasta, gAba) {
   return { arabica: arabica.meses ? arabica : null, conilon };
 }
 
+// Composição do Position Overview: cada célula da aba TermM (grupo × mês × coluna)
+// desmontada nas linhas das abas base e nas operações de futuros que a formam.
+// { arabica: { meses: [iso], ids: [[tipo, chave, parceiro]], itens: [[coluna, mês (-1 = total), id, sacas]] }, ... }
+// coluna = índice em COLS_TERMM; tipo: c compras · v vendas exp · i vendas int · e estoque · f futuros
+// (cada contrato/lote/operação aparece uma vez em ids; as células apontam para ele)
+const ID_FUTUROS = ["Trade No.", "Corretora", "Tipo", "Lotes", "Data"];
+export function composicaoTermM(pasta, gAba) {
+  const aba = ABAS.termm;
+  if (!pasta.calc.get(aba)) return null;
+  const g = gAba(aba);
+  const colunas = {};
+  const coluna = (abaBase, titulo) => {
+    const L = Object.entries(pasta.base.get(abaBase)?.titulos ?? {}).find(([, t]) => norm(t) === norm(titulo))?.[0];
+    return L ? pasta.coluna(abaBase, colNum(L)) : [];
+  };
+  const id = (abaBase, linha) => {
+    if (abaBase === "OpenFutures") {
+      colunas.f ??= ID_FUTUROS.map((t) => coluna("OpenFutures", t));
+      const [tn, corr, tipo, lotes, data] = colunas.f.map((c) => c[linha - 1] ?? null);
+      const quando = num(data) != null ? serialIso(data) : null;
+      return ["f", tn ?? `#${linha}`, [tipo, lotes != null ? `${lotes} lots` : null, corr, quando].filter(Boolean).join(" · ")];
+    }
+    const def = ID_BASE[abaBase];
+    if (!def) return null;
+    colunas[abaBase] ??= def.slice(1).map((t) => coluna(abaBase, t));
+    const [ck, cp] = colunas[abaBase];
+    return [def[0], ck[linha - 1] ?? null, cp[linha - 1] ?? null];
+  };
+  const out = {};
+  g.forEach((l, i) => {
+    const grupo = GRUPOS.find(([, re]) => re.test(norm(l[0])))?.[0];
+    if (!grupo || out[grupo] || norm(l[1]) !== "CASH") return;
+    const bloco = { meses: [], ids: [], itens: [] };
+    const idx = new Map();
+    const indice = (x) => {
+      const k = x.join("\u0001");
+      if (!idx.has(k)) idx.set(k, bloco.ids.push(x) - 1);
+      return idx.get(k);
+    };
+    const rastrear = (k, mi) => COLS_TERMM.forEach((_, j) => {
+      // soma por linha de origem (uma linha pode entrar mais de uma vez na mesma célula)
+      const porLinha = new Map();
+      for (const t of pasta.termos(aba, colLetra(j + 2) + (k + 1))) {
+        const kk = `${t.aba}|${t.linha}`;
+        porLinha.set(kk, { ...t, v: (porLinha.get(kk)?.v ?? 0) + t.v });
+      }
+      for (const t of porLinha.values()) {
+        const x = id(t.aba, t.linha);
+        if (x && Math.abs(t.v) >= 0.005) bloco.itens.push([j, mi, indice(x), arred(t.v)]);
+      }
+    });
+    for (let k = i + 1; k < g.length; k++) {
+      const r = g[k];
+      if (vazia(r)) { if (bloco.meses.length) break; continue; }
+      if (num(r[0]) != null) { rastrear(k, bloco.meses.push(serialIso(r[0])) - 1); continue; }
+      if (num(r[1]) != null) rastrear(k, -1);
+      break;
+    }
+    out[grupo] = bloco;
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+// Guarda junto a composição da versão anterior, para mostrar o que mudou em cada número.
+// novo/anterior: composições ({ arabica: … }) ou o objeto já encadeado ({ atual, anterior, em }).
+export function encadearComposicao(novo, guardado, em = new Date().toISOString()) {
+  if (!novo) return null;
+  const ant = guardado?.atual ? guardado : guardado ? { atual: guardado, em: null } : null;
+  return { versao: 1, em, atual: novo, anterior: ant?.atual ?? null, anterior_em: ant?.em ?? null };
+}
+
 // Calcula a Position inteira: bases = { aba: linhas }, hoje = "AAAA-MM-DD",
 // anterior = kpis do último dia anterior { arabica: {diff, outright}, ... } (opcional)
 export function calcularPosition(modelo, bases, { hoje = hojeSP(), anterior = null } = {}) {
@@ -1324,5 +1395,7 @@ export function calcularPosition(modelo, bases, { hoje = hojeSP(), anterior = nu
   const r = montarPosition(gAba);
   // o que compõe cada célula da matriz por padrão (aberto ao clicar na Posição Física)
   try { r.detalhes.fisica_itens = composicaoFisica(pasta, gAba); } catch (e) { /* segue sem a composição */ }
+  // o que compõe cada número do Position Overview (aberto ao clicar no Overview)
+  try { r.detalhes.termm_itens = composicaoTermM(pasta, gAba); } catch (e) { /* segue sem a composição */ }
   return { ...r, pasta };
 }

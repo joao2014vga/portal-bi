@@ -571,6 +571,8 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pbi-matriz .pbi-grupo button { background: none; border: 0; color: #fff; font-size: 15px; cursor: pointer; padding: 0 4px 0 0; line-height: 1; }
 .pbi-matriz td.pbi-cel { cursor: pointer; }
 .pbi-matriz td.pbi-cel:hover { outline: 2px solid var(--brand); outline-offset: -2px; }
+.pos-termm td.pos-cel { cursor: pointer; }
+.pos-termm td.pos-cel:hover { outline: 2px solid var(--brand); outline-offset: -2px; }
 .pos-comp-h { font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
 /* Overview (TermM): grupos com detalhamento recolhível; colunas de detalhe em vermelho como na planilha */
 .pos-termm .pbi-grupo button { background: none; border: 0; color: var(--brand); font-size: 15px; cursor: pointer; padding: 0 4px 0 0; line-height: 1; }
@@ -631,6 +633,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .modal-bg { position: fixed; inset: 0; z-index: 50; background: rgba(12, 18, 28, .5); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; overflow-y: auto; animation: fade .15s; }
 .modal { width: 100%; max-width: 480px; background: var(--sup); border-radius: 14px; box-shadow: var(--sombra-2); animation: sobe .18s ease-out; }
 .modal-lg { max-width: 720px; }
+.modal-xl { max-width: min(1060px, 100%); }
 .modal-h { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--borda); }
 .modal-h h2 { font-size: 17px; font-weight: 600; }
 .modal-b { padding: 20px; display: flex; flex-direction: column; gap: 14px; }

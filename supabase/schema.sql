@@ -1376,3 +1376,23 @@ drop trigger if exists bi_position_modelo_lancamentos on public.bi_position_mode
 create trigger bi_position_modelo_lancamentos
   after insert or update of modelo on public.bi_position_modelo
   for each row execute function public.bi_position_registrar_lancamentos();
+
+-- ---------------------------------------------------------------------
+-- 21. COMPOSIÇÃO DOS NÚMEROS DO POSITION OVERVIEW
+-- Ao clicar num número do Overview, o portal mostra os contratos, lotes e
+-- operações de futuros que o formam e o que mudou desde a atualização anterior
+-- (detalhe 'termm_itens', gravado pela planilha e pela atualização do Digisul).
+-- Quem vê o Overview passa a poder ler esse detalhe.
+-- ---------------------------------------------------------------------
+drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
+create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated
+  using (
+    public.bi_gerencia_arquivos()
+    or (tipo = 'vendas' and (public.bi_ve_painel('portal:position-sales') or public.bi_ve_painel('portal:position-diffs')))
+    or (tipo = 'compras' and public.bi_ve_painel('portal:position-purchases'))
+    or (tipo like 'cert\_%' and public.bi_ve_painel('portal:cert-'))
+    or (tipo = 'fisica_itens' and public.bi_ve_painel('portal:position-physical'))
+    or (tipo = 'termm_itens' and public.bi_ve_painel('portal:position-overview'))
+    or (tipo = 'comercial' and public.bi_ve_painel('portal:position-commercial'))
+    or (tipo not in ('vendas', 'compras', 'fisica_itens', 'termm_itens', 'comercial') and tipo not like 'cert\_%' and public.bi_ve_painel('portal:position-contracts'))
+  );

@@ -14,7 +14,7 @@ import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } fro
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
   prazoFixacao, alertasFixacao, textoAlertaFixacao, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
-  calcularPosition, basesDaGrade, ABA_CAMBIO,
+  calcularPosition, basesDaGrade, ABA_CAMBIO, encadearComposicao,
 } from "./position-calc.js";
 import { t as tr, LOCALE, IDIOMA } from "./i18n.js";
 
@@ -77,8 +77,12 @@ export async function lerPlanilhaPosition(file) {
   // composição da matriz da Posição Física: recalcula a própria planilha com as fórmulas dela
   // (mesmo resultado do Excel) para saber que linhas formam cada célula
   if (modelo) {
-    try { detalhes.fisica_itens = calcularPosition(modelo, basesDaGrade(gAba), { hoje: data_ref }).detalhes.fisica_itens; }
-    catch { /* segue sem a composição */ }
+    try {
+      const recalc = calcularPosition(modelo, basesDaGrade(gAba), { hoje: data_ref }).detalhes;
+      detalhes.fisica_itens = recalc.fisica_itens;
+      // composição do Position Overview (encadeada com a versão anterior na publicação)
+      if (recalc.termm_itens) detalhes.termm_itens = recalc.termm_itens;
+    } catch { /* segue sem a composição */ }
   }
   // receita em R$: PTAX de compra D-1 de cada embarque (se o Banco Central não responder, segue sem)
   try {
@@ -295,6 +299,11 @@ function ligarTopo(alvo, ctx) {
       ]);
       lida.resumo.alteracoes = anterior ? alteracoesPosition(lida.resumo.pegada, anterior.pegada, anterior.data_ref) : null;
       lida.resumo.alteracoes_ultima = ultima ? alteracoesPosition(lida.resumo.pegada, ultima.pegada, ultima.created_at) : null;
+      // composição do Overview: guarda junto a da versão anterior, para mostrar o que mudou em cada número
+      if (lida.detalhes.termm_itens) {
+        const guardada = await ctx.api.positionDetalhe(["termm_itens"], "planilha").then((d) => d.termm_itens).catch(() => null);
+        lida.detalhes.termm_itens = encadearComposicao(lida.detalhes.termm_itens, guardada);
+      }
       // contratos vencidos ou a vencer em 15 dias viram notificação para quem vê o Open Contracts
       await ctx.api.publicarPosition({ data_ref: lida.data_ref, resumo: lida.resumo, detalhes: lida.detalhes, nome_arquivo: file.name, alerta: textoAlertaFixacao(lida.detalhes, fmtN) });
       toast(`Position of ${fmtData(lida.data_ref)} published.`);
@@ -646,6 +655,7 @@ async function listarHistorico(alvo, ctx) {
 
 // ---------------------------------------------------------------- Overview
 async function painelOverview(alvo, carga, ctx) {
+  composicaoTermMCache = null; // a composição acompanha a carga e a fonte da tela
   const { termm, variacao, kpis } = carga.resumo;
   let grupo = "arabica";
   // quem publica vê também a outra fonte, para conferir planilha × API
@@ -728,6 +738,12 @@ async function painelOverview(alvo, carga, ctx) {
       const g = el.dataset.abrir;
       if (abertosTermM.has(g)) abertosTermM.delete(g); else abertosTermM.add(g);
       guardarAbertosTermM(); desenhar();
+    }));
+    // clicar num número abre os contratos, lotes e futuros que o formam e o que mudou
+    $$(".pos-termm td.pos-cel", alvo).forEach((td) => td.addEventListener("click", () => {
+      const { col, mes } = td.dataset;
+      const linha = mes === "T" ? b.total : b.meses.find((m) => m.mes === mes);
+      abrirComposicaoTermM(ctx, grupo, col, mes, linha?.[col] ?? null);
     }));
     $("#termmTudo", alvo).addEventListener("click", () => {
       if (abertosTermM.size) abertosTermM.clear(); else GRUPOS_TERMM.forEach((g) => abertosTermM.add(g.k));
@@ -956,10 +972,115 @@ function cabecalhoTermM() {
     <tr>${sub}</tr>`;
 }
 
+// cada número abre o que o compõe (data-col = coluna da TermM, data-mes = mês ou "T" no total)
 function linhaTermM(rotulo, m, total = false) {
   const tag = total ? "th" : "td";
+  const mes = total ? "T" : m.mes;
+  const cel = (k, forte) => celNum(m[k], { forte }).replace("<td ", `<td data-col="${k}" data-mes="${mes}" `).replace('class="num', 'class="num pos-cel');
   return `<tr class="${total ? "total" : ""}"><${tag} scope="row">${esc(rotulo)}</${tag}>${colunasTermM()
-    .map(([k]) => celNum(m[k], { forte: total })).join("")}${celNum(m.net_diff, { forte: true })}${celNum(m.net_outright, { forte: true })}</tr>`;
+    .map(([k]) => cel(k, total)).join("")}${cel("net_diff", true)}${cel("net_outright", true)}</tr>`;
+}
+
+// ---------------------------------------------------------------- composição de um número do Overview
+const ROT_COL_TERMM = {
+  cash: "Cash", purchases: "Purchases", purchases_fixed: "Purchases · Fixed", purchases_ptbf: "Purchases · PTBF", inventory: "Inventory",
+  sales: "Sales", exp_sales: "Exp sales", exp_fixed: "Exp sales · Fixed", exp_ptbf: "Exp sales · PTBF", int_sales: "Int sales",
+  int_fixed: "Int sales · Fixed", int_ptbf: "Int sales · PTBF", futures: "Futures", futures_ptbf: "Futures · PTBF",
+  switch_exp: "Switch exp.", net_diff: "Net diff position", net_outright: "Net outright",
+};
+const TIPOS_TERMM = [["c", "Purchases", "Contract", "Supplier"], ["v", "Export sales", "Contract", "Importer"], ["i", "Domestic sales", "Contract", "Client"],
+  ["e", "Inventory", "Lot", "Warehouse"], ["f", "Futures", "Trade", "Details"]];
+let composicaoTermMCache = null;
+
+async function abrirComposicaoTermM(ctx, grupo, col, mes, valor) {
+  try {
+    composicaoTermMCache ??= ctx.api.positionDetalhe(["termm_itens"]).then((d) => d.termm_itens ?? null);
+    const ti = await composicaoTermMCache;
+    const atual = ti?.atual ?? null;
+    if (!atual?.[grupo]) throw new Error("Upload the Position again (or update from Digisul) to see what makes up each number.");
+    const j = COLS_TERMM.indexOf(col);
+    // linhas da célula numa versão: Map "tipo|chave" → { tipo, chave, parceiro, v }, e em que meses a chave aparece na coluna
+    const daVersao = (versao) => {
+      const b = versao?.[grupo];
+      if (!b) return null;
+      // mês que não existe nesta versão: célula vazia (-2 não casa com nenhum item)
+      const mi = mes === "T" ? -1 : b.meses.includes(mes) ? b.meses.indexOf(mes) : -2;
+      const celula = new Map(), outros = new Map();
+      for (const [c, m, id, v] of b.itens) {
+        if (c !== j) continue;
+        const [tipo, chave, parceiro] = b.ids[id];
+        const k = `${tipo}|${chave}`;
+        if (m === mi) {
+          const l = celula.get(k) ?? celula.set(k, { tipo, chave, parceiro, v: 0 }).get(k);
+          l.v += v;
+        } else if (m >= 0) (outros.get(k) ?? outros.set(k, new Set()).get(k)).add(b.meses[m]);
+      }
+      return { celula, outros };
+    };
+    const agora = daVersao(atual), antes = daVersao(ti.anterior);
+    const linhas = [...agora.celula.values()].filter((l) => Math.abs(l.v) >= 0.005);
+    const totalLinhas = linhas.reduce((s, l) => s + l.v, 0);
+
+    // o que mudou desde a versão anterior
+    let mudancas = null;
+    if (antes) {
+      mudancas = [];
+      for (const k of new Set([...agora.celula.keys(), ...antes.celula.keys()])) {
+        const a = agora.celula.get(k), b = antes.celula.get(k), x = a ?? b;
+        const va = a?.v ?? 0, vb = b?.v ?? 0;
+        if (Math.abs(va - vb) < 0.5) continue;
+        const mesesTxt = (s) => [...(s ?? [])].sort().map((m) => fmtMes(m)).join(", ");
+        const motivo = !b ? (antes.outros.has(k) ? `Moved from ${mesesTxt(antes.outros.get(k))}` : "New")
+          : !a ? (agora.outros.has(k) ? `Moved to ${mesesTxt(agora.outros.get(k))}` : "Removed")
+          : Math.abs(va) > Math.abs(vb) ? "Increased" : "Reduced";
+        mudancas.push({ ...x, antes: vb, agora: va, delta: va - vb, motivo });
+      }
+      // contrato desmembrado: BRC-0003/26 sai e entram BRC-0003/26A, BRC-0003/26B…
+      for (const x of mudancas.filter((y) => y.motivo === "Removed")) {
+        const filhos = mudancas.filter((y) => y.motivo === "New" && y.tipo === x.tipo && String(y.chave ?? "").startsWith(String(x.chave)) && y.chave !== x.chave);
+        if (!filhos.length) continue;
+        x.motivo = `Split into ${filhos.map((y) => y.chave).join(", ")}`;
+        filhos.forEach((y) => { y.motivo = `Split from ${x.chave}`; });
+      }
+      mudancas.sort((p, q) => Math.abs(q.delta) - Math.abs(p.delta));
+    }
+    const rotMes = mes === "T" ? "Total" : fmtMes(mes);
+    const tipoDe = (t) => TIPOS_TERMM.find(([k]) => k === t);
+    const secoes = TIPOS_TERMM.map(([t, rot, rc, rp]) => ({ t, rot, rc, rp, l: linhas.filter((x) => x.tipo === t).sort((p, q) => Math.abs(q.v) - Math.abs(p.v)) }))
+      .filter((s) => s.l.length);
+    const soma = (l, k = "v") => l.reduce((s, x) => s + x[k], 0);
+
+    modal({
+      titulo: `${NOME_GRUPO[grupo]} · ${ROT_COL_TERMM[col]} · ${rotMes}`,
+      largura: "modal-xl",
+      corpo: `<p><span>Value</span>: <strong class="pos-alt-ef">${fmtN(valor ?? 0)}</strong> <span>bags</span></p>
+        <div class="pos-alt-resumo">${secoes.map((s) => `<span>${esc(tr(s.rot))}: <strong class="pos-alt-ef">${fmtN(Math.round(soma(s.l)))}</strong> <span class="muted">(${s.l.length})</span></span>`).join("")}</div>
+        ${valor != null && Math.abs(totalLinhas - valor) > 1
+          ? `<p class="muted pos-nota">${icon("info")} Sum of the lines: ${fmtN(Math.round(totalLinhas))} bags — the rest comes from fixed values typed in the spreadsheet.</p>` : ""}
+        ${mudancas === null
+          ? `<p class="muted pos-nota">${icon("info")} The comparison with the previous update appears from the next update onwards.</p>`
+          : `<h3 class="pos-comp-h">What changed since the last update <span class="muted">· ${esc(ti.anterior_em ? dataHoraBR(ti.anterior_em) : "previous version")}</span></h3>
+            ${mudancas.length ? `<div class="pos-alt-resumo"><span>Change in this number: <strong class="pos-alt-ef">${fmtSinal(Math.round(soma(mudancas, "delta")))}</strong> bags</span>
+              ${["New", "Removed", "Moved", "Split", "Increased", "Reduced"].map((m) => { const l = mudancas.filter((x) => x.motivo.startsWith(m)); return l.length ? `<span>${tr(m)}: <strong>${l.length}</strong></span>` : ""; }).join("")}</div>
+              <div class="tabela-wrap"><table class="tabela tabela-num">
+                <thead><tr><th>Type</th><th>Contract / lot</th><th>Counterparty</th><th class="num">Before</th><th class="num">Now</th><th class="num">Change</th><th>What happened</th></tr></thead>
+                <tbody>${mudancas.map((x) => `<tr><td>${esc(tr(tipoDe(x.tipo)?.[1] ?? x.tipo))}</td><td>${esc(x.chave ?? "—")}</td>
+                  <td title="${esc(x.parceiro ?? "")}">${esc(x.tipo === "f" ? (x.parceiro ?? "—") : nomeCurto(x.parceiro))}</td>
+                  ${celNum(x.antes)}${celNum(x.agora)}${celNum(x.delta, { forte: true })}<td>${esc(x.motivo)}</td></tr>`).join("")}</tbody>
+              </table></div>`
+              : `<p class="muted">No changes in this number since the last update.</p>`}`}
+        ${secoes.map((s) => `<h3 class="pos-comp-h">${esc(tr(s.rot))} <span class="muted">· ${s.l.length} · ${fmtN(Math.round(soma(s.l)))} bags</span></h3>
+          <div class="tabela-wrap"><table class="tabela tabela-num">
+            <thead><tr><th>${s.rc}</th><th>${s.rp}</th><th class="num">Bags</th></tr></thead>
+            <tbody>${s.l.map((l) => `<tr><td>${esc(l.chave ?? "—")}</td><td>${esc(l.parceiro ?? "—")}</td>${celNum(l.v)}</tr>`).join("")}</tbody>
+          </table></div>`).join("") || `<p class="muted">No contracts, lots or futures in this number.</p>`}`,
+    });
+    const m = $$(".modal").at(-1);
+    if (m) { m.classList.add("pos"); marcarNegativos(m); }
+  } catch (e) {
+    composicaoTermMCache = null;
+    toast(e.message, "erro");
+  }
 }
 
 // ---------------------------------------------------------------- Physical
