@@ -186,6 +186,8 @@ const CHAVE_FONTE = "bi-position-fonte";
 const fonteVista = () => { try { return sessionStorage.getItem(CHAVE_FONTE); } catch { return null; } };
 const guardarFonteVista = (f) => { try { sessionStorage.setItem(CHAVE_FONTE, f); } catch { /* sem armazenamento: fica a oficial */ } };
 const NOME_FONTE = { planilha: "Spreadsheet", api: "Digisul API" };
+// Painéis em que a oficial é sempre o Digisul, qualquer que seja a de bi_config
+const PAINEIS_SO_API = new Set(["portal:position-commercial", "portal:position-physical"]);
 
 export async function renderPosition(link, alvo, ctx) {
   limparGraficos();
@@ -193,7 +195,7 @@ export async function renderPosition(link, alvo, ctx) {
   alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading Position…</div>`;
   let carga, oficial, fonte;
   try {
-    oficial = await ctx.api.positionFonte();
+    oficial = PAINEIS_SO_API.has(link) ? "api" : await ctx.api.positionFonte();
     fonte = (ctx.gerente && fonteVista()) || oficial;
     carga = await ctx.api.positionUltima(fonte);
   } catch (e) {
@@ -868,7 +870,7 @@ function cardComparacao(grupo, carga, outra, info, ctx) {
     <p class="muted pos-nota">${info
       ? `Formulas and futures (${fmtN(info.futuros)} trades) from ${esc(info.nome_arquivo ?? "—")}, uploaded ${esc(tempoRelativo(info.atualizado_em))}${info.enviado_por ? ` by ${esc(info.enviado_por)}` : ""}.`
       : "The spreadsheet formulas and futures have not been saved yet — upload the full spreadsheet once."}</p>
-    <p class="muted pos-nota">Official source: <strong>${NOME_FONTE[ctx.oficial]}</strong></p>
+    <p class="muted pos-nota">Official source: <strong>${NOME_FONTE[ctx.oficial]}</strong> · Dashboard Commercial and Physical Position always use the Digisul API.</p>
     ${ctx.admin ? `<div><button type="button" class="btn" id="posOficial">${icon("check")}<span>Make ${NOME_FONTE[outraFonte]} the official source</span></button></div>` : ""}
   </section>`;
 }
@@ -878,7 +880,7 @@ function trocarFonteOficial(ctx) {
   modal({
     titulo: "Official Position source",
     botao: `Use ${NOME_FONTE[nova]}`,
-    corpo: `<p>Everyone will see the Position from <strong>${NOME_FONTE[nova]}</strong>${nova === "api"
+    corpo: `<p>Everyone will see the Position from <strong>${NOME_FONTE[nova]}</strong> (Dashboard Commercial and Physical Position stay on the Digisul API)${nova === "api"
       ? ", updated every 2 hours on business days. Keep uploading the spreadsheet (or just the OpenFutures sheet) when futures change."
       : ". The views will only change when the spreadsheet is uploaded."}</p>`,
     async onSubmit() {
