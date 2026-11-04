@@ -662,7 +662,10 @@ const PT = {
     "Contratos cancelados no Digisul que ainda têm comissão (ex.: washout). Eles não têm vencimento no Digisul, então não entram sozinhos no mês. Se o corretor cobrar no espelho, use “Lançar neste mês”.",
   "Statement number": "Nº do espelho", "Statement total (R$)": "Valor total do espelho (R$)", "e.g. ESP-0010/26": "ex.: ESP-0010/26",
   "Contracts in this month": "Contratos do mês", "+ Add entry": "+ Adicionar lançamento", "Export this broker": "Exportar este corretor",
-  "In statement": "No espelho", "Typed per contract": "Digitado por contrato", "Amount (R$)": "Valor (R$)", 
+  "In statement": "No espelho", "In statement (R$)": "No espelho (R$)", "Typed per contract": "Digitado por contrato", "Brokerage %": "% corretagem",
+  "Amount the broker charged for this contract in the statement (optional)": "Valor que o corretor cobrou por este contrato no espelho (opcional)",
+  "Optional: in “In statement (R$)” type the amount the broker charged for each contract. The Difference column then shows exactly which contracts do not match.":
+    "Opcional: em “No espelho (R$)” digite o valor que o corretor cobrou em cada contrato. A coluna Diferença mostra exatamente quais contratos não batem.", "Amount (R$)": "Valor (R$)", 
   "No manual entries. Use them for contracts from other months, cancelled contracts with commission or agreed adjustments (negative amount for a discount).":
     "Nenhum lançamento. Use para contratos de outros meses, cancelados com comissão ou acertos combinados (valor negativo para desconto).",
   "Not checked yet.": "Ainda não conferido.", "Entry added — save to confirm.": "Lançamento adicionado — salve para confirmar.",

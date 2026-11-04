@@ -165,6 +165,7 @@ td input.t{width:100%;min-width:150px;text-align:left}
     </div>
     <div class="res" id="detRes"></div>
     <h3>Contracts in this month</h3>
+    <p class="help">Optional: in “In statement (R$)” type the amount the broker charged for each contract. The Difference column then shows exactly which contracts do not match.</p>
     <div class="tw"><table id="detLinhas"></table></div>
     <h3>Manual entries</h3>
     <div class="tw"><table id="detAjustes"></table></div>
@@ -281,7 +282,11 @@ function corretoresView(){
     const ajustes=somaAjustes(cf.ajustes);
     const esperado=r2(c.corretagem+ajustes);
     const espelho=cf.espelho_valor==null?null:Number(cf.espelho_valor);
-    return{...c,ajustes,esperado,espelho,dif:espelho==null?null:r2(espelho-esperado),status:cf.status||'pending',numero:cf.espelho_numero||''};
+    // % de corretagem cadastradas nos contratos do corretor no mês (ex.: "0,5%" ou "0,5% / 0,52%")
+    const pcts=[...new Set((E.calc?.linhas||[]).filter(l=>String(l.corretorCod)===String(c.cod)).map(l=>l.pct))].sort((a,b)=>a-b);
+    const taxas=pcts.map(p=>fmtN(p,3)+'%').join(' / ');
+    const taxaFora=pcts.some(p=>Math.abs(p-PCT_PADRAO)>1e-9);
+    return{...c,taxas,taxaFora,ajustes,esperado,espelho,dif:espelho==null?null:r2(espelho-esperado),status:cf.status||'pending',numero:cf.espelho_numero||''};
   });
 }
 
@@ -325,18 +330,18 @@ function renderCorretores(){
   const tab=$('#tabCorretores');
   const busca=$('#buscaCorretor').value.trim().toLowerCase(),st=$('#filtroStatus').value;
   const cs=ordenar(corretoresView().filter(c=>(!busca||c.nome.toLowerCase().includes(busca))&&(!st||c.status===st)),E.ordem.corretores);
-  const cols=[['nome','Broker'],['contratos','Contracts',1],['sacas','Bags',1],['base','Base',1],['corretagem','Calculated',1],['ajustes','Manual entries',1],['esperado','Expected',1],['espelho','Statement',1],['dif','Difference',1],['status','Status']];
+  const cols=[['nome','Broker'],['contratos','Contracts',1],['taxas','Brokerage %',1],['sacas','Bags',1],['base','Base',1],['corretagem','Calculated',1],['ajustes','Manual entries',1],['esperado','Expected',1],['espelho','Statement',1],['dif','Difference',1],['status','Status']];
   if(!cs.length){tab.innerHTML=cab('corretores',cols)+`<tbody><tr><td colspan="${cols.length}" class="empty">${E.calc?'No brokerage in this month.':'—'}</td></tr></tbody>`;ligarOrdem(tab,'corretores',renderCorretores);return;}
   const tot=k=>r2(cs.reduce((s,c)=>s+(c[k]||0),0));
   tab.innerHTML=cab('corretores',cols)+'<tbody>'+cs.map(c=>`
     <tr class="ck" data-cod="${c.cod}">
       <td><b>${esc(c.nome)}</b> ${c.alertas?`<span class="tag" title="Non-standard rate or price not fixed">⚠ ${c.alertas}</span>`:''}${c.numero?`<div class="sub">${esc(c.numero)}</div>`:''}</td>
-      <td class="n">${c.contratos}</td><td class="n">${fmtN(c.sacas,0)}</td><td class="n">${fmtR$(c.base)}</td>
+      <td class="n">${c.contratos}</td><td class="n ${c.taxaFora?'pos':''}">${c.taxas||'—'}</td><td class="n">${fmtN(c.sacas,0)}</td><td class="n">${fmtR$(c.base)}</td>
       <td class="n">${fmtR$(c.corretagem)}</td><td class="n">${c.ajustes?fmtR$(c.ajustes):''}</td>
       <td class="n"><b>${fmtR$(c.esperado)}</b></td><td class="n">${fmtR$(c.espelho)}</td>
       <td class="n ${difClasse(c.dif)}">${difTexto(c.dif)}</td>
       <td><span class="st st-${c.status}">${STATUS[c.status]}</span></td>
-    </tr>`).join('')+`</tbody><tfoot><tr><td>Total (${cs.length})</td><td class="n">${tot('contratos')}</td><td class="n">${fmtN(tot('sacas'),0)}</td><td class="n">${fmtR$(tot('base'))}</td><td class="n">${fmtR$(tot('corretagem'))}</td><td class="n">${fmtR$(tot('ajustes'))}</td><td class="n">${fmtR$(tot('esperado'))}</td><td class="n">${fmtR$(tot('espelho'))}</td><td></td><td></td></tr></tfoot>`;
+    </tr>`).join('')+`</tbody><tfoot><tr><td>Total (${cs.length})</td><td class="n">${tot('contratos')}</td><td></td><td class="n">${fmtN(tot('sacas'),0)}</td><td class="n">${fmtR$(tot('base'))}</td><td class="n">${fmtR$(tot('corretagem'))}</td><td class="n">${fmtR$(tot('ajustes'))}</td><td class="n">${fmtR$(tot('esperado'))}</td><td class="n">${fmtR$(tot('espelho'))}</td><td></td><td></td></tr></tfoot>`;
   ligarOrdem(tab,'corretores',renderCorretores);
   $$('tr[data-cod]',tab).forEach(tr=>tr.addEventListener('click',()=>abrirDet(tr.dataset.cod)));
 }
@@ -348,7 +353,7 @@ function renderContratos(){
   const busca=$('#buscaContrato').value.trim().toLowerCase(),tipo=$('#filtroTipo').value,soAlerta=$('#filtroAlerta').checked;
   const ls=ordenar((E.calc?.linhas||[]).filter(l=>(!tipo||l.tipo===tipo)&&(!soAlerta||l.alertas.some(a=>a!=='pf'))&&
     (!busca||`${l.contrato} ${l.corretorNome} ${l.contraparte}`.toLowerCase().includes(busca))),E.ordem.contratos);
-  const cols=[['tipo','Type'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Rate',1],['corretagem','Brokerage',1],['alertas','Warnings']];
+  const cols=[['tipo','Type'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Brokerage %',1],['corretagem','Brokerage',1],['alertas','Warnings']];
   tab.innerHTML=cab('contratos',cols)+'<tbody>'+(ls.length?ls.map(l=>`
     <tr class="ck" data-cod="${l.corretorCod}"><td><span class="badge ${l.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[l.tipo]}</span></td><td><b>${esc(l.contrato)}</b></td><td>${fmtData(l.data)}</td>
     <td>${esc(l.corretorNome)}</td><td class="w">${esc(l.contraparte)}</td><td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td>
@@ -365,7 +370,7 @@ $('#filtroAlerta').addEventListener('change',renderContratos);
 function renderCancelados(){
   const tab=$('#tabCancelados');
   const cs=ordenar(E.calc?.cancelados||[],E.ordem.cancelados);
-  const cols=[['tipo','Type'],['contrato','Contract'],['emissao','Issued'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['pct','Rate',1],['corretagem','Commission in Digisul',1],['acao','']];
+  const cols=[['tipo','Type'],['contrato','Contract'],['emissao','Issued'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['pct','Brokerage %',1],['corretagem','Commission in Digisul',1],['acao','']];
   tab.innerHTML=cab('cancelados',cols)+'<tbody>'+(cs.length?cs.map((c,i)=>{
     const lancado=(E.conf[String(c.corretorCod)]?.ajustes||[]).some(a=>a.contrato===c.contrato);
     return `<tr><td><span class="badge ${c.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[c.tipo]}</span></td><td><b>${esc(c.contrato)}</b></td><td>${fmtData(c.emissao)}</td><td>${esc(c.corretorNome)}</td>
@@ -427,7 +432,7 @@ function statusAuto(){
 function renderDetLinhas(){
   const d=E.det,tab=$('#detLinhas');
   if(!d.linhas.length){tab.innerHTML='<tbody><tr><td class="empty">No contracts due in this month for this broker.</td></tr></tbody>';return;}
-  tab.innerHTML=`<thead><tr><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Rate</th><th class="n">Calculated</th><th class="n">In statement</th><th class="n">Difference</th><th>Warnings</th></tr></thead><tbody>`+
+  tab.innerHTML=`<thead><tr><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Brokerage %</th><th class="n">Calculated</th><th class="n" title="Amount the broker charged for this contract in the statement (optional)">In statement (R$)</th><th class="n">Difference</th><th>Warnings</th></tr></thead><tbody>`+
     d.linhas.map(l=>{
       const v=d.r.linhas[l.id],dif=v==null?null:r2(v-l.corretagem);
       return `<tr><td><b>${esc(l.contrato)}</b><div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
@@ -483,14 +488,14 @@ function linhasExport(cod){
   return (E.calc?.linhas||[]).filter(l=>!cod||String(l.corretorCod)===String(cod)).map(l=>{
     const v=E.conf[String(l.corretorCod)]?.linhas?.[l.id];
     return{Type:TIPO[l.tipo],Contract:l.contrato,'Original contract':l.pai,'Due / shipped':fmtData(l.data),Broker:l.corretorNome,'Supplier / client':l.contraparte,
-      Branch:l.filial||'',Bags:l.sacas,'Price/Bag':l.preco,Base:l.base,'Rate %':l.pct,Brokerage:l.corretagem,'In statement':v??'',Difference:v==null?'':r2(v-l.corretagem),
+      Branch:l.filial||'',Bags:l.sacas,'Price/Bag':l.preco,Base:l.base,'Brokerage %':l.pct,Brokerage:l.corretagem,'In statement (R$)':v??'',Difference:v==null?'':r2(v-l.corretagem),
       Warnings:l.alertas.map(a=>ALERTA[a]).join('; ')};
   });
 }
 $('#btnExportar').addEventListener('click',()=>{
   if(!window.XLSX||!E.calc)return;
   const X=XLSX,wb=X.utils.book_new();
-  X.utils.book_append_sheet(wb,X.utils.json_to_sheet(ordenar(corretoresView(),['nome',1]).map(c=>({Broker:c.nome,Code:c.cod,'Statement no.':c.numero,Contracts:c.contratos,Bags:c.sacas,Base:c.base,
+  X.utils.book_append_sheet(wb,X.utils.json_to_sheet(ordenar(corretoresView(),['nome',1]).map(c=>({Broker:c.nome,Code:c.cod,'Statement no.':c.numero,Contracts:c.contratos,'Brokerage %':c.taxas,Bags:c.sacas,Base:c.base,
     Calculated:c.corretagem,'Manual entries':c.ajustes,Expected:c.esperado,Statement:c.espelho??'',Difference:c.dif??'',Status:STATUS[c.status]}))),'Summary');
   X.utils.book_append_sheet(wb,X.utils.json_to_sheet(linhasExport()),'Contracts');
   const aj=Object.values(E.conf).flatMap(c=>(c.ajustes||[]).map(a=>({Broker:c.corretor_nome,Contract:a.contrato,Description:a.descricao,Amount:a.valor})));
