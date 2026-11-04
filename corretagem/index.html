@@ -86,7 +86,6 @@ td input.t{width:100%;min-width:150px;text-align:left}
 <div class="hdr">
   <h1>🫘 Brascof · Brokerage Statement</h1>
   <div class="ctl">
-    <a class="hbtn" href="index.html">← Commercial Control</a>
     <label for="mes">Reference month</label>
     <input type="month" id="mes">
     <button class="hbtn" id="btnAtualizar" type="button">↻ Refresh</button>
@@ -184,9 +183,9 @@ td input.t{width:100%;min-width:150px;text-align:left}
 
 <script>
 // ── LOGIN DO PORTAL BI ──────────────────────────────────────────────────
-// Só abre dentro do Portal BI (iframe do Payments) e usa o login de lá.
-// A API confere o token e o acesso ao Payments; o Supabase aplica as regras RLS
-// da tabela bi_corretagem_conf (seção 18 do supabase/schema.sql).
+// Só abre dentro do Portal BI (card próprio, link .../portal-bi/corretagem/) e usa o login de lá.
+// A API confere o token e o acesso a esse card; o Supabase aplica as regras RLS
+// da tabela bi_corretagem_conf (seções 18 e 19 do supabase/schema.sql).
 const PORTAL_KEY='sb-cfrvnsnwdldnflowxqbs-auth-token';
 if(window.self===window.top){document.documentElement.style.display='none';location.replace('../#/');}
 function tokenPortal(){try{return JSON.parse(localStorage.getItem(PORTAL_KEY))?.access_token||'';}catch(e){return '';}}
@@ -234,7 +233,7 @@ function msgSupa(j,status){
   const m=j?.message||'';
   if(/bi_corretagem_conf/.test(m)&&/does not exist|schema cache/i.test(m))return 'The brokerage table is not set up yet: run section 18 of supabase/schema.sql in the Supabase SQL Editor.';
   if(status===401)return 'Your session has expired. Please reload the BI Portal.';
-  if(status===403||/row-level security/i.test(m))return 'You do not have access to the Payments page.';
+  if(status===403||/row-level security/i.test(m))return 'You do not have access to the Brokerage Statement.';
   return m||`Error ${status}`;
 }
 async function lerConferencias(mes){

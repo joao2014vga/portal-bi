@@ -1230,7 +1230,7 @@ $$;
 
 
 -- =====================================================================
--- 18. ESPELHO DE CORRETAGEM (aba "Brokerage" do Payments — tv/corretagem.html)
+-- 18. ESPELHO DE CORRETAGEM (tabela da conferência; acesso ajustado na seção 19)
 -- A corretagem esperada vem calculada da API (brascof-api/api/corretagem.js).
 -- Aqui fica só a conferência digitada: valor do espelho que o corretor mandou,
 -- status, valores por contrato e lançamentos manuais. Uma linha por mês + corretor.
@@ -1282,3 +1282,21 @@ create policy bi_corretagem_conf_update on public.bi_corretagem_conf for update 
 drop policy if exists bi_corretagem_conf_delete on public.bi_corretagem_conf;
 create policy bi_corretagem_conf_delete on public.bi_corretagem_conf for delete to authenticated
   using (public.bi_is_admin());
+
+
+-- =====================================================================
+-- 19. ESPELHO DE CORRETAGEM COM CARD PRÓPRIO
+-- A página saiu de dentro do Payments (tv/corretagem.html) e virou um card
+-- próprio: link https://joao2014vga.github.io/portal-bi/corretagem/
+-- O acesso passa a ser o desse card (liberado por pessoa em Administração),
+-- não mais o do Payments. Rode depois da seção 18.
+-- =====================================================================
+drop policy if exists bi_corretagem_conf_select on public.bi_corretagem_conf;
+create policy bi_corretagem_conf_select on public.bi_corretagem_conf for select to authenticated
+  using (public.bi_ve_painel('/portal-bi/corretagem'));
+drop policy if exists bi_corretagem_conf_insert on public.bi_corretagem_conf;
+create policy bi_corretagem_conf_insert on public.bi_corretagem_conf for insert to authenticated
+  with check (public.bi_ve_painel('/portal-bi/corretagem'));
+drop policy if exists bi_corretagem_conf_update on public.bi_corretagem_conf;
+create policy bi_corretagem_conf_update on public.bi_corretagem_conf for update to authenticated
+  using (public.bi_ve_painel('/portal-bi/corretagem')) with check (public.bi_ve_painel('/portal-bi/corretagem'));

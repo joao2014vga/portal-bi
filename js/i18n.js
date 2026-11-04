@@ -638,9 +638,9 @@ const PT = {
     "Os certificados ainda não estão configurados: rode a seção 11 do supabase/schema.sql no SQL Editor do Supabase.",
   "Only administrators and file managers can change the certificate list.": "Só administradores e gestores de arquivos podem alterar a lista do certificado.",
 
-  // ---------------------------------------------------------------- Espelho de corretagem (tv/corretagem.html)
-  "💼 Brokerage statement": "💼 Espelho de corretagem", "Brascof · Brokerage Statement": "Brascof · Espelho de Corretagem",
-  "🫘 Brascof · Brokerage Statement": "🫘 Brascof · Espelho de Corretagem", "← Commercial Control": "← Controle Comercial",
+  // ---------------------------------------------------------------- Espelho de corretagem (corretagem/index.html)
+  "Brokerage Statement": "Espelho de Corretagem", "Brascof · Brokerage Statement": "Brascof · Espelho de Corretagem",
+  "🫘 Brascof · Brokerage Statement": "🫘 Brascof · Espelho de Corretagem",
   "Reference month": "Mês de referência", "↻ Refresh": "↻ Atualizar", "⬇ Export Excel": "⬇ Exportar Excel",
   "By broker": "Por corretor", "Cancelled with commission": "Cancelados com comissão", "How it is calculated": "Como é calculado",
   "Search broker...": "Buscar corretor...", "All statuses": "Todos os status", "Statement pending": "Espelho pendente", "Received": "Recebido",
@@ -670,7 +670,7 @@ const PT = {
   "Cancelled with commission (washout)": "Cancelado com comissão (washout)",
   "The brokerage table is not set up yet: run section 18 of supabase/schema.sql in the Supabase SQL Editor.":
     "A tabela da corretagem ainda não foi criada: rode a seção 18 do supabase/schema.sql no SQL Editor do Supabase.",
-  "You do not have access to the Payments page.": "Você não tem acesso à página do Payments.",
+  "You do not have access to the Brokerage Statement.": "Você não tem acesso ao Espelho de Corretagem.",
   "Difference = statement amount − (calculated brokerage + manual entries).": "Diferença = valor do espelho − (corretagem calculada + lançamentos manuais).",
   "Broker and rate come from the Digisul brokerage queries (brascof_pesq_corretagem_compras / _vendas). A contract with two brokers gives one line per broker.":
     "Corretor e % vêm das consultas de corretagem do Digisul (brascof_pesq_corretagem_compras / _vendas). Contrato com dois corretores gera uma linha para cada um.",
