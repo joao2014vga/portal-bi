@@ -579,6 +579,7 @@ const PT = {
   "Remove this link: the bags go back to the leftover of the purchase": "Tirar este vínculo: as sacas voltam para a sobra da compra",
   "Remove this link? The bags go back to the leftover of the purchase.": "Tirar este vínculo? As sacas voltam para a sobra da compra.",
   "Link removed: the bags are back in the leftover.": "Vínculo removido: as sacas voltaram para a sobra.",
+  "The link was not removed in the database: your user may not have permission to edit the history. The bags did not go back.": "O vínculo não foi removido no banco: seu usuário pode não ter permissão para editar o histórico. As sacas não voltaram.",
   "Selected": "Selecionados", "({n} of {n})": "({n} de {n})", "Due date = coffee payment date. Click a producer to see its BRC purchases; tick the ones to add up in “Selected”.": "Vencimento = data de pagamento do café. Clique num produtor para ver as compras BRC dele; marque os que entram na soma “Selecionados”.",
   "Reason": "Motivo", "e.g. rejected by the client": "ex.: rejeitado pelo cliente", "Contract excluded from CP.": "Contrato excluído do CP.",
   "Remove this contract from CP? Digisul still shows it; only the portal changes. Its BRC links stay until you unlink them.": "Tirar este contrato do CP? O Digisul continua mostrando; só o portal muda. Os vínculos com compras BRC ficam até você desvincular.",

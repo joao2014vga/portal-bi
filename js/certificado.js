@@ -736,9 +736,9 @@ async function desvincular(venda, h, historico, hist, cert, ctx) {
   const ok = await confirmar("Unlink export", `<strong>${esc(venda)}</strong> · <strong>${esc(h.compra)}</strong> · ${esc(fmtN(sacas))} bags<br>
     Remove this link? The bags go back to the leftover of the purchase.`, "Unlink");
   if (!ok) return;
+  const chave = (v) => (v.historico_id != null ? `h:${v.historico_id}` : `d:${v.compra}`);
   try {
     if (daTela.length) {
-      const chave = (v) => (v.historico_id != null ? `h:${v.historico_id}` : `d:${v.compra}`);
       await ctx.api.salvarCertVinculos(cert.codigo, venda, hist.novos.filter((v) => v.venda === venda && chave(v) !== h._chave)
         .map((v) => ({ historico_id: v.historico_id, compra: v.compra, sacas: v.sacas })));
     }
@@ -750,6 +750,11 @@ async function desvincular(venda, h, historico, hist, cert, ctx) {
         obs: [linha.obs, `unlinked ${venda} (${tirar})`].filter(Boolean).join(" · "),
       });
     }
+    // confere no banco: quando o RLS barra a alteração, o Supabase não dá erro, só não grava
+    const [hs, vs] = await Promise.all([ctx.api.certHistorico(cert.codigo), ctx.api.certVinculos(cert.codigo)]);
+    const ficouPlanilha = daPlanilha.length && (hs ?? []).find((x) => x.id === h.id)?.vinculos?.some((v) => v.venda === venda);
+    const ficouTela = daTela.length && (vs ?? []).some((v) => v.venda === venda && chave(v) === h._chave);
+    if (ficouPlanilha || ficouTela) throw new Error("The link was not removed in the database: your user may not have permission to edit the history. The bags did not go back.");
     toast("Link removed: the bags are back in the leftover.");
     ctx.recarregar();
   } catch (e) { toast(e.message, "erro"); }
