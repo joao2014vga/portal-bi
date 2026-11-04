@@ -1227,3 +1227,58 @@ begin
   end if;
 end;
 $$;
+
+
+-- =====================================================================
+-- 18. ESPELHO DE CORRETAGEM (aba "Brokerage" do Payments — tv/corretagem.html)
+-- A corretagem esperada vem calculada da API (brascof-api/api/corretagem.js).
+-- Aqui fica só a conferência digitada: valor do espelho que o corretor mandou,
+-- status, valores por contrato e lançamentos manuais. Uma linha por mês + corretor.
+-- Vê e edita quem tem acesso ao painel do Payments (link com '/portal-bi/tv').
+-- =====================================================================
+create table if not exists public.bi_corretagem_conf (
+  mes            text not null check (mes ~ '^\d{4}-(0[1-9]|1[0-2])$'),
+  corretor_cod   integer not null,
+  corretor_nome  text,
+  status         text not null default 'pending'
+                   check (status in ('pending', 'received', 'divergent', 'checked', 'paid')),
+  espelho_numero text,
+  espelho_valor  numeric(14, 2),
+  linhas         jsonb not null default '{}'::jsonb,   -- { "<id da linha>": valor no espelho }
+  ajustes        jsonb not null default '[]'::jsonb,   -- [{ id, contrato, descricao, valor }]
+  obs            text,
+  autor          text,
+  updated_by     uuid default auth.uid() references public.bi_perfis (id) on delete set null,
+  updated_at     timestamptz not null default now(),
+  primary key (mes, corretor_cod)
+);
+
+-- quem alterou: sempre o usuário logado (não vem do navegador)
+create or replace function public.bi_corretagem_autor()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  new.updated_by := auth.uid();
+  new.autor := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  new.updated_at := now();
+  return new;
+end;
+$$;
+drop trigger if exists bi_corretagem_conf_autor on public.bi_corretagem_conf;
+create trigger bi_corretagem_conf_autor before insert or update on public.bi_corretagem_conf
+  for each row execute function public.bi_corretagem_autor();
+
+alter table public.bi_corretagem_conf enable row level security;
+drop policy if exists bi_corretagem_conf_select on public.bi_corretagem_conf;
+create policy bi_corretagem_conf_select on public.bi_corretagem_conf for select to authenticated
+  using (public.bi_ve_painel('/portal-bi/tv'));
+drop policy if exists bi_corretagem_conf_insert on public.bi_corretagem_conf;
+create policy bi_corretagem_conf_insert on public.bi_corretagem_conf for insert to authenticated
+  with check (public.bi_ve_painel('/portal-bi/tv'));
+drop policy if exists bi_corretagem_conf_update on public.bi_corretagem_conf;
+create policy bi_corretagem_conf_update on public.bi_corretagem_conf for update to authenticated
+  using (public.bi_ve_painel('/portal-bi/tv')) with check (public.bi_ve_painel('/portal-bi/tv'));
+drop policy if exists bi_corretagem_conf_delete on public.bi_corretagem_conf;
+create policy bi_corretagem_conf_delete on public.bi_corretagem_conf for delete to authenticated
+  using (public.bi_is_admin());

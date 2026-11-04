@@ -637,6 +637,51 @@ const PT = {
   "Certificates are not set up yet: run section 11 of supabase/schema.sql in the Supabase SQL Editor.":
     "Os certificados ainda não estão configurados: rode a seção 11 do supabase/schema.sql no SQL Editor do Supabase.",
   "Only administrators and file managers can change the certificate list.": "Só administradores e gestores de arquivos podem alterar a lista do certificado.",
+
+  // ---------------------------------------------------------------- Espelho de corretagem (tv/corretagem.html)
+  "💼 Brokerage statement": "💼 Espelho de corretagem", "Brascof · Brokerage Statement": "Brascof · Espelho de Corretagem",
+  "🫘 Brascof · Brokerage Statement": "🫘 Brascof · Espelho de Corretagem", "← Commercial Control": "← Controle Comercial",
+  "Reference month": "Mês de referência", "↻ Refresh": "↻ Atualizar", "⬇ Export Excel": "⬇ Exportar Excel",
+  "By broker": "Por corretor", "Cancelled with commission": "Cancelados com comissão", "How it is calculated": "Como é calculado",
+  "Search broker...": "Buscar corretor...", "All statuses": "Todos os status", "Statement pending": "Espelho pendente", "Received": "Recebido",
+  "Divergent": "Divergente", "Checked": "Conferido", "Paid": "Pago", "Purchases and sales": "Compras e vendas", 
+  "Search contract, broker, supplier or client...": "Buscar contrato, corretor, fornecedor ou cliente...", "Only with warnings": "Só com alerta",
+  "Broker": "Corretor", "Base": "Base", "Calculated": "Calculado", "Manual entries": "Lançamentos manuais", "Expected": "Esperado",
+  "Statement": "Espelho", "Due / shipped": "Venc. / saída",
+  "Supplier / client": "Fornecedor / cliente", "Price/Bag": "Preço/saca", "Brokerage": "Corretagem", "Warnings": "Alertas",
+  "Issued": "Emissão", "Commission in Digisul": "Comissão no Digisul", "Add to this month": "Lançar neste mês", "Added": "Lançado",
+  "Sale": "Venda", "Non-standard rate": "% fora do padrão", "Individual producer: base × 1.01": "Produtor PF: base × 1,01",
+  "Price not fixed": "Preço não fixado", "Non-standard rate or price not fixed": "% fora do padrão ou preço não fixado",
+  "Expected brokerage": "Corretagem esperada", "Statements received": "Espelhos recebidos", "Statements total": "Valor dos espelhos",
+  "{n} of {n}": "{n} de {n}", "{n} pending": "{n} pendentes", "{n} divergent": "{n} com divergência", "{n} lines": "{n} linhas",
+  "Expected for these: {n}": "Esperado para esses: {n}", "Total ({n})": "Total ({n})",
+  "No brokerage in this month.": "Nenhuma corretagem neste mês.", "No contracts.": "Nenhum contrato.",
+  "No cancelled contracts with commission in the last 18 months.": "Nenhum contrato cancelado com comissão nos últimos 18 meses.",
+  "No contracts due in this month for this broker.": "Nenhum contrato deste corretor neste mês.",
+  "Contracts cancelled in Digisul that still carry a commission (e.g. washout). They have no due date in Digisul, so they do not enter a month on their own. If the broker charges one in the statement, use “Add to this month”.":
+    "Contratos cancelados no Digisul que ainda têm comissão (ex.: washout). Eles não têm vencimento no Digisul, então não entram sozinhos no mês. Se o corretor cobrar no espelho, use “Lançar neste mês”.",
+  "Statement number": "Nº do espelho", "Statement total (R$)": "Valor total do espelho (R$)", "e.g. ESP-0010/26": "ex.: ESP-0010/26",
+  "Contracts in this month": "Contratos do mês", "+ Add entry": "+ Adicionar lançamento", "Export this broker": "Exportar este corretor",
+  "In statement": "No espelho", "Typed per contract": "Digitado por contrato", "Amount (R$)": "Valor (R$)", 
+  "No manual entries. Use them for contracts from other months, cancelled contracts with commission or agreed adjustments (negative amount for a discount).":
+    "Nenhum lançamento. Use para contratos de outros meses, cancelados com comissão ou acertos combinados (valor negativo para desconto).",
+  "Not checked yet.": "Ainda não conferido.", "Entry added — save to confirm.": "Lançamento adicionado — salve para confirmar.",
+  "Saving...": "Salvando...", "Saved ✓": "Salvo ✓", "Loading Digisul data...": "Carregando dados do Digisul...",
+  "Cancelled with commission (washout)": "Cancelado com comissão (washout)",
+  "The brokerage table is not set up yet: run section 18 of supabase/schema.sql in the Supabase SQL Editor.":
+    "A tabela da corretagem ainda não foi criada: rode a seção 18 do supabase/schema.sql no SQL Editor do Supabase.",
+  "You do not have access to the Payments page.": "Você não tem acesso à página do Payments.",
+  "Difference = statement amount − (calculated brokerage + manual entries).": "Diferença = valor do espelho − (corretagem calculada + lançamentos manuais).",
+  "Broker and rate come from the Digisul brokerage queries (brascof_pesq_corretagem_compras / _vendas). A contract with two brokers gives one line per broker.":
+    "Corretor e % vêm das consultas de corretagem do Digisul (brascof_pesq_corretagem_compras / _vendas). Contrato com dois corretores gera uma linha para cada um.",
+  "Purchases enter the month by their due date; the base is the contract total.": "Compras entram no mês pelo vencimento; a base é o total do contrato.",
+  "Sales enter the month by their shipping date (Data Saída); the base is the sale total.": "Vendas entram no mês pela data de saída; a base é o total da venda.",
+  "Individual producer (CPF): Digisul stores the price divided by 1.01, and brokers charge on the full price, so the base is multiplied by 1.01.":
+    "Produtor pessoa física (CPF): o Digisul guarda o preço dividido por 1,01 e o corretor cobra sobre o preço cheio, então a base é multiplicada por 1,01.",
+  "Split contracts: only the children (A, B…) count, never the original contract. The duplicate line per branch is removed.":
+    "Contratos desdobrados: entram só os filhos (A, B…), nunca o contrato original. A linha repetida por filial é removida.",
+  "Brokerage = base × rate registered in Digisul. Lines with a rate other than 0.5% are flagged.":
+    "Corretagem = base × % cadastrada no Digisul. Linhas com % diferente de 0,5% recebem alerta.",
 };
 
 // Tempo relativo produzido por ui.tempoRelativo

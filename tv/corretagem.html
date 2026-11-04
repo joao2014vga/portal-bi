@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Brascof · Brokerage Statement</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f2;color:#1a1a1a;min-height:100vh;padding:1.5rem 2rem}
+.hdr{background:#2d4a3e;border-radius:12px;padding:1rem 1.5rem;display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:.75rem}
+.hdr h1{font-size:1.3rem;font-weight:600;color:#e8f0ec}
+.hdr .ctl{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.hdr label{font-size:.78rem;color:#8aab97}
+.hdr input[type=month]{padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font-size:.85rem;color-scheme:dark}
+.hbtn{padding:5px 10px;border-radius:6px;border:1px solid #4a7a60;background:transparent;color:#8aab97;font-size:.78rem;cursor:pointer;text-decoration:none;white-space:nowrap;font-family:inherit}
+.hbtn:hover{background:#1a2e24;color:#e8f0ec}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:1.25rem}
+.kpi{background:#fff;border:1px solid #dde8e2;border-radius:12px;padding:.9rem 1.1rem}
+.kpi small{display:block;font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:#4a7a60;font-weight:600}
+.kpi b{display:block;font-size:1.3rem;margin-top:.2rem;font-variant-numeric:tabular-nums}
+.kpi span{font-size:.72rem;color:#5a7a68}
+.card{background:#fff;border:1px solid #dde8e2;border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.25rem}
+.tabs{display:flex;gap:.25rem;border-bottom:1px solid #dde8e2;margin-bottom:1rem;overflow-x:auto}
+.tabs button{font:inherit;font-size:.8rem;background:none;border:0;border-bottom:2px solid transparent;padding:.5rem .9rem;color:#5a7a68;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected=true]{color:#1a1a1a;border-bottom-color:#2d4a3e;font-weight:600}
+.cnt{background:#fef3e2;color:#7a4f00;border-radius:10px;padding:0 6px;font-size:.7rem;margin-left:3px}
+.filters{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.75rem;align-items:center}
+.filters input[type=search],.filters select{padding:6px 9px;border:1px solid #cfdcd4;border-radius:6px;font:inherit;font-size:.8rem;background:#fff}
+.filters input[type=search]{min-width:240px}
+.filters label{font-size:.78rem;color:#5a7a68;display:flex;gap:4px;align-items:center}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.76rem;font-variant-numeric:tabular-nums}
+th{text-align:left;padding:.45rem .55rem;font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:#5a7a68;border-bottom:1px solid #dde8e2;background:#f5f9f6;cursor:pointer;user-select:none;white-space:nowrap}
+td{padding:.45rem .55rem;border-bottom:1px solid #edf3ef;white-space:nowrap}
+th.n,td.n{text-align:right}
+td.w{white-space:normal;min-width:170px}
+tbody tr.ck{cursor:pointer}
+tbody tr.ck:hover{background:#fafcfb}
+tfoot td{font-weight:600;background:#f5f9f6;border-top:1px solid #dde8e2}
+.sub{font-size:.68rem;color:#8aab97}
+.empty{color:#8aab97;font-size:.85rem;padding:1.5rem 0;text-align:center}
+.err{background:#fdecea;border:1px solid #f3c6c0;color:#922020;padding:.75rem 1rem;border-radius:10px;margin-bottom:1rem;font-size:.85rem}
+.help{font-size:.78rem;color:#5a7a68;margin-bottom:.75rem;max-width:900px}
+.badge{padding:2px 9px;border-radius:20px;font-size:.68rem;font-weight:600;display:inline-block}
+.badge-c{background:#e3eef9;color:#1a4f82}.badge-v{background:#e3f4e3;color:#1a5c1a}
+.st{padding:2px 9px;border-radius:20px;font-size:.68rem;font-weight:600;display:inline-block}
+.st-pending{background:#eef1ef;color:#5a7a68}.st-received{background:#e3eef9;color:#1a4f82}
+.st-divergent{background:#fdecea;color:#922020}.st-checked{background:#e3f4e3;color:#1a5c1a}.st-paid{background:#2d4a3e;color:#fff}
+.tag{display:inline-block;font-size:.64rem;border-radius:5px;padding:0 6px;margin:1px 3px 1px 0;background:#fef3e2;color:#7a4f00}
+.tag.i{background:#e3eef9;color:#1a4f82}
+.pos{color:#922020}.neg{color:#1a4f82}.zero{color:#1a5c1a}
+dialog{width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 32px);border:1px solid #dde8e2;border-radius:12px;padding:0;margin:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog[open]{display:flex;flex-direction:column}
+dialog::backdrop{background:rgba(20,40,30,.45)}
+.dh{background:#2d4a3e;color:#e8f0ec;padding:.9rem 1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.dh h2{font-size:1.05rem;font-weight:600}.dh small{color:#8aab97;font-size:.72rem}
+.db{padding:1rem 1.25rem;overflow-y:auto}
+.db h3{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:#4a7a60;margin:1.1rem 0 .5rem}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem}
+.grid3 label,.obs{display:grid;gap:3px;font-size:.72rem;color:#5a7a68}
+.grid3 input,.grid3 select,.obs textarea,td input{padding:6px 8px;border:1px solid #cfdcd4;border-radius:6px;font:inherit;font-size:.82rem;background:#fff}
+td input{width:115px;text-align:right;padding:3px 6px}
+td input.t{width:100%;min-width:150px;text-align:left}
+.obs{margin-top:1rem}
+.res{display:flex;flex-wrap:wrap;gap:.5rem 1.75rem;margin-top:.9rem;padding:.7rem 1rem;background:#f5f9f6;border:1px solid #dde8e2;border-radius:10px}
+.res small{display:block;font-size:.66rem;color:#5a7a68}.res b{font-size:1rem}
+.df{display:flex;align-items:center;gap:.6rem;padding:.75rem 1.25rem;border-top:1px solid #dde8e2;background:#f5f9f6}
+.df .sp{flex:1}.df .msg{font-size:.78rem;color:#5a7a68}
+.btn{padding:6px 12px;border-radius:6px;border:1px solid #cfdcd4;background:#fff;color:#1a1a1a;font:inherit;font-size:.8rem;cursor:pointer}
+.btn:hover{border-color:#4a7a60}
+.btn.p{background:#2d4a3e;border-color:#2d4a3e;color:#fff;font-weight:600}
+.btn.p:hover{background:#3d6352}
+.btn.s{padding:2px 8px;font-size:.72rem}
+.btn:disabled{opacity:.55;cursor:default}
+.x{background:none;border:0;color:#e8f0ec;font-size:1.1rem;cursor:pointer}
+.loading{position:fixed;inset:0;background:rgba(240,244,242,.75);display:grid;place-content:center;justify-items:center;gap:.6rem;color:#4a7a60;font-size:.85rem;z-index:20}
+.spin{width:30px;height:30px;border:3px solid #dde8e2;border-top-color:#2d4a3e;border-radius:50%;animation:g .8s linear infinite}
+@keyframes g{to{transform:rotate(360deg)}}
+.rules li{margin:.35rem 0 .35rem 1.2rem;font-size:.82rem}
+.rules p{font-size:.82rem;margin-top:.6rem}
+@media (max-width:700px){body{padding:1rem}.filters input[type=search]{min-width:0;flex:1 1 100%}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>🫘 Brascof · Brokerage Statement</h1>
+  <div class="ctl">
+    <a class="hbtn" href="index.html">← Commercial Control</a>
+    <label for="mes">Reference month</label>
+    <input type="month" id="mes">
+    <button class="hbtn" id="btnAtualizar" type="button">↻ Refresh</button>
+    <button class="hbtn" id="btnExportar" type="button">⬇ Export Excel</button>
+  </div>
+</div>
+<div id="erroBox"></div>
+<div class="kpis" id="kpis"></div>
+
+<div class="card">
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-aba="corretores" aria-selected="true">By broker</button>
+    <button role="tab" data-aba="contratos">Contracts</button>
+    <button role="tab" data-aba="cancelados">Cancelled with commission<span class="cnt" id="qtdCanc"></span></button>
+    <button role="tab" data-aba="regras">How it is calculated</button>
+  </nav>
+
+  <section data-painel="corretores">
+    <div class="filters">
+      <input type="search" id="buscaCorretor" placeholder="Search broker...">
+      <select id="filtroStatus">
+        <option value="">All statuses</option>
+        <option value="pending">Statement pending</option>
+        <option value="received">Received</option>
+        <option value="divergent">Divergent</option>
+        <option value="checked">Checked</option>
+        <option value="paid">Paid</option>
+      </select>
+    </div>
+    <div class="tw"><table id="tabCorretores"></table></div>
+  </section>
+
+  <section data-painel="contratos" hidden>
+    <div class="filters">
+      <input type="search" id="buscaContrato" placeholder="Search contract, broker, supplier or client...">
+      <select id="filtroTipo"><option value="">Purchases and sales</option><option value="PURCHASE">Purchases</option><option value="SALE">Sales</option></select>
+      <label><input type="checkbox" id="filtroAlerta"> Only with warnings</label>
+    </div>
+    <div class="tw"><table id="tabContratos"></table></div>
+  </section>
+
+  <section data-painel="cancelados" hidden>
+    <p class="help">Contracts cancelled in Digisul that still carry a commission (e.g. washout). They have no due date in Digisul, so they do not enter a month on their own. If the broker charges one in the statement, use “Add to this month”.</p>
+    <div class="tw"><table id="tabCancelados"></table></div>
+  </section>
+
+  <section data-painel="regras" class="rules" hidden>
+    <ol>
+      <li>Broker and rate come from the Digisul brokerage queries (brascof_pesq_corretagem_compras / _vendas). A contract with two brokers gives one line per broker.</li>
+      <li>Purchases enter the month by their due date; the base is the contract total.</li>
+      <li>Sales enter the month by their shipping date (Data Saída); the base is the sale total.</li>
+      <li>Individual producer (CPF): Digisul stores the price divided by 1.01, and brokers charge on the full price, so the base is multiplied by 1.01.</li>
+      <li>Split contracts: only the children (A, B…) count, never the original contract. The duplicate line per branch is removed.</li>
+      <li>Brokerage = base × rate registered in Digisul. Lines with a rate other than 0.5% are flagged.</li>
+    </ol>
+    <p>Difference = statement amount − (calculated brokerage + manual entries).</p>
+  </section>
+</div>
+
+<dialog id="det">
+  <div class="dh">
+    <div><small id="detSub"></small><h2 id="detNome"></h2></div>
+    <button class="x" id="detFechar" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="db">
+    <div class="grid3">
+      <label>Statement number<input id="detNumero" maxlength="40" placeholder="e.g. ESP-0010/26"></label>
+      <label>Statement total (R$)<input id="detValor" inputmode="decimal" placeholder="0,00"></label>
+      <label>Status<select id="detStatus">
+        <option value="pending">Statement pending</option>
+        <option value="received">Received</option>
+        <option value="divergent">Divergent</option>
+        <option value="checked">Checked</option>
+        <option value="paid">Paid</option>
+      </select></label>
+    </div>
+    <div class="res" id="detRes"></div>
+    <h3>Contracts in this month</h3>
+    <div class="tw"><table id="detLinhas"></table></div>
+    <h3>Manual entries</h3>
+    <div class="tw"><table id="detAjustes"></table></div>
+    <button class="btn s" id="detAddAjuste" type="button" style="margin-top:.5rem">+ Add entry</button>
+    <label class="obs">Notes<textarea id="detObs" rows="2" maxlength="1000"></textarea></label>
+    <p class="sub" id="detMeta" style="margin-top:.5rem"></p>
+  </div>
+  <div class="df">
+    <button class="btn" id="detExportar" type="button">Export this broker</button>
+    <span class="sp"></span>
+    <span class="msg" id="detMsg"></span>
+    <button class="btn p" id="detSalvar" type="button">Save</button>
+  </div>
+</dialog>
+
+<div class="loading" id="loading" hidden><div class="spin"></div><span>Loading Digisul data...</span></div>
+
+<script>
+// ── LOGIN DO PORTAL BI ──────────────────────────────────────────────────
+// Só abre dentro do Portal BI (iframe do Payments) e usa o login de lá.
+// A API confere o token e o acesso ao Payments; o Supabase aplica as regras RLS
+// da tabela bi_corretagem_conf (seção 18 do supabase/schema.sql).
+const PORTAL_KEY='sb-cfrvnsnwdldnflowxqbs-auth-token';
+if(window.self===window.top){document.documentElement.style.display='none';location.replace('../#/');}
+function tokenPortal(){try{return JSON.parse(localStorage.getItem(PORTAL_KEY))?.access_token||'';}catch(e){return '';}}
+
+const API_BASE='https://brascof-api.vercel.app';
+const SUPA_URL='https://cfrvnsnwdldnflowxqbs.supabase.co';
+const SUPA_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmcnZuc253ZGxkbmZsb3d4cWJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMTUyOTgsImV4cCI6MjA5Mjg5MTI5OH0.E89BcKeiQtJHPFVU-IYTGgKee3ieV-LMZjCOzsWC2YQ'; // chave "anon" pública
+const PCT_PADRAO=0.5;
+
+// ── util ────────────────────────────────────────────────────────────────
+const $=s=>document.querySelector(s);
+const $$=(s,el=document)=>[...el.querySelectorAll(s)];
+const r2=n=>Math.round((Number(n)||0)*100)/100;
+const fmtR$=v=>v==null?'—':'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtN=(v,d=2)=>Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:d});
+const fmtData=iso=>iso?iso.slice(0,10).split('-').reverse().join('/'):'—';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const editavel=v=>v==null?'':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+// aceita "1.234,56", "1234,56" ou "1234.56"; vazio -> null
+function lerNumero(s){
+  const t=String(s??'').trim().replace(/[R$\s]/g,'');
+  if(!t)return null;
+  const n=t.includes(',')?Number(t.replace(/\./g,'').replace(',','.')):Number(t);
+  return isFinite(n)?r2(n):null;
+}
+const STATUS={pending:'Statement pending',received:'Received',divergent:'Divergent',checked:'Checked',paid:'Paid'};
+const ALERTA={pct:'Non-standard rate',pf:'Individual producer: base × 1.01',unpriced:'Price not fixed'};
+const TIPO={PURCHASE:'Purchase',SALE:'Sale'};
+const difClasse=d=>d==null?'':Math.abs(d)<=1?'zero':d>0?'pos':'neg';
+const difTexto=d=>d==null?'—':(d>0?'+':d<0?'−':'')+fmtR$(Math.abs(d));
+const novoId=()=>Math.random().toString(36).slice(2,10);
+
+// ── estado ──────────────────────────────────────────────────────────────
+const E={mes:null,calc:null,conf:{},ordem:{corretores:['esperado',-1],contratos:['corretorNome',1],cancelados:['emissao',-1]},det:null};
+
+// ── acesso a dados ──────────────────────────────────────────────────────
+async function apiCorretagem(mes){
+  const res=await fetch(`${API_BASE}/api/corretagem?mes=${mes}`,{headers:{Authorization:'Bearer '+tokenPortal()}});
+  const j=await res.json().catch(()=>({}));
+  if(!res.ok)throw Object.assign(new Error(j.error||`Error ${res.status}`),{status:res.status});
+  return j;
+}
+function supaHeaders(extra={}){return{apikey:SUPA_ANON_KEY,Authorization:'Bearer '+tokenPortal(),'Content-Type':'application/json',...extra};}
+function msgSupa(j,status){
+  const m=j?.message||'';
+  if(/bi_corretagem_conf/.test(m)&&/does not exist|schema cache/i.test(m))return 'The brokerage table is not set up yet: run section 18 of supabase/schema.sql in the Supabase SQL Editor.';
+  if(status===401)return 'Your session has expired. Please reload the BI Portal.';
+  if(status===403||/row-level security/i.test(m))return 'You do not have access to the Payments page.';
+  return m||`Error ${status}`;
+}
+async function lerConferencias(mes){
+  const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_conf?mes=eq.${mes}&select=*`,{headers:supaHeaders()});
+  const j=await res.json().catch(()=>null);
+  if(!res.ok)throw new Error(msgSupa(j,res.status));
+  return Object.fromEntries(j.map(r=>[String(r.corretor_cod),r]));
+}
+async function salvarConferencia(linha){
+  const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_conf?on_conflict=mes,corretor_cod`,{
+    method:'POST',headers:supaHeaders({Prefer:'resolution=merge-duplicates,return=representation'}),body:JSON.stringify([linha])});
+  const j=await res.json().catch(()=>null);
+  if(!res.ok)throw new Error(msgSupa(j,res.status));
+  return j[0];
+}
+
+// ── carga ───────────────────────────────────────────────────────────────
+function mesPadrao(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+async function carregar(){
+  E.mes=$('#mes').value||mesPadrao();
+  const url=new URL(location.href);url.searchParams.set('mes',E.mes);history.replaceState(null,'',url);
+  $('#loading').hidden=false;$('#erroBox').innerHTML='';
+  try{
+    const [calc,conf]=await Promise.all([apiCorretagem(E.mes),lerConferencias(E.mes).catch(e=>{avisar(e.message);return {};})]);
+    E.calc=calc;E.conf=conf;
+  }catch(e){
+    E.calc=null;E.conf={};
+    avisar(e.status===401||e.status===403?e.message:`Error loading Digisul data: ${e.message}`);
+  }finally{$('#loading').hidden=true;renderTudo();}
+}
+function avisar(msg){$('#erroBox').insertAdjacentHTML('beforeend',`<div class="err">${esc(msg)}</div>`);}
+
+// ── visão por corretor (cálculo + conferência) ──────────────────────────
+const somaAjustes=a=>r2((a||[]).reduce((s,x)=>s+(Number(x.valor)||0),0));
+function corretoresView(){
+  const m=new Map();
+  for(const c of E.calc?.corretores||[])m.set(String(c.cod),{...c});
+  for(const [cod,c] of Object.entries(E.conf)){
+    if(!m.has(cod)&&((c.ajustes||[]).length||c.espelho_valor!=null))
+      m.set(cod,{cod:Number(cod),nome:c.corretor_nome||`Broker ${cod}`,contratos:0,sacas:0,base:0,corretagem:0,alertas:0});
+  }
+  return [...m.values()].map(c=>{
+    const cf=E.conf[String(c.cod)]||{};
+    const ajustes=somaAjustes(cf.ajustes);
+    const esperado=r2(c.corretagem+ajustes);
+    const espelho=cf.espelho_valor==null?null:Number(cf.espelho_valor);
+    return{...c,ajustes,esperado,espelho,dif:espelho==null?null:r2(espelho-esperado),status:cf.status||'pending',numero:cf.espelho_numero||''};
+  });
+}
+
+// ── render ──────────────────────────────────────────────────────────────
+function ordenar(lista,[campo,dir]){
+  return [...lista].sort((a,b)=>{
+    const x=a[campo],y=b[campo];
+    if(x==null)return 1;if(y==null)return -1;
+    return (typeof x==='number'?x-y:String(x).localeCompare(String(y),'pt-BR'))*dir;
+  });
+}
+function cab(chave,cols){
+  const [c,d]=E.ordem[chave];
+  return '<thead><tr>'+cols.map(([k,rot,n])=>`<th data-ord="${k}" class="${n?'n':''}">${rot}${k===c?(d>0?' ▲':' ▼'):''}</th>`).join('')+'</tr></thead>';
+}
+function ligarOrdem(tab,chave,re){
+  $$('th[data-ord]',tab).forEach(th=>th.addEventListener('click',()=>{
+    const k=th.dataset.ord,[c,d]=E.ordem[chave];
+    E.ordem[chave]=[k,c===k?-d:(/nome|contrato|contraparte|data|emissao|status|tipo/i.test(k)?1:-1)];re();
+  }));
+}
+const tags=l=>(l.alertas||[]).map(a=>`<span class="tag ${a==='pf'?'i':''}">${ALERTA[a]||a}</span>`).join('');
+function renderTudo(){renderKpis();renderCorretores();renderContratos();renderCancelados();}
+
+function renderKpis(){
+  const cs=corretoresView();
+  const com=cs.filter(c=>c.espelho!=null);
+  const pagos=cs.filter(c=>c.status==='paid');
+  const dif=r2(com.reduce((s,c)=>s+c.dif,0));
+  const t=E.calc?.totais||{};
+  $('#kpis').innerHTML=`
+    <div class="kpi"><small>Expected brokerage</small><b>${fmtR$(r2(cs.reduce((s,c)=>s+c.esperado,0)))}</b><span>${t.contratos||0} contracts</span></div>
+    <div class="kpi"><small>Statements received</small><b>${com.length} of ${cs.length}</b><span>${cs.length-com.length} pending</span></div>
+    <div class="kpi"><small>Statements total</small><b>${fmtR$(r2(com.reduce((s,c)=>s+c.espelho,0)))}</b><span>Expected for these: ${fmtR$(r2(com.reduce((s,c)=>s+c.esperado,0)))}</span></div>
+    <div class="kpi"><small>Difference</small><b class="${difClasse(com.length?dif:null)}">${com.length?difTexto(dif):'—'}</b><span>${com.filter(c=>Math.abs(c.dif)>1).length} divergent</span></div>
+    <div class="kpi"><small>Paid</small><b>${pagos.length} of ${cs.length}</b><span>${fmtR$(r2(pagos.reduce((s,c)=>s+(c.espelho??c.esperado),0)))}</span></div>`;
+  $('#qtdCanc').textContent=E.calc?.cancelados?.length||'';
+}
+
+function renderCorretores(){
+  const tab=$('#tabCorretores');
+  const busca=$('#buscaCorretor').value.trim().toLowerCase(),st=$('#filtroStatus').value;
+  const cs=ordenar(corretoresView().filter(c=>(!busca||c.nome.toLowerCase().includes(busca))&&(!st||c.status===st)),E.ordem.corretores);
+  const cols=[['nome','Broker'],['contratos','Contracts',1],['sacas','Bags',1],['base','Base',1],['corretagem','Calculated',1],['ajustes','Manual entries',1],['esperado','Expected',1],['espelho','Statement',1],['dif','Difference',1],['status','Status']];
+  if(!cs.length){tab.innerHTML=cab('corretores',cols)+`<tbody><tr><td colspan="${cols.length}" class="empty">${E.calc?'No brokerage in this month.':'—'}</td></tr></tbody>`;ligarOrdem(tab,'corretores',renderCorretores);return;}
+  const tot=k=>r2(cs.reduce((s,c)=>s+(c[k]||0),0));
+  tab.innerHTML=cab('corretores',cols)+'<tbody>'+cs.map(c=>`
+    <tr class="ck" data-cod="${c.cod}">
+      <td><b>${esc(c.nome)}</b> ${c.alertas?`<span class="tag" title="Non-standard rate or price not fixed">⚠ ${c.alertas}</span>`:''}${c.numero?`<div class="sub">${esc(c.numero)}</div>`:''}</td>
+      <td class="n">${c.contratos}</td><td class="n">${fmtN(c.sacas,0)}</td><td class="n">${fmtR$(c.base)}</td>
+      <td class="n">${fmtR$(c.corretagem)}</td><td class="n">${c.ajustes?fmtR$(c.ajustes):''}</td>
+      <td class="n"><b>${fmtR$(c.esperado)}</b></td><td class="n">${fmtR$(c.espelho)}</td>
+      <td class="n ${difClasse(c.dif)}">${difTexto(c.dif)}</td>
+      <td><span class="st st-${c.status}">${STATUS[c.status]}</span></td>
+    </tr>`).join('')+`</tbody><tfoot><tr><td>Total (${cs.length})</td><td class="n">${tot('contratos')}</td><td class="n">${fmtN(tot('sacas'),0)}</td><td class="n">${fmtR$(tot('base'))}</td><td class="n">${fmtR$(tot('corretagem'))}</td><td class="n">${fmtR$(tot('ajustes'))}</td><td class="n">${fmtR$(tot('esperado'))}</td><td class="n">${fmtR$(tot('espelho'))}</td><td></td><td></td></tr></tfoot>`;
+  ligarOrdem(tab,'corretores',renderCorretores);
+  $$('tr[data-cod]',tab).forEach(tr=>tr.addEventListener('click',()=>abrirDet(tr.dataset.cod)));
+}
+$('#buscaCorretor').addEventListener('input',renderCorretores);
+$('#filtroStatus').addEventListener('change',renderCorretores);
+
+function renderContratos(){
+  const tab=$('#tabContratos');
+  const busca=$('#buscaContrato').value.trim().toLowerCase(),tipo=$('#filtroTipo').value,soAlerta=$('#filtroAlerta').checked;
+  const ls=ordenar((E.calc?.linhas||[]).filter(l=>(!tipo||l.tipo===tipo)&&(!soAlerta||l.alertas.some(a=>a!=='pf'))&&
+    (!busca||`${l.contrato} ${l.corretorNome} ${l.contraparte}`.toLowerCase().includes(busca))),E.ordem.contratos);
+  const cols=[['tipo','Type'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Rate',1],['corretagem','Brokerage',1],['alertas','Warnings']];
+  tab.innerHTML=cab('contratos',cols)+'<tbody>'+(ls.length?ls.map(l=>`
+    <tr class="ck" data-cod="${l.corretorCod}"><td><span class="badge ${l.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[l.tipo]}</span></td><td><b>${esc(l.contrato)}</b></td><td>${fmtData(l.data)}</td>
+    <td>${esc(l.corretorNome)}</td><td class="w">${esc(l.contraparte)}</td><td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td>
+    <td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td><td>${tags(l)}</td></tr>`).join('')
+    :`<tr><td colspan="${cols.length}" class="empty">No contracts.</td></tr>`)+'</tbody>'+
+    (ls.length?`<tfoot><tr><td colspan="5">${ls.length} lines</td><td class="n">${fmtN(ls.reduce((s,l)=>s+l.sacas,0),0)}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.base,0)))}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))}</td><td></td></tr></tfoot>`:'');
+  ligarOrdem(tab,'contratos',renderContratos);
+  $$('tr[data-cod]',tab).forEach(tr=>tr.addEventListener('click',()=>abrirDet(tr.dataset.cod)));
+}
+$('#buscaContrato').addEventListener('input',renderContratos);
+$('#filtroTipo').addEventListener('change',renderContratos);
+$('#filtroAlerta').addEventListener('change',renderContratos);
+
+function renderCancelados(){
+  const tab=$('#tabCancelados');
+  const cs=ordenar(E.calc?.cancelados||[],E.ordem.cancelados);
+  const cols=[['tipo','Type'],['contrato','Contract'],['emissao','Issued'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['pct','Rate',1],['corretagem','Commission in Digisul',1],['acao','']];
+  tab.innerHTML=cab('cancelados',cols)+'<tbody>'+(cs.length?cs.map((c,i)=>{
+    const lancado=(E.conf[String(c.corretorCod)]?.ajustes||[]).some(a=>a.contrato===c.contrato);
+    return `<tr><td><span class="badge ${c.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[c.tipo]}</span></td><td><b>${esc(c.contrato)}</b></td><td>${fmtData(c.emissao)}</td><td>${esc(c.corretorNome)}</td>
+      <td class="w">${esc(c.contraparte)}</td><td class="n">${fmtN(c.sacas)}</td><td class="n">${fmtN(c.pct,3)}%</td><td class="n">${fmtR$(c.corretagem)}</td>
+      <td>${lancado?'<span class="st st-checked">Added</span>':`<button class="btn s" data-i="${i}" type="button">Add to this month</button>`}</td></tr>`;
+  }).join(''):`<tr><td colspan="${cols.length}" class="empty">No cancelled contracts with commission in the last 18 months.</td></tr>`)+'</tbody>';
+  ligarOrdem(tab,'cancelados',renderCancelados);
+  $$('button[data-i]',tab).forEach(b=>b.addEventListener('click',()=>{
+    const c=cs[Number(b.dataset.i)];
+    abrirDet(String(c.corretorCod),{nome:c.corretorNome,novoAjuste:{contrato:c.contrato,descricao:'Cancelled with commission (washout)',valor:c.corretagem}});
+  }));
+}
+
+$$('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  $$('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));
+  $$('[data-painel]').forEach(p=>p.hidden=p.dataset.painel!==b.dataset.aba);
+}));
+
+// ── conferência de um corretor ──────────────────────────────────────────
+function abrirDet(cod,extra={}){
+  const cv=corretoresView().find(c=>String(c.cod)===String(cod));
+  const cf=E.conf[String(cod)]||{};
+  const d={cod:String(cod),nome:cv?.nome||extra.nome||cf.corretor_nome||`Broker ${cod}`,
+    linhas:(E.calc?.linhas||[]).filter(l=>String(l.corretorCod)===String(cod)),
+    r:{espelho_numero:cf.espelho_numero||'',espelho_valor:cf.espelho_valor==null?null:Number(cf.espelho_valor),status:cf.status||'pending',
+       obs:cf.obs||'',linhas:{...(cf.linhas||{})},ajustes:(cf.ajustes||[]).map(a=>({...a}))}};
+  if(extra.novoAjuste)d.r.ajustes.push({id:novoId(),...extra.novoAjuste});
+  E.det=d;
+  $('#detNome').textContent=d.nome;
+  $('#detSub').textContent=`Code ${cod} · ${E.mes.split('-').reverse().join('/')}`;
+  $('#detNumero').value=d.r.espelho_numero;
+  $('#detValor').value=editavel(d.r.espelho_valor);
+  $('#detStatus').value=d.r.status;
+  $('#detObs').value=d.r.obs;
+  $('#detMeta').textContent=cf.autor?`Last change by ${cf.autor} on ${new Date(cf.updated_at).toLocaleString('pt-BR')}`:'Not checked yet.';
+  $('#detMsg').textContent=extra.novoAjuste?'Entry added — save to confirm.':'';
+  renderDetLinhas();renderDetAjustes();renderDetRes();
+  $('#det').showModal();
+}
+$('#detFechar').addEventListener('click',()=>$('#det').close());
+
+const calcDet=()=>r2(E.det.linhas.reduce((s,l)=>s+l.corretagem,0));
+function renderDetRes(){
+  const R=E.det.r,calc=calcDet(),aj=somaAjustes(R.ajustes),esp=r2(calc+aj);
+  const dif=R.espelho_valor==null?null:r2(R.espelho_valor-esp);
+  const vals=Object.values(R.linhas);
+  $('#detRes').innerHTML=`<div><small>Calculated</small><b>${fmtR$(calc)}</b></div><div><small>Manual entries</small><b>${fmtR$(aj)}</b></div>
+    <div><small>Expected</small><b>${fmtR$(esp)}</b></div><div><small>Statement</small><b>${fmtR$(R.espelho_valor)}</b></div>
+    <div><small>Difference</small><b class="${difClasse(dif)}">${difTexto(dif)}</b></div>
+    ${vals.length?`<div><small>Typed per contract</small><b>${fmtR$(r2(vals.reduce((s,v)=>s+v,0)))}</b></div>`:''}`;
+}
+// com o valor do espelho preenchido, sugere Checked (diferença até R$ 1) ou Divergent; não mexe em Paid
+function statusAuto(){
+  const R=E.det.r;
+  if(R.espelho_valor==null||R.status==='paid')return;
+  R.status=Math.abs(R.espelho_valor-(calcDet()+somaAjustes(R.ajustes)))<=1?'checked':'divergent';
+  $('#detStatus').value=R.status;
+}
+function renderDetLinhas(){
+  const d=E.det,tab=$('#detLinhas');
+  if(!d.linhas.length){tab.innerHTML='<tbody><tr><td class="empty">No contracts due in this month for this broker.</td></tr></tbody>';return;}
+  tab.innerHTML=`<thead><tr><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Rate</th><th class="n">Calculated</th><th class="n">In statement</th><th class="n">Difference</th><th>Warnings</th></tr></thead><tbody>`+
+    d.linhas.map(l=>{
+      const v=d.r.linhas[l.id],dif=v==null?null:r2(v-l.corretagem);
+      return `<tr><td><b>${esc(l.contrato)}</b><div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
+        <td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td><td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td>
+        <td class="n"><input data-l="${esc(l.id)}" inputmode="decimal" value="${editavel(v)}" placeholder="—"></td>
+        <td class="n ${difClasse(dif)}">${difTexto(dif)}</td><td>${tags(l)}</td></tr>`;
+    }).join('')+'</tbody>';
+  $$('input[data-l]',tab).forEach(inp=>inp.addEventListener('change',()=>{
+    const n=lerNumero(inp.value);
+    if(n==null)delete d.r.linhas[inp.dataset.l];else d.r.linhas[inp.dataset.l]=n;
+    renderDetLinhas();renderDetRes();
+  }));
+}
+function renderDetAjustes(){
+  const A=E.det.r.ajustes,tab=$('#detAjustes');
+  tab.innerHTML=A.length?`<thead><tr><th>Contract</th><th>Description</th><th class="n">Amount (R$)</th><th></th></tr></thead><tbody>`+A.map((a,i)=>`
+    <tr><td><input class="t" data-a="${i}" data-c="contrato" value="${esc(a.contrato)}" maxlength="40"></td>
+    <td><input class="t" data-a="${i}" data-c="descricao" value="${esc(a.descricao)}" maxlength="200"></td>
+    <td class="n"><input data-a="${i}" data-c="valor" inputmode="decimal" value="${editavel(a.valor)}"></td>
+    <td><button class="btn s" data-del="${i}" type="button">Remove</button></td></tr>`).join('')+'</tbody>'
+    :'<tbody><tr><td class="empty">No manual entries. Use them for contracts from other months, cancelled contracts with commission or agreed adjustments (negative amount for a discount).</td></tr></tbody>';
+  $$('input[data-a]',tab).forEach(inp=>inp.addEventListener('change',()=>{
+    const a=A[Number(inp.dataset.a)];
+    if(inp.dataset.c==='valor'){a.valor=lerNumero(inp.value)??0;inp.value=editavel(a.valor);statusAuto();renderDetRes();}
+    else a[inp.dataset.c]=inp.value;
+  }));
+  $$('button[data-del]',tab).forEach(b=>b.addEventListener('click',()=>{A.splice(Number(b.dataset.del),1);renderDetAjustes();renderDetRes();}));
+}
+$('#detAddAjuste').addEventListener('click',()=>{E.det.r.ajustes.push({id:novoId(),contrato:'',descricao:'',valor:0});renderDetAjustes();});
+$('#detValor').addEventListener('change',ev=>{const R=E.det.r;R.espelho_valor=lerNumero(ev.target.value);ev.target.value=editavel(R.espelho_valor);statusAuto();renderDetRes();});
+$('#detNumero').addEventListener('input',ev=>E.det.r.espelho_numero=ev.target.value);
+$('#detStatus').addEventListener('change',ev=>E.det.r.status=ev.target.value);
+$('#detObs').addEventListener('input',ev=>E.det.r.obs=ev.target.value);
+
+$('#detSalvar').addEventListener('click',async()=>{
+  const d=E.det,btn=$('#detSalvar');
+  btn.disabled=true;$('#detMsg').textContent='Saving...';
+  try{
+    const salvo=await salvarConferencia({mes:E.mes,corretor_cod:Number(d.cod),corretor_nome:d.nome,status:d.r.status,
+      espelho_numero:d.r.espelho_numero.trim()||null,espelho_valor:d.r.espelho_valor,linhas:d.r.linhas,
+      ajustes:d.r.ajustes.map(a=>({id:a.id||novoId(),contrato:String(a.contrato||'').trim(),descricao:String(a.descricao||'').trim(),valor:Number(a.valor)||0})),
+      obs:d.r.obs.trim()||null});
+    E.conf[d.cod]=salvo;
+    $('#detMsg').textContent='Saved ✓';
+    $('#detMeta').textContent=`Last change by ${salvo.autor||'—'} on ${new Date(salvo.updated_at).toLocaleString('pt-BR')}`;
+    renderTudo();
+  }catch(e){$('#detMsg').textContent=e.message;}
+  finally{btn.disabled=false;}
+});
+
+// ── exportação Excel ────────────────────────────────────────────────────
+function linhasExport(cod){
+  return (E.calc?.linhas||[]).filter(l=>!cod||String(l.corretorCod)===String(cod)).map(l=>{
+    const v=E.conf[String(l.corretorCod)]?.linhas?.[l.id];
+    return{Type:TIPO[l.tipo],Contract:l.contrato,'Original contract':l.pai,'Due / shipped':fmtData(l.data),Broker:l.corretorNome,'Supplier / client':l.contraparte,
+      Branch:l.filial||'',Bags:l.sacas,'Price/Bag':l.preco,Base:l.base,'Rate %':l.pct,Brokerage:l.corretagem,'In statement':v??'',Difference:v==null?'':r2(v-l.corretagem),
+      Warnings:l.alertas.map(a=>ALERTA[a]).join('; ')};
+  });
+}
+$('#btnExportar').addEventListener('click',()=>{
+  if(!window.XLSX||!E.calc)return;
+  const X=XLSX,wb=X.utils.book_new();
+  X.utils.book_append_sheet(wb,X.utils.json_to_sheet(ordenar(corretoresView(),['nome',1]).map(c=>({Broker:c.nome,Code:c.cod,'Statement no.':c.numero,Contracts:c.contratos,Bags:c.sacas,Base:c.base,
+    Calculated:c.corretagem,'Manual entries':c.ajustes,Expected:c.esperado,Statement:c.espelho??'',Difference:c.dif??'',Status:STATUS[c.status]}))),'Summary');
+  X.utils.book_append_sheet(wb,X.utils.json_to_sheet(linhasExport()),'Contracts');
+  const aj=Object.values(E.conf).flatMap(c=>(c.ajustes||[]).map(a=>({Broker:c.corretor_nome,Contract:a.contrato,Description:a.descricao,Amount:a.valor})));
+  if(aj.length)X.utils.book_append_sheet(wb,X.utils.json_to_sheet(aj),'Manual entries');
+  X.writeFile(wb,`Brokerage ${E.mes}.xlsx`);
+});
+$('#detExportar').addEventListener('click',()=>{
+  if(!window.XLSX)return;
+  const X=XLSX,d=E.det,wb=X.utils.book_new();
+  X.utils.book_append_sheet(wb,X.utils.json_to_sheet(linhasExport(d.cod)),'Contracts');
+  if(d.r.ajustes.length)X.utils.book_append_sheet(wb,X.utils.json_to_sheet(d.r.ajustes.map(a=>({Contract:a.contrato,Description:a.descricao,Amount:a.valor}))),'Manual entries');
+  X.writeFile(wb,`Brokerage ${E.mes} - ${d.nome.slice(0,40).replace(/[\\/:*?"<>|]/g,'')}.xlsx`);
+});
+
+// ── início ──────────────────────────────────────────────────────────────
+const mesUrl=new URLSearchParams(location.search).get('mes');
+$('#mes').value=/^\d{4}-\d{2}$/.test(mesUrl||'')?mesUrl:mesPadrao();
+$('#mes').addEventListener('change',carregar);
+$('#btnAtualizar').addEventListener('click',carregar);
+carregar();
+</script>
+<!-- mesmo idioma do portal (CONFIG.IDIOMA em js/config.js) -->
+<script type="module">import { ligarTraducao } from "../js/i18n.js"; ligarTraducao();</script>
+</body>
+</html>
