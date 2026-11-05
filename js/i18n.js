@@ -687,6 +687,33 @@ const PT = {
     "Contratos desdobrados: entram só os filhos (A, B…), nunca o contrato original. A linha repetida por filial é removida.",
   "Brokerage = base × rate registered in Digisul. Lines with a rate other than 0.5% are flagged.":
     "Corretagem = base × % cadastrada no Digisul. Linhas com % diferente de 0,5% recebem alerta.",
+  // incluir contrato / trocar corretor
+  "+ Include contract": "+ Incluir contrato", "Include contract": "Incluir contrato", "Include selected": "Incluir selecionados",
+  "⇄ Broker": "⇄ Corretor", "Change broker": "Trocar corretor", "Broker in Digisul": "Corretor no Digisul",
+  "Broker in this statement": "Corretor neste espelho", "Back to Digisul broker": "Voltar ao corretor do Digisul",
+  "Remove from this month": "Tirar deste mês", "Remove this contract from this month?": "Tirar este contrato deste mês?",
+  "Included manually": "Incluído manualmente", "Broker changed": "Corretor trocado", "Also in {n}/{n}": "Também em {n}/{n}",
+  "Month {n}/{n}": "Mês {n}/{n}", "Type a contract number.": "Digite o número do contrato.",
+  "Searching Digisul... this can take a few seconds.": "Buscando no Digisul... pode levar alguns segundos.",
+  "No contract found with this number.": "Nenhum contrato encontrado com esse número.",
+  "Already in this month": "Já está neste mês", "Already included": "Já incluído",
+  "Cancelled in Digisul: use the “Cancelled with commission” tab": "Cancelado no Digisul: use a aba “Cancelados com comissão”",
+  "e.g. charged in this month's statement": "ex.: cobrado no espelho deste mês",
+  "Load the month first: Digisul data is not available.": "Carregue o mês primeiro: os dados do Digisul não estão disponíveis.",
+  "The brokerage API has not been updated yet (brascof-api), so contract search is not available.":
+    "A API da corretagem ainda não foi atualizada (brascof-api), então a busca de contrato não está disponível.",
+  "Included by hand in another month too: check it is not paid twice": "Também incluído à mão em outro mês: confira se não será pago em dobro",
+  "Included by hand: in Digisul this contract is due in another month.": "Incluído à mão: no Digisul este contrato vence em outro mês.",
+  "Including contracts and changing brokers is not set up yet: run section 22 of supabase/schema.sql in the Supabase SQL Editor.":
+    "Incluir contrato e trocar corretor ainda não foram configurados: rode a seção 22 do supabase/schema.sql no SQL Editor do Supabase.",
+  "Type the BRC or BRV number (e.g. BRC-0459/26, BRC-0459/26A or BRV-0007/26). The data comes from Digisul and the contract enters this month in the broker's list, even if it is due in another month. Without the letter, all parts of a split contract are listed.":
+    "Digite o número do BRC ou BRV (ex.: BRC-0459/26, BRC-0459/26A ou BRV-0007/26). Os dados vêm do Digisul e o contrato entra neste mês na lista do corretor, mesmo vencendo em outro mês. Sem a letra, aparecem todas as partes de um contrato desdobrado.",
+  "The contract leaves the current broker's list and goes to the chosen one, in this month only. Use it when a broker with more than one brokerage firm asks to bill the contract through another one.":
+    "O contrato sai da lista do corretor atual e vai para o escolhido, só neste mês. Use quando um corretor com mais de uma corretora pede para faturar o contrato por outra.",
+  "“+ Include contract” (Contracts tab) brings a contract due in another month into this month, with its data from Digisul. In the contract's own month it then shows the tag “Also in”, so it is not paid twice.":
+    "“+ Incluir contrato” (aba Contratos) traz para este mês um contrato que vence em outro, com os dados do Digisul. No mês do próprio contrato aparece então a marca “Também em”, para não ser pago em dobro.",
+  "“⇄ Broker” moves a contract to another broker's list in this month (e.g. a broker with more than one brokerage firm). The rate and the amount stay as in Digisul.":
+    "“⇄ Corretor” passa um contrato para a lista de outro corretor neste mês (ex.: corretor com mais de uma corretora). A % e o valor continuam os do Digisul.",
 };
 
 // Tempo relativo produzido por ui.tempoRelativo

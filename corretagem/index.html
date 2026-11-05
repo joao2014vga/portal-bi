@@ -50,6 +50,10 @@ tfoot td{font-weight:600;background:#f5f9f6;border-top:1px solid #dde8e2}
 .st-divergent{background:#fdecea;color:#922020}.st-checked{background:#e3f4e3;color:#1a5c1a}.st-paid{background:#2d4a3e;color:#fff}
 .tag{display:inline-block;font-size:.64rem;border-radius:5px;padding:0 6px;margin:1px 3px 1px 0;background:#fef3e2;color:#7a4f00}
 .tag.i{background:#e3eef9;color:#1a4f82}
+.tag.a{background:#e3f4e3;color:#1a5c1a}.tag.m{background:#efe6f7;color:#5b2a86}
+td select{padding:3px 6px;border:1px solid #cfdcd4;border-radius:6px;font:inherit;font-size:.76rem;background:#fff;max-width:280px}
+tr.off td{color:#8aab97}
+dialog.sm{width:min(680px,calc(100vw - 32px))}
 .pos{color:#922020}.neg{color:#1a4f82}.zero{color:#1a5c1a}
 dialog{width:min(1200px,calc(100vw - 32px));max-height:calc(100vh - 32px);border:1px solid #dde8e2;border-radius:12px;padding:0;margin:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 dialog[open]{display:flex;flex-direction:column}
@@ -127,6 +131,7 @@ tr.ok td{background:#f1f8f3}
       <input type="search" id="buscaContrato" placeholder="Search contract, broker, supplier or client...">
       <select id="filtroTipo"><option value="">Purchases and sales</option><option value="PURCHASE">Purchases</option><option value="SALE">Sales</option></select>
       <label><input type="checkbox" id="filtroAlerta"> Only with warnings</label>
+      <button class="btn" id="btnIncluir" type="button" style="margin-left:auto">+ Include contract</button>
     </div>
     <div class="tw"><table id="tabContratos"></table></div>
   </section>
@@ -144,6 +149,8 @@ tr.ok td{background:#f1f8f3}
       <li>Individual producer (CPF): Digisul stores the price divided by 1.01, and brokers charge on the full price, so the base is multiplied by 1.01.</li>
       <li>Split contracts: only the children (A, B…) count, never the original contract. The duplicate line per branch is removed.</li>
       <li>Brokerage = base × rate registered in Digisul. Lines with a rate other than 0.5% are flagged.</li>
+      <li>“+ Include contract” (Contracts tab) brings a contract due in another month into this month, with its data from Digisul. In the contract's own month it then shows the tag “Also in”, so it is not paid twice.</li>
+      <li>“⇄ Broker” moves a contract to another broker's list in this month (e.g. a broker with more than one brokerage firm). The rate and the amount stay as in Digisul.</li>
     </ol>
     <p>Difference = statement amount − (calculated brokerage + manual entries).</p>
   </section>
@@ -170,6 +177,7 @@ tr.ok td{background:#f1f8f3}
     <h3>Contracts in this month</h3>
     <p class="help">Optional: in “In statement (R$)” type the amount the broker charged for each contract. The Difference column then shows exactly which contracts do not match.</p>
     <div class="tw"><table id="detLinhas"></table></div>
+    <button class="btn s" id="detIncluir" type="button" style="margin-top:.5rem">+ Include contract</button>
     <h3>Manual entries</h3>
     <div class="tw"><table id="detAjustes"></table></div>
     <button class="btn s" id="detAddAjuste" type="button" style="margin-top:.5rem">+ Add entry</button>
@@ -181,6 +189,54 @@ tr.ok td{background:#f1f8f3}
     <span class="sp"></span>
     <span class="msg" id="detMsg"></span>
     <button class="btn p" id="detSalvar" type="button">Save</button>
+  </div>
+</dialog>
+
+<dialog id="inc">
+  <div class="dh">
+    <div><small id="incSub"></small><h2>Include contract</h2></div>
+    <button class="x" id="incFechar" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="db">
+    <p class="help">Type the BRC or BRV number (e.g. BRC-0459/26, BRC-0459/26A or BRV-0007/26). The data comes from Digisul and the contract enters this month in the broker's list, even if it is due in another month. Without the letter, all parts of a split contract are listed.</p>
+    <form class="filters" id="incForm">
+      <input type="search" id="incNumero" placeholder="BRC-0000/26" maxlength="40" autocomplete="off">
+      <button class="btn p" id="incBuscar" type="submit">Search</button>
+    </form>
+    <div class="tw"><table id="incRes"></table></div>
+    <label class="obs">Notes<textarea id="incObs" rows="2" maxlength="500" placeholder="e.g. charged in this month's statement"></textarea></label>
+  </div>
+  <div class="df">
+    <span class="msg" id="incMsg"></span>
+    <span class="sp"></span>
+    <button class="btn" id="incCancelar" type="button">Cancel</button>
+    <button class="btn p" id="incSalvar" type="button" disabled>Include selected</button>
+  </div>
+</dialog>
+
+<dialog id="mov" class="sm">
+  <div class="dh">
+    <div><small id="movSub"></small><h2 id="movNome"></h2></div>
+    <button class="x" id="movFechar" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="db">
+    <div class="res" id="movInfo" style="margin-top:0"></div>
+    <div class="grid3" style="margin-top:1rem">
+      <label>Broker in this statement<select id="movCorretor"></select></label>
+    </div>
+    <p class="help" style="margin-top:.5rem">The contract leaves the current broker's list and goes to the chosen one, in this month only. Use it when a broker with more than one brokerage firm asks to bill the contract through another one.</p>
+    <label class="obs">Notes<textarea id="movObs" rows="2" maxlength="500"></textarea></label>
+    <div class="res" id="movInc" hidden style="align-items:center">
+      <span class="sub" style="flex:1">Included by hand: in Digisul this contract is due in another month.</span>
+      <button class="btn s" id="movRemover" type="button">Remove from this month</button>
+    </div>
+    <p class="sub" id="movMeta" style="margin-top:.5rem"></p>
+  </div>
+  <div class="df">
+    <button class="btn" id="movVoltar" type="button">Back to Digisul broker</button>
+    <span class="sp"></span>
+    <span class="msg" id="movMsg"></span>
+    <button class="btn p" id="movSalvar" type="button">Save</button>
   </div>
 </dialog>
 
@@ -222,13 +278,18 @@ const TIPO={PURCHASE:'Purchase',SALE:'Sale'};
 const difClasse=d=>d==null?'':Math.abs(d)<=1?'zero':d>0?'pos':'neg';
 const difTexto=d=>d==null?'—':(d>0?'+':d<0?'−':'')+fmtR$(Math.abs(d));
 const novoId=()=>Math.random().toString(36).slice(2,10);
+const mesTexto=m=>String(m||'').split('-').reverse().join('/');
 
 // ── estado ──────────────────────────────────────────────────────────────
-const E={mes:null,calc:null,conf:{},ordem:{corretores:['esperado',-1],contratos:['corretorNome',1],cancelados:['emissao',-1]},det:null};
+// api = resposta da API como veio; calc = a mesma coisa com os contratos incluídos
+// e as trocas de corretor (movs, tabela bi_corretagem_contrato) aplicados por cima
+const E={mes:null,api:null,calc:null,conf:{},movs:{},incOutros:[],faltando:[],ordem:{corretores:['esperado',-1],contratos:['corretorNome',1],cancelados:['emissao',-1]},det:null,inc:null,mov:null};
 
 // ── acesso a dados ──────────────────────────────────────────────────────
-async function apiCorretagem(mes){
-  const res=await fetch(`${API_BASE}/api/corretagem?mes=${mes}`,{headers:{Authorization:'Bearer '+tokenPortal()}});
+// `incluir`: contratos de outros meses que a API deve devolver em `incluidos`
+async function apiCorretagem(mes,incluir=[]){
+  const inc=incluir.length?`&incluir=${encodeURIComponent(incluir.join(','))}`:'';
+  const res=await fetch(`${API_BASE}/api/corretagem?mes=${mes}${inc}`,{headers:{Authorization:'Bearer '+tokenPortal()}});
   const j=await res.json().catch(()=>({}));
   if(!res.ok)throw Object.assign(new Error(j.error||`Error ${res.status}`),{status:res.status});
   return j;
@@ -237,6 +298,7 @@ function supaHeaders(extra={}){return{apikey:SUPA_ANON_KEY,Authorization:'Bearer
 function msgSupa(j,status){
   const m=j?.message||'';
   if(/bi_corretagem_conf/.test(m)&&/does not exist|schema cache/i.test(m))return 'The brokerage table is not set up yet: run section 18 of supabase/schema.sql in the Supabase SQL Editor.';
+  if(/bi_corretagem_contrato/.test(m)&&/does not exist|schema cache/i.test(m))return 'Including contracts and changing brokers is not set up yet: run section 22 of supabase/schema.sql in the Supabase SQL Editor.';
   if(status===401)return 'Your session has expired. Please reload the BI Portal.';
   if(status===403||/row-level security/i.test(m))return 'You do not have access to the Brokerage Statement.';
   return m||`Error ${status}`;
@@ -254,6 +316,76 @@ async function salvarConferencia(linha){
   if(!res.ok)throw new Error(msgSupa(j,res.status));
   return j[0];
 }
+// contratos incluídos / com corretor trocado: os do mês e, para avisar de cobrança
+// em dobro, os incluídos em outros meses
+async function lerMovs(mes){
+  const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_contrato?select=*&or=(mes.eq.${mes},incluido.is.true)`,{headers:supaHeaders()});
+  const j=await res.json().catch(()=>null);
+  if(!res.ok)throw new Error(msgSupa(j,res.status));
+  return{mes:Object.fromEntries(j.filter(r=>r.mes===mes).map(r=>[r.linha_id,r])),outros:j.filter(r=>r.mes!==mes)};
+}
+async function gravarMovs(linhas){
+  const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_contrato?on_conflict=mes,linha_id`,{
+    method:'POST',headers:supaHeaders({Prefer:'resolution=merge-duplicates,return=representation'}),body:JSON.stringify(linhas)});
+  const j=await res.json().catch(()=>null);
+  if(!res.ok)throw new Error(msgSupa(j,res.status));
+  return j;
+}
+async function apagarMov(mes,linhaId){
+  const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_contrato?mes=eq.${mes}&linha_id=eq.${encodeURIComponent(linhaId)}`,{method:'DELETE',headers:supaHeaders()});
+  if(!res.ok)throw new Error(msgSupa(await res.json().catch(()=>null),res.status));
+}
+
+// ── corretores conhecidos (para a troca de corretor) ────────────────────
+function listaCorretores(){
+  const m=new Map();
+  for(const c of E.api?.listaCorretores||[])m.set(String(c.cod),c.nome);
+  for(const l of [...(E.api?.linhas||[]),...(E.api?.cancelados||[]),...(E.api?.incluidos||[])])
+    if(!m.has(String(l.corretorCod)))m.set(String(l.corretorCod),l.corretorNome);
+  return [...m].map(([cod,nome])=>({cod,nome:nome||`Broker ${cod}`})).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+}
+const nomeCorretor=cod=>listaCorretores().find(c=>c.cod===String(cod))?.nome||E.conf[String(cod)]?.corretor_nome||`Broker ${cod}`;
+const opcoesCorretor=sel=>listaCorretores().map(c=>`<option value="${esc(c.cod)}" ${c.cod===String(sel)?'selected':''}>${esc(c.nome)} (${esc(c.cod)})</option>`).join('');
+
+// ── aplica contratos incluídos e trocas de corretor sobre o cálculo da API ──
+function aplicarMovs(){
+  const api=E.api;E.faltando=[];
+  if(!api){E.calc=null;return;}
+  const naApi=new Set(api.linhas.map(l=>l.id));
+  const achados=new Map((api.incluidos||[]).filter(l=>!l.cancelado).map(l=>[l.id,l]));
+  const outros=new Map();
+  for(const o of E.incOutros){if(!outros.has(o.linha_id))outros.set(o.linha_id,[]);outros.get(o.linha_id).push(o.mes);}
+  const linhas=api.linhas.map(l=>({...l}));
+  for(const m of Object.values(E.movs)){
+    if(!m.incluido||naApi.has(m.linha_id))continue;
+    const l=achados.get(m.linha_id);
+    if(l)linhas.push({...l,incluido:true});else E.faltando.push(m.contrato);
+  }
+  for(const l of linhas){
+    if(outros.has(l.id))l.incluidoEm=outros.get(l.id).sort();
+    const m=E.movs[l.id];
+    if(m?.corretor_cod!=null&&String(m.corretor_cod)!==String(l.corretorCod)){
+      l.corretorOrig={cod:l.corretorCod,nome:l.corretorNome};
+      l.corretorCod=m.corretor_cod;l.corretorNome=m.corretor_nome||nomeCorretor(m.corretor_cod);
+    }
+  }
+  // mesmo agrupamento da API (lib/corretagem.js), agora com os ajustes
+  const pc=new Map();
+  for(const l of linhas){
+    let c=pc.get(String(l.corretorCod));
+    if(!c)pc.set(String(l.corretorCod),c={cod:l.corretorCod,nome:l.corretorNome,contratos:0,sacas:0,base:0,corretagem:0,alertas:0});
+    c.contratos++;c.sacas+=l.sacas;c.base+=l.base;c.corretagem+=l.corretagem;
+    if(l.alertas.includes('pct')||l.alertas.includes('unpriced'))c.alertas++;
+  }
+  const corretores=[...pc.values()].map(c=>({...c,sacas:r2(c.sacas),base:r2(c.base),corretagem:r2(c.corretagem)}));
+  E.calc={...api,linhas,corretores,totais:{...api.totais,contratos:linhas.length,corretores:corretores.length,
+    base:r2(linhas.reduce((s,l)=>s+l.base,0)),corretagem:r2(linhas.reduce((s,l)=>s+l.corretagem,0))}};
+}
+// depois de gravar um ajuste: redesenha tudo e, se a conferência de um corretor está aberta, os contratos dela
+function aposMovs(){
+  aplicarMovs();renderTudo();
+  if(E.det&&$('#det').open){E.det.linhas=E.calc.linhas.filter(l=>String(l.corretorCod)===E.det.cod);renderDetLinhas();renderDetRes();}
+}
 
 // ── carga ───────────────────────────────────────────────────────────────
 function mesPadrao(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
@@ -262,12 +394,19 @@ async function carregar(){
   const url=new URL(location.href);url.searchParams.set('mes',E.mes);history.replaceState(null,'',url);
   $('#loading').hidden=false;$('#erroBox').innerHTML='';
   try{
-    const [calc,conf]=await Promise.all([apiCorretagem(E.mes),lerConferencias(E.mes).catch(e=>{avisar(e.message);return {};})]);
-    E.calc=calc;E.conf=conf;
+    // primeiro o Supabase (rápido): a API precisa saber quais contratos de outros meses foram incluídos
+    const [conf,movs]=await Promise.all([lerConferencias(E.mes).catch(e=>{avisar(e.message);return {};}),lerMovs(E.mes).catch(e=>{avisar(e.message);return null;})]);
+    E.conf=conf;E.movs=movs?.mes||{};E.incOutros=movs?.outros||[];
+    const incluir=[...new Set(Object.values(E.movs).filter(m=>m.incluido).map(m=>m.contrato))];
+    E.api=await apiCorretagem(E.mes,incluir);
   }catch(e){
-    E.calc=null;E.conf={};
+    E.api=null;E.conf={};
     avisar(e.status===401||e.status===403?e.message:`Error loading Digisul data: ${e.message}`);
-  }finally{$('#loading').hidden=true;renderTudo();}
+  }finally{
+    aplicarMovs();
+    if(E.faltando.length)avisar(`Included contracts not found in Digisul: ${[...new Set(E.faltando)].join(', ')}`);
+    $('#loading').hidden=true;renderTudo();
+  }
 }
 function avisar(msg){$('#erroBox').insertAdjacentHTML('beforeend',`<div class="err">${esc(msg)}</div>`);}
 
@@ -313,7 +452,14 @@ function ligarOrdem(tab,chave,re){
     E.ordem[chave]=[k,c===k?-d:(/nome|contrato|contraparte|data|emissao|status|tipo/i.test(k)?1:-1)];re();
   }));
 }
-const tags=l=>(l.alertas||[]).map(a=>`<span class="tag ${a==='pf'?'i':''}">${ALERTA[a]||a}</span>`).join('');
+const tags=l=>(l.alertas||[]).map(a=>`<span class="tag ${a==='pf'?'i':''}">${ALERTA[a]||a}</span>`).join('')+
+  (l.incluido?`<span class="tag a" title="In Digisul: ${esc(fmtData(l.data))}">Included manually</span>`:'')+
+  (l.corretorOrig?`<span class="tag m" title="Broker in Digisul: ${esc(l.corretorOrig.nome)}">Broker changed</span>`:'')+
+  (l.incluidoEm?.length?`<span class="tag" title="Included by hand in another month too: check it is not paid twice">Also in ${l.incluidoEm.map(mesTexto).join(', ')}</span>`:'');
+const textoAjuste=l=>[l.incluido?'Included manually':'',l.corretorOrig?`Broker changed (Digisul: ${l.corretorOrig.nome})`:'',
+  l.incluidoEm?.length?`Also included in ${l.incluidoEm.map(mesTexto).join(', ')}`:''].filter(Boolean).join('; ');
+// clique no "⇄ Broker" não abre a conferência do corretor (o clique da linha)
+function ligarMov(tab){$$('button[data-mov]',tab).forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();abrirMov(b.dataset.mov);}));}
 function renderTudo(){renderKpis();renderCorretores();renderContratos();renderCancelados();}
 
 function renderKpis(){
@@ -357,16 +503,18 @@ function renderContratos(){
   const tab=$('#tabContratos');
   const busca=$('#buscaContrato').value.trim().toLowerCase(),tipo=$('#filtroTipo').value,soAlerta=$('#filtroAlerta').checked;
   const ls=ordenar((E.calc?.linhas||[]).filter(l=>(!tipo||l.tipo===tipo)&&(!soAlerta||l.alertas.some(a=>a!=='pf'))&&
-    (!busca||`${l.contrato} ${l.corretorNome} ${l.contraparte}`.toLowerCase().includes(busca))),E.ordem.contratos);
-  const cols=[['tipo','Type'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Brokerage %',1],['corretagem','Brokerage',1],['alertas','Warnings']];
+    (!busca||`${l.contrato} ${l.corretorNome} ${l.corretorOrig?.nome||''} ${l.contraparte}`.toLowerCase().includes(busca))),E.ordem.contratos);
+  const cols=[['tipo','Type'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Brokerage %',1],['corretagem','Brokerage',1],['alertas','Warnings'],['acao','']];
   tab.innerHTML=cab('contratos',cols)+'<tbody>'+(ls.length?ls.map(l=>`
     <tr class="ck" data-cod="${l.corretorCod}"><td><span class="badge ${l.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[l.tipo]}</span></td><td><b>${esc(l.contrato)}</b></td><td>${fmtData(l.data)}</td>
-    <td>${esc(l.corretorNome)}</td><td class="w">${esc(l.contraparte)}</td><td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td>
-    <td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td><td>${tags(l)}</td></tr>`).join('')
+    <td>${esc(l.corretorNome)}${l.corretorOrig?`<div class="sub">Digisul: ${esc(l.corretorOrig.nome)}</div>`:''}</td><td class="w">${esc(l.contraparte)}</td><td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td>
+    <td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td><td>${tags(l)}</td>
+    <td><button class="btn s" data-mov="${esc(l.id)}" type="button" title="Change broker">⇄ Broker</button></td></tr>`).join('')
     :`<tr><td colspan="${cols.length}" class="empty">No contracts.</td></tr>`)+'</tbody>'+
-    (ls.length?`<tfoot><tr><td colspan="5">${ls.length} lines</td><td class="n">${fmtN(ls.reduce((s,l)=>s+l.sacas,0),0)}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.base,0)))}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))}</td><td></td></tr></tfoot>`:'');
+    (ls.length?`<tfoot><tr><td colspan="5">${ls.length} lines</td><td class="n">${fmtN(ls.reduce((s,l)=>s+l.sacas,0),0)}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.base,0)))}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))}</td><td></td><td></td></tr></tfoot>`:'');
   ligarOrdem(tab,'contratos',renderContratos);
   $$('tr[data-cod]',tab).forEach(tr=>tr.addEventListener('click',()=>abrirDet(tr.dataset.cod)));
+  ligarMov(tab);
 }
 $('#buscaContrato').addEventListener('input',renderContratos);
 $('#filtroTipo').addEventListener('change',renderContratos);
@@ -426,7 +574,9 @@ const calcDet=()=>r2(E.det.linhas.reduce((s,l)=>s+l.corretagem,0));
 function renderDetRes(){
   const R=E.det.r,calc=calcDet(),aj=somaAjustes(R.ajustes),esp=r2(calc+aj);
   const dif=R.espelho_valor==null?null:r2(R.espelho_valor-esp);
-  const vals=valoresDigitados(R.linhas);
+  // só os contratos que estão hoje com o corretor (um contrato passado a outro corretor sai da conta)
+  const ids=new Set(E.det.linhas.map(l=>l.id));
+  const vals=Object.entries(R.linhas||{}).filter(([k,v])=>ids.has(k)&&typeof v==='number').map(([,v])=>v);
   const ok=E.det.linhas.filter(l=>okSet(R.linhas).has(l.id)).length;
   $('#detRes').innerHTML=`<div><small>Calculated</small><b>${fmtR$(calc)}</b></div><div><small>Manual entries</small><b>${fmtR$(aj)}</b></div>
     <div><small>Expected</small><b>${fmtR$(esp)}</b></div><div><small>Statement</small><b>${fmtR$(R.espelho_valor)}</b></div>
@@ -436,7 +586,6 @@ function renderDetRes(){
 }
 // "linhas" guarda { "<id>": valor no espelho } e, na chave __ok, a lista de contratos já conferidos
 function okSet(linhas){return new Set(Array.isArray(linhas?.__ok)?linhas.__ok:[]);}
-function valoresDigitados(linhas){return Object.entries(linhas||{}).filter(([k,v])=>k!=='__ok'&&typeof v==='number').map(([,v])=>v);}
 function marcarSujo(){E.det.sujo=true;$('#detMsg').textContent='Not saved yet.';}
 // com o valor do espelho preenchido, sugere Checked (diferença até R$ 1) ou Divergent; não mexe em Paid
 function statusAuto(){
@@ -450,14 +599,16 @@ function renderDetLinhas(){
   if(!d.linhas.length){tab.innerHTML='<tbody><tr><td class="empty">No contracts due in this month for this broker.</td></tr></tbody>';return;}
   const ok=okSet(d.r.linhas);
   const todos=d.linhas.every(l=>ok.has(l.id));
-  tab.innerHTML=`<thead><tr><th class="c" title="Tick each contract as you check it against the statement"><input type="checkbox" class="chk" id="okTodos" ${todos?'checked':''} aria-label="Check all"> ✓</th><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Brokerage %</th><th class="n">Calculated</th><th class="n" title="Amount the broker charged for this contract in the statement (optional)">In statement (R$)</th><th class="n">Difference</th><th>Warnings</th></tr></thead><tbody>`+
+  tab.innerHTML=`<thead><tr><th class="c" title="Tick each contract as you check it against the statement"><input type="checkbox" class="chk" id="okTodos" ${todos?'checked':''} aria-label="Check all"> ✓</th><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Brokerage %</th><th class="n">Calculated</th><th class="n" title="Amount the broker charged for this contract in the statement (optional)">In statement (R$)</th><th class="n">Difference</th><th>Warnings</th><th></th></tr></thead><tbody>`+
     d.linhas.map(l=>{
       const v=typeof d.r.linhas[l.id]==='number'?d.r.linhas[l.id]:null,dif=v==null?null:r2(v-l.corretagem);
       return `<tr class="${ok.has(l.id)?'ok':''}"><td class="c"><input type="checkbox" class="chk" data-ok="${esc(l.id)}" ${ok.has(l.id)?'checked':''} aria-label="Checked ${esc(l.contrato)}"></td><td><b>${esc(l.contrato)}</b><div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
         <td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td><td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td>
         <td class="n"><input data-l="${esc(l.id)}" inputmode="decimal" value="${editavel(v)}" placeholder="—"></td>
-        <td class="n ${difClasse(dif)}">${difTexto(dif)}</td><td>${tags(l)}</td></tr>`;
+        <td class="n ${difClasse(dif)}">${difTexto(dif)}</td><td>${tags(l)}</td>
+        <td><button class="btn s" data-mov="${esc(l.id)}" type="button" title="Change broker">⇄</button></td></tr>`;
     }).join('')+'</tbody>';
+  ligarMov(tab);
   $$('input[data-l]',tab).forEach(inp=>inp.addEventListener('change',()=>{
     const n=lerNumero(inp.value);
     if(n==null)delete d.r.linhas[inp.dataset.l];else d.r.linhas[inp.dataset.l]=n;
@@ -514,6 +665,125 @@ $('#detSalvar').addEventListener('click',async()=>{
   finally{btn.disabled=false;}
 });
 
+// ── incluir contrato de outro mês ───────────────────────────────────────
+// `destino`: corretor sugerido (quando aberto da conferência de um corretor)
+function abrirInc(destino=null){
+  if(!E.api){avisar('Load the month first: Digisul data is not available.');return;}
+  E.inc={destino,achados:[],sel:{}};
+  $('#incSub').textContent=`Month ${mesTexto(E.mes)}`+(destino!=null?` · ${nomeCorretor(destino)}`:'');
+  $('#incNumero').value='';$('#incObs').value='';$('#incRes').innerHTML='';$('#incMsg').textContent='';
+  $('#incSalvar').disabled=true;
+  $('#inc').showModal();$('#incNumero').focus();
+}
+// por que uma linha achada não pode ser incluída (ou '' se pode)
+function bloqueioInc(l){
+  if(l.cancelado)return 'Cancelled in Digisul: use the “Cancelled with commission” tab';
+  if(l.noMes)return 'Already in this month';
+  if(E.movs[l.id]?.incluido)return 'Already included';
+  return '';
+}
+async function buscarInc(){
+  const q=$('#incNumero').value.trim(),btn=$('#incBuscar');
+  if(!q){$('#incMsg').textContent='Type a contract number.';return;}
+  btn.disabled=true;$('#incSalvar').disabled=true;$('#incRes').innerHTML='';
+  $('#incMsg').textContent='Searching Digisul... this can take a few seconds.';
+  try{
+    const r=await apiCorretagem(E.mes,[q]);
+    if(!Array.isArray(r.incluidos))throw new Error('The brokerage API has not been updated yet (brascof-api), so contract search is not available.');
+    if(r.listaCorretores&&!E.api.listaCorretores)E.api.listaCorretores=r.listaCorretores;
+    E.inc.achados=r.incluidos;E.inc.sel={};
+    for(const l of r.incluidos)if(!bloqueioInc(l))E.inc.sel[l.id]={on:true,cod:String(E.inc.destino??l.corretorCod)};
+    $('#incMsg').textContent=r.incluidos.length?'':'No contract found with this number.';
+    renderInc();
+  }catch(e){$('#incMsg').textContent=e.message;}
+  finally{btn.disabled=false;}
+}
+function renderInc(){
+  const A=E.inc.achados,S=E.inc.sel,tab=$('#incRes');
+  if(!A.length){tab.innerHTML='';$('#incSalvar').disabled=true;return;}
+  tab.innerHTML=`<thead><tr><th class="c"></th><th>Contract</th><th>Due / shipped</th><th>Broker in Digisul</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Base</th><th class="n">Brokerage %</th><th class="n">Brokerage</th><th>Broker in this statement</th></tr></thead><tbody>`+
+    A.map(l=>{
+      const b=bloqueioInc(l),s=S[l.id];
+      return `<tr class="${b?'off':''}"><td class="c"><input type="checkbox" class="chk" data-inc="${esc(l.id)}" ${s?.on?'checked':''} ${b?'disabled':''} aria-label="Include ${esc(l.contrato)}"></td>
+        <td><b>${esc(l.contrato)}</b><div class="sub">${TIPO[l.tipo]}</div></td><td>${fmtData(l.data||l.emissao)}</td><td>${esc(l.corretorNome)}</td><td class="w">${esc(l.contraparte)}</td>
+        <td class="n">${fmtN(l.sacas)}</td><td class="n">${l.base==null?'—':fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td>
+        <td>${b?`<span class="sub">${esc(b)}</span>`:`<select data-incc="${esc(l.id)}" aria-label="Broker for ${esc(l.contrato)}">${opcoesCorretor(s.cod)}</select>`}${tags(l)}</td></tr>`;
+    }).join('')+'</tbody>';
+  $$('input[data-inc]',tab).forEach(c=>c.addEventListener('change',()=>{S[c.dataset.inc].on=c.checked;atualizarBtnInc();}));
+  $$('select[data-incc]',tab).forEach(s=>s.addEventListener('change',()=>{S[s.dataset.incc].cod=s.value;}));
+  atualizarBtnInc();
+}
+function atualizarBtnInc(){$('#incSalvar').disabled=!Object.values(E.inc.sel).some(s=>s.on);}
+async function salvarInc(){
+  const btn=$('#incSalvar'),obs=$('#incObs').value.trim()||null;
+  const escolhidos=E.inc.achados.filter(l=>E.inc.sel[l.id]?.on&&!bloqueioInc(l));
+  if(!escolhidos.length)return;
+  btn.disabled=true;$('#incMsg').textContent='Saving...';
+  try{
+    const salvos=await gravarMovs(escolhidos.map(l=>{
+      const cod=E.inc.sel[l.id].cod,muda=cod!==String(l.corretorCod);
+      return{mes:E.mes,linha_id:l.id,contrato:l.contrato,incluido:true,corretor_cod:muda?Number(cod):null,corretor_nome:muda?nomeCorretor(cod):null,obs};
+    }));
+    for(const s of salvos)E.movs[s.linha_id]=s;
+    const ids=new Set(escolhidos.map(l=>l.id));
+    E.api.incluidos=[...(E.api.incluidos||[]).filter(l=>!ids.has(l.id)),...escolhidos];
+    aposMovs();
+    $('#inc').close();
+  }catch(e){$('#incMsg').textContent=e.message;btn.disabled=false;}
+}
+$('#btnIncluir').addEventListener('click',()=>abrirInc());
+$('#detIncluir').addEventListener('click',()=>abrirInc(E.det?.cod));
+$('#incForm').addEventListener('submit',ev=>{ev.preventDefault();buscarInc();});
+$('#incSalvar').addEventListener('click',salvarInc);
+$('#incFechar').addEventListener('click',()=>$('#inc').close());
+$('#incCancelar').addEventListener('click',()=>$('#inc').close());
+
+// ── trocar o corretor de um contrato / tirar um contrato incluído ───────
+function abrirMov(id){
+  const l=E.calc?.linhas.find(x=>x.id===id);
+  if(!l)return;
+  const orig=l.corretorOrig||{cod:l.corretorCod,nome:l.corretorNome},m=E.movs[id];
+  E.mov={l,orig,m};
+  $('#movNome').textContent=l.contrato;
+  $('#movSub').textContent=`${TIPO[l.tipo]} · ${l.contraparte||''}`;
+  $('#movInfo').innerHTML=`<div><small>Due / shipped</small><b>${fmtData(l.data)}</b></div><div><small>Bags</small><b>${fmtN(l.sacas)}</b></div>
+    <div><small>Base</small><b>${fmtR$(l.base)}</b></div><div><small>Brokerage %</small><b>${fmtN(l.pct,3)}%</b></div>
+    <div><small>Brokerage</small><b>${fmtR$(l.corretagem)}</b></div><div><small>Broker in Digisul</small><b>${esc(orig.nome)}</b></div>`;
+  $('#movCorretor').innerHTML=opcoesCorretor(l.corretorCod);
+  $('#movObs').value=m?.obs||'';
+  $('#movInc').hidden=!l.incluido;
+  $('#movVoltar').hidden=!l.corretorOrig;
+  $('#movMeta').textContent=m?.autor?`Last change by ${m.autor} on ${new Date(m.updated_at).toLocaleString('pt-BR')}`:'';
+  $('#movMsg').textContent='';
+  $('#mov').showModal();
+}
+async function salvarMov(){
+  const {l,orig,m}=E.mov,cod=$('#movCorretor').value,muda=cod!==String(orig.cod),obs=$('#movObs').value.trim()||null;
+  const btn=$('#movSalvar');btn.disabled=true;$('#movMsg').textContent='Saving...';
+  try{
+    if(!muda&&!l.incluido){
+      // de volta ao corretor do Digisul e nada mais a guardar: apaga o ajuste
+      if(m)await apagarMov(E.mes,l.id);
+      delete E.movs[l.id];
+    }else{
+      const [s]=await gravarMovs([{mes:E.mes,linha_id:l.id,contrato:l.contrato,incluido:!!l.incluido,
+        corretor_cod:muda?Number(cod):null,corretor_nome:muda?nomeCorretor(cod):null,obs}]);
+      E.movs[l.id]=s;
+    }
+    aposMovs();
+    $('#mov').close();
+  }catch(e){$('#movMsg').textContent=e.message;}
+  finally{btn.disabled=false;}
+}
+$('#movSalvar').addEventListener('click',salvarMov);
+$('#movVoltar').addEventListener('click',()=>{$('#movCorretor').value=String(E.mov.orig.cod);salvarMov();});
+$('#movRemover').addEventListener('click',async()=>{
+  if(!confirm('Remove this contract from this month?'))return;
+  try{await apagarMov(E.mes,E.mov.l.id);delete E.movs[E.mov.l.id];aposMovs();$('#mov').close();}
+  catch(e){$('#movMsg').textContent=e.message;}
+});
+$('#movFechar').addEventListener('click',()=>$('#mov').close());
+
 // ── exportação Excel ────────────────────────────────────────────────────
 function linhasExport(cod){
   return (E.calc?.linhas||[]).filter(l=>!cod||String(l.corretorCod)===String(cod)).map(l=>{
@@ -521,7 +791,7 @@ function linhasExport(cod){
     return{Type:TIPO[l.tipo],Contract:l.contrato,'Original contract':l.pai,'Due / shipped':fmtData(l.data),Broker:l.corretorNome,'Supplier / client':l.contraparte,
       Branch:l.filial||'',Bags:l.sacas,'Price/Bag':l.preco,Base:l.base,'Brokerage %':l.pct,Brokerage:l.corretagem,'In statement (R$)':v??'',Difference:v==null?'':r2(v-l.corretagem),
       Checked:okSet(E.conf[String(l.corretorCod)]?.linhas).has(l.id)?'Yes':'',
-      Warnings:l.alertas.map(a=>ALERTA[a]).join('; ')};
+      Warnings:l.alertas.map(a=>ALERTA[a]).join('; '),Adjustment:textoAjuste(l),Notes:E.movs[l.id]?.obs||''};
   });
 }
 $('#btnExportar').addEventListener('click',()=>{

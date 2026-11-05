@@ -1396,3 +1396,48 @@ create policy bi_position_detalhe_select on public.bi_position_detalhe for selec
     or (tipo = 'comercial' and public.bi_ve_painel('portal:position-commercial'))
     or (tipo not in ('vendas', 'compras', 'fisica_itens', 'termm_itens', 'comercial') and tipo not like 'cert\_%' and public.bi_ve_painel('portal:position-contracts'))
   );
+
+
+-- =====================================================================
+-- 22. ESPELHO DE CORRETAGEM: CONTRATOS INCLUÍDOS E TROCA DE CORRETOR
+-- Na aba Contracts dá para:
+--   * incluir no mês um contrato que vence em outro mês (incluido = true);
+--   * passar um contrato para outro corretor (corretor_cod = corretor novo),
+--     ex.: corretor com mais de uma corretora que pede para trocar.
+-- Uma linha por mês + linha do contrato ("PURCHASE|BRC-0459/26A|<cód. corretor no Digisul>").
+-- Os dados do contrato continuam vindo do Digisul (API); aqui fica só o ajuste.
+-- Mesmo acesso do card do Espelho de Corretagem. Rode depois das seções 18 e 19.
+-- =====================================================================
+create table if not exists public.bi_corretagem_contrato (
+  mes            text not null check (mes ~ '^\d{4}-(0[1-9]|1[0-2])$'),
+  linha_id       text not null,
+  contrato       text not null,
+  incluido       boolean not null default false,  -- trazido de outro mês pelo "Include contract"
+  corretor_cod   integer,                          -- corretor novo; null = o do Digisul
+  corretor_nome  text,
+  obs            text,
+  autor          text,
+  updated_by     uuid default auth.uid() references public.bi_perfis (id) on delete set null,
+  updated_at     timestamptz not null default now(),
+  primary key (mes, linha_id)
+);
+
+-- quem alterou: o usuário logado (mesma função da seção 18)
+drop trigger if exists bi_corretagem_contrato_autor on public.bi_corretagem_contrato;
+create trigger bi_corretagem_contrato_autor before insert or update on public.bi_corretagem_contrato
+  for each row execute function public.bi_corretagem_autor();
+
+alter table public.bi_corretagem_contrato enable row level security;
+drop policy if exists bi_corretagem_contrato_select on public.bi_corretagem_contrato;
+create policy bi_corretagem_contrato_select on public.bi_corretagem_contrato for select to authenticated
+  using (public.bi_ve_painel('/portal-bi/corretagem'));
+drop policy if exists bi_corretagem_contrato_insert on public.bi_corretagem_contrato;
+create policy bi_corretagem_contrato_insert on public.bi_corretagem_contrato for insert to authenticated
+  with check (public.bi_ve_painel('/portal-bi/corretagem'));
+drop policy if exists bi_corretagem_contrato_update on public.bi_corretagem_contrato;
+create policy bi_corretagem_contrato_update on public.bi_corretagem_contrato for update to authenticated
+  using (public.bi_ve_painel('/portal-bi/corretagem')) with check (public.bi_ve_painel('/portal-bi/corretagem'));
+-- tirar um contrato incluído ou voltar ao corretor do Digisul apaga a linha
+drop policy if exists bi_corretagem_contrato_delete on public.bi_corretagem_contrato;
+create policy bi_corretagem_contrato_delete on public.bi_corretagem_contrato for delete to authenticated
+  using (public.bi_ve_painel('/portal-bi/corretagem'));
