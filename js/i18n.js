@@ -669,6 +669,9 @@ const PT = {
   "Contracts in this month": "Contratos do mês", "+ Add entry": "+ Adicionar lançamento", "Export this broker": "Exportar este corretor",
   "Contracts checked": "Contratos conferidos", "Not saved yet.": "Ainda não salvo.", "Check all": "Marcar todos",
   "Tick each contract as you check it against the statement": "Marque cada contrato conforme for conferindo com o espelho",
+  "Coffee not in Digisul": "Café não está no Digisul",
+  "Digisul has no coffee for this contract (e.g. cancelled): it is shown under the broker's main coffee this month":
+    "O Digisul não tem o café deste contrato (ex.: cancelado): ele aparece no café principal do corretor neste mês",
   "Before split": "Antes da separação", "Checked before the split by coffee: review and save it in this tab":
     "Conferido antes da separação por café: revise e salve nesta aba",
   "The check per coffee is not set up yet: run section 24 of supabase/schema.sql in the Supabase SQL Editor.":

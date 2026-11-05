@@ -372,6 +372,8 @@ function especieInicial(){
 function cafePrincipal(cod){
   const t={ARABICA:0,CONILON:0};
   for(const l of E.calc?.linhas||[])if(String(l.corretorCod)===String(cod)&&t[l.especie]!=null)t[l.especie]+=l.corretagem||0;
+  // sem nenhum contrato com café no mês: olha os cancelados do corretor; se nada, arábica
+  if(!t.ARABICA&&!t.CONILON)for(const c of E.calc?.cancelados||[])if(String(c.corretorCod)===String(cod)&&t[c.especie]!=null)t[c.especie]+=c.corretagem||0;
   return t.CONILON>t.ARABICA?'CONILON':'ARABICA';
 }
 // E.conf = conferências da aba aberta. As salvas antes da separação por café ('TODOS') vão
@@ -510,7 +512,10 @@ const somaAjustes=a=>r2((a||[]).reduce((s,x)=>s+(Number(x.valor)||0),0));
 const ESPECIE={ARABICA:'Arabica',CONILON:'Conilon'};
 const badgeEsp=e=>e?`<span class="badge ${e==='CONILON'?'badge-cn':'badge-ar'}">${ESPECIE[e]||esc(e)}</span>`:'—';
 // linhas do mês do café da aba aberta. Um contrato sem café no Digisul aparece nas duas abas.
-const linhasVis=(esp=E.especie)=>(E.calc?.linhas||[]).filter(l=>!l.especie||l.especie===esp);
+// O café vem do cadastro do contrato no Digisul. Contrato cancelado não está nesse cadastro:
+// sem café, vai para o café principal do corretor no mês (etiqueta "Coffee not in Digisul").
+const cafeDaLinha=l=>l.especie==='ARABICA'||l.especie==='CONILON'?l.especie:cafePrincipal(l.corretorCod);
+const linhasVis=(esp=E.especie)=>(E.calc?.linhas||[]).filter(l=>cafeDaLinha(l)===esp);
 // Por corretor, só com o café da aba aberta (a conferência de cada café é separada)
 function corretoresView(){
   const m=new Map();
@@ -563,6 +568,7 @@ function ligarOrdem(tab,chave,re){
 }
 const tags=l=>(l.alertas||[]).map(a=>`<span class="tag ${a==='pf'?'i':''}">${ALERTA[a]||a}</span>`).join('')+
   (l.cancelado?'<span class="tag" title="Cancelled in Digisul: the amount is the commission registered there">Cancelled (washout)</span>':'')+
+  (l.especie!=='ARABICA'&&l.especie!=='CONILON'?'<span class="tag i" title="Digisul has no coffee for this contract (e.g. cancelled): it is shown under the broker\'s main coffee this month">Coffee not in Digisul</span>':'')+
   (l.movidoDe?`<span class="tag a" title="Moved into this month from ${esc(mesTexto(l.movidoDe))}">Moved from ${esc(mesTexto(l.movidoDe))}</span>`:
    l.incluido?`<span class="tag a" title="In Digisul: ${esc(fmtData(l.data))}">Included manually</span>`:'')+
   (l.incluido&&temAjuste(l.corretorCod,l.contrato)?'<span class="tag" title="This contract is also in this broker\'s manual entries: remove one of them">Also in manual entries</span>':'')+
@@ -577,7 +583,7 @@ function renderTudo(){renderCafes();renderKpis();renderCorretores();renderContra
 // abas de café: corretagem calculada de cada um no mês
 function renderCafes(){
   for(const esp of ['ARABICA','CONILON']){
-    const ls=(E.calc?.linhas||[]).filter(l=>l.especie===esp);
+    const ls=linhasVis(esp);
     $(`#tot${esp}`).textContent=E.calc?`${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))} · ${ls.length} contracts`:'';
   }
   $$('.cafes button').forEach(b=>b.setAttribute('aria-selected',b.dataset.esp===E.especie));
@@ -603,7 +609,7 @@ function renderKpis(){
     <div class="kpi"><small>Paid</small><b>${pagos.length} of ${cs.length}</b><span>${fmtR$(r2(pagos.reduce((s,c)=>s+(c.espelho??c.esperado),0)))}</span></div>`;
   $('#qtdCanc').textContent=canceladosVis().length||'';
 }
-const canceladosVis=()=>(E.calc?.cancelados||[]).filter(c=>!c.especie||c.especie===E.especie);
+const canceladosVis=()=>(E.calc?.cancelados||[]).filter(c=>cafeDaLinha(c)===E.especie);
 
 function renderCorretores(){
   const tab=$('#tabCorretores');
