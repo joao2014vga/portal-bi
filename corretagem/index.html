@@ -137,7 +137,7 @@ tr.ok td{background:#f1f8f3}
   </section>
 
   <section data-painel="cancelados" hidden>
-    <p class="help">Contracts cancelled in Digisul that still carry a commission (e.g. washout). They have no due date in Digisul, so they do not enter a month on their own. If the broker charges one in the statement, use “Add to this month”.</p>
+    <p class="help">Contracts cancelled in Digisul that still carry a commission (e.g. washout). They have no due date in Digisul, so they do not enter a month on their own. If the broker charges one in the statement, use “Add to this month”: the contract goes into the broker's list in this month, with the commission registered in Digisul.</p>
     <div class="tw"><table id="tabCancelados"></table></div>
   </section>
 
@@ -347,12 +347,20 @@ function listaCorretores(){
 const nomeCorretor=cod=>listaCorretores().find(c=>c.cod===String(cod))?.nome||E.conf[String(cod)]?.corretor_nome||`Broker ${cod}`;
 const opcoesCorretor=sel=>listaCorretores().map(c=>`<option value="${esc(c.cod)}" ${c.cod===String(sel)?'selected':''}>${esc(c.nome)} (${esc(c.cod)})</option>`).join('');
 
+// contrato cancelado (washout) no formato de uma linha da lista: entra pela comissão gravada no Digisul
+const idLinha=c=>c.id||`${c.tipo}|${c.contrato}|${c.corretorCod}`;
+const linhaCancelada=c=>({...c,id:idLinha(c),cancelado:true,data:null,preco:null,base:null,alertas:[]});
+const mesmoContrato=(a,b)=>String(a||'').trim().toUpperCase()===String(b||'').trim().toUpperCase();
+// lançamento manual do mesmo contrato no corretor (contaria em dobro com a linha)
+const temAjuste=(cod,contrato)=>(E.conf[String(cod)]?.ajustes||[]).some(a=>mesmoContrato(a.contrato,contrato));
+
 // ── aplica contratos incluídos e trocas de corretor sobre o cálculo da API ──
 function aplicarMovs(){
   const api=E.api;E.faltando=[];
   if(!api){E.calc=null;return;}
   const naApi=new Set(api.linhas.map(l=>l.id));
-  const achados=new Map((api.incluidos||[]).filter(l=>!l.cancelado).map(l=>[l.id,l]));
+  // cancelados com comissão também podem subir para a lista (comissão do Digisul, sem base)
+  const achados=new Map([...(api.cancelados||[]).map(linhaCancelada),...(api.incluidos||[]).map(l=>l.cancelado?linhaCancelada(l):l)].map(l=>[l.id,l]));
   const outros=new Map();
   for(const o of E.incOutros){if(!outros.has(o.linha_id))outros.set(o.linha_id,[]);outros.get(o.linha_id).push(o.mes);}
   const linhas=api.linhas.map(l=>({...l}));
@@ -453,7 +461,9 @@ function ligarOrdem(tab,chave,re){
   }));
 }
 const tags=l=>(l.alertas||[]).map(a=>`<span class="tag ${a==='pf'?'i':''}">${ALERTA[a]||a}</span>`).join('')+
+  (l.cancelado?'<span class="tag" title="Cancelled in Digisul: the amount is the commission registered there">Cancelled (washout)</span>':'')+
   (l.incluido?`<span class="tag a" title="In Digisul: ${esc(fmtData(l.data))}">Included manually</span>`:'')+
+  (l.incluido&&temAjuste(l.corretorCod,l.contrato)?'<span class="tag" title="This contract is also in this broker\'s manual entries: remove one of them">Also in manual entries</span>':'')+
   (l.corretorOrig?`<span class="tag m" title="Broker in Digisul: ${esc(l.corretorOrig.nome)}">Broker changed</span>`:'')+
   (l.incluidoEm?.length?`<span class="tag" title="Included by hand in another month too: check it is not paid twice">Also in ${l.incluidoEm.map(mesTexto).join(', ')}</span>`:'');
 const textoAjuste=l=>[l.incluido?'Included manually':'',l.corretorOrig?`Broker changed (Digisul: ${l.corretorOrig.nome})`:'',
@@ -525,15 +535,18 @@ function renderCancelados(){
   const cs=ordenar(E.calc?.cancelados||[],E.ordem.cancelados);
   const cols=[['tipo','Type'],['contrato','Contract'],['emissao','Issued'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['pct','Brokerage %',1],['corretagem','Commission in Digisul',1],['acao','']];
   tab.innerHTML=cab('cancelados',cols)+'<tbody>'+(cs.length?cs.map((c,i)=>{
-    const lancado=(E.conf[String(c.corretorCod)]?.ajustes||[]).some(a=>a.contrato===c.contrato);
+    const lancado=E.movs[idLinha(c)]?.incluido||temAjuste(c.corretorCod,c.contrato);
     return `<tr><td><span class="badge ${c.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[c.tipo]}</span></td><td><b>${esc(c.contrato)}</b></td><td>${fmtData(c.emissao)}</td><td>${esc(c.corretorNome)}</td>
       <td class="w">${esc(c.contraparte)}</td><td class="n">${fmtN(c.sacas)}</td><td class="n">${fmtN(c.pct,3)}%</td><td class="n">${fmtR$(c.corretagem)}</td>
       <td>${lancado?'<span class="st st-checked">Added</span>':`<button class="btn s" data-i="${i}" type="button">Add to this month</button>`}</td></tr>`;
   }).join(''):`<tr><td colspan="${cols.length}" class="empty">No cancelled contracts with commission in the last 18 months.</td></tr>`)+'</tbody>';
   ligarOrdem(tab,'cancelados',renderCancelados);
-  $$('button[data-i]',tab).forEach(b=>b.addEventListener('click',()=>{
-    const c=cs[Number(b.dataset.i)];
-    abrirDet(String(c.corretorCod),{nome:c.corretorNome,novoAjuste:{contrato:c.contrato,descricao:'Cancelled with commission (washout)',valor:c.corretagem}});
+  // "Add to this month": o contrato sobe para a lista do corretor neste mês (como o "+ Include contract")
+  $$('button[data-i]',tab).forEach(b=>b.addEventListener('click',async()=>{
+    const c=linhaCancelada(cs[Number(b.dataset.i)]);
+    b.disabled=true;
+    try{await gravarInclusoes([{l:c,cod:String(c.corretorCod)}],null);}
+    catch(e){avisar(e.message);b.disabled=false;}
   }));
 }
 
@@ -660,7 +673,7 @@ $('#detSalvar').addEventListener('click',async()=>{
     d.sujo=false;
     $('#detMsg').textContent='Saved ✓';
     $('#detMeta').textContent=`Last change by ${salvo.autor||'—'} on ${new Date(salvo.updated_at).toLocaleString('pt-BR')}`;
-    renderTudo();
+    renderTudo();renderDetLinhas();
   }catch(e){$('#detMsg').textContent=e.message;}
   finally{btn.disabled=false;}
 });
@@ -677,7 +690,7 @@ function abrirInc(destino=null){
 }
 // por que uma linha achada não pode ser incluída (ou '' se pode)
 function bloqueioInc(l){
-  if(l.cancelado)return 'Cancelled in Digisul: use the “Cancelled with commission” tab';
+  if(l.cancelado&&!(l.corretagem>0))return 'Cancelled in Digisul with no commission';
   if(l.noMes)return 'Already in this month';
   if(E.movs[l.id]?.incluido)return 'Already included';
   return '';
@@ -720,16 +733,42 @@ async function salvarInc(){
   if(!escolhidos.length)return;
   btn.disabled=true;$('#incMsg').textContent='Saving...';
   try{
-    const salvos=await gravarMovs(escolhidos.map(l=>{
-      const cod=E.inc.sel[l.id].cod,muda=cod!==String(l.corretorCod);
-      return{mes:E.mes,linha_id:l.id,contrato:l.contrato,incluido:true,corretor_cod:muda?Number(cod):null,corretor_nome:muda?nomeCorretor(cod):null,obs};
-    }));
-    for(const s of salvos)E.movs[s.linha_id]=s;
-    const ids=new Set(escolhidos.map(l=>l.id));
-    E.api.incluidos=[...(E.api.incluidos||[]).filter(l=>!ids.has(l.id)),...escolhidos];
-    aposMovs();
+    await gravarInclusoes(escolhidos.map(l=>({l:l.cancelado?linhaCancelada(l):l,cod:E.inc.sel[l.id].cod})),obs);
     $('#inc').close();
   }catch(e){$('#incMsg').textContent=e.message;btn.disabled=false;}
+}
+// grava as linhas incluídas ([{l, cod do corretor escolhido}]) e põe na lista;
+// se o contrato já era um lançamento manual do corretor, oferece tirar o lançamento
+async function gravarInclusoes(itens,obs){
+  const salvos=await gravarMovs(itens.map(({l,cod})=>{
+    const muda=String(cod)!==String(l.corretorCod);
+    return{mes:E.mes,linha_id:l.id,contrato:l.contrato,incluido:true,corretor_cod:muda?Number(cod):null,corretor_nome:muda?nomeCorretor(cod):null,obs};
+  }));
+  for(const s of salvos)E.movs[s.linha_id]=s;
+  const ids=new Set(itens.map(i=>i.l.id));
+  E.api.incluidos=[...(E.api.incluidos||[]).filter(l=>!ids.has(l.id)),...itens.map(i=>i.l)];
+  aposMovs();
+  for(const {l,cod} of itens)
+    for(const c of new Set([String(cod),String(l.corretorCod)]))
+      if(temAjuste(c,l.contrato)||($('#det').open&&E.det?.cod===c&&E.det.r.ajustes.some(a=>mesmoContrato(a.contrato,l.contrato))))await tirarAjuste(c,l.contrato);
+}
+async function tirarAjuste(cod,contrato){
+  if(!confirm(`${contrato} is also a manual entry for ${nomeCorretor(cod)}. Remove the manual entry so it is not counted twice?`))return;
+  if(E.det?.cod===cod&&$('#det').open){
+    // conferência aberta: tira na tela e a pessoa salva junto com o resto
+    E.det.r.ajustes=E.det.r.ajustes.filter(a=>!mesmoContrato(a.contrato,contrato));
+    renderDetAjustes();renderDetRes();marcarSujo();
+    $('#detMsg').textContent='Manual entry removed — save to confirm.';
+    return;
+  }
+  const cf=E.conf[cod];
+  if(!cf)return;
+  try{
+    E.conf[cod]=await salvarConferencia({mes:E.mes,corretor_cod:Number(cod),corretor_nome:cf.corretor_nome||nomeCorretor(cod),status:cf.status,
+      espelho_numero:cf.espelho_numero,espelho_valor:cf.espelho_valor,linhas:cf.linhas||{},
+      ajustes:(cf.ajustes||[]).filter(a=>!mesmoContrato(a.contrato,contrato)),obs:cf.obs});
+    renderTudo();
+  }catch(e){avisar(e.message);}
 }
 $('#btnIncluir').addEventListener('click',()=>abrirInc());
 $('#detIncluir').addEventListener('click',()=>abrirInc(E.det?.cod));

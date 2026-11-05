@@ -658,8 +658,13 @@ const PT = {
   "No brokerage in this month.": "Nenhuma corretagem neste mês.", "No contracts.": "Nenhum contrato.",
   "No cancelled contracts with commission in the last 18 months.": "Nenhum contrato cancelado com comissão nos últimos 18 meses.",
   "No contracts due in this month for this broker.": "Nenhum contrato deste corretor neste mês.",
-  "Contracts cancelled in Digisul that still carry a commission (e.g. washout). They have no due date in Digisul, so they do not enter a month on their own. If the broker charges one in the statement, use “Add to this month”.":
-    "Contratos cancelados no Digisul que ainda têm comissão (ex.: washout). Eles não têm vencimento no Digisul, então não entram sozinhos no mês. Se o corretor cobrar no espelho, use “Lançar neste mês”.",
+  "Contracts cancelled in Digisul that still carry a commission (e.g. washout). They have no due date in Digisul, so they do not enter a month on their own. If the broker charges one in the statement, use “Add to this month”: the contract goes into the broker's list in this month, with the commission registered in Digisul.":
+    "Contratos cancelados no Digisul que ainda têm comissão (ex.: washout). Eles não têm vencimento no Digisul, então não entram sozinhos no mês. Se o corretor cobrar no espelho, use “Lançar neste mês”: o contrato entra na lista do corretor neste mês, com a comissão cadastrada no Digisul.",
+  "Cancelled (washout)": "Cancelado (washout)", "Cancelled in Digisul with no commission": "Cancelado no Digisul sem comissão",
+  "Cancelled in Digisul: the amount is the commission registered there": "Cancelado no Digisul: o valor é a comissão cadastrada lá",
+  "Also in manual entries": "Também nos lançamentos manuais",
+  "This contract is also in this broker's manual entries: remove one of them": "Este contrato também está nos lançamentos manuais do corretor: tire um dos dois",
+  "Manual entry removed — save to confirm.": "Lançamento removido — salve para confirmar.",
   "Statement number": "Nº do espelho", "Statement total (R$)": "Valor total do espelho (R$)", "e.g. ESP-0010/26": "ex.: ESP-0010/26",
   "Contracts in this month": "Contratos do mês", "+ Add entry": "+ Adicionar lançamento", "Export this broker": "Exportar este corretor",
   "Contracts checked": "Contratos conferidos", "Not saved yet.": "Ainda não salvo.", "Check all": "Marcar todos",
