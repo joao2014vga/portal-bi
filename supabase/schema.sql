@@ -1458,3 +1458,21 @@ alter table public.bi_corretagem_contrato add constraint bi_corretagem_contrato_
          or (adiado_para ~ '^\d{4}-(0[1-9]|1[0-2])$' and adiado_para <> mes));
 -- a API do Supabase passa a enxergar a coluna nova na hora
 notify pgrst, 'reload schema';
+
+
+-- =====================================================================
+-- 24. ESPELHO DE CORRETAGEM: CONFERÊNCIA SEPARADA POR CAFÉ
+-- A tela tem uma aba para arábica e outra para conilon, cada uma com a sua
+-- conferência (valor do espelho, status, check dos contratos, lançamentos).
+-- A chave passa a ser mês + corretor + café. As conferências salvas antes desta
+-- seção ficam com especie = 'TODOS'; a tela as entrega ao café em que o corretor
+-- tem mais corretagem no mês, e ao salvar grava já no café da aba.
+-- Rode depois da seção 18.
+-- =====================================================================
+alter table public.bi_corretagem_conf add column if not exists especie text not null default 'TODOS';
+alter table public.bi_corretagem_conf drop constraint if exists bi_corretagem_conf_especie_check;
+alter table public.bi_corretagem_conf add constraint bi_corretagem_conf_especie_check
+  check (especie in ('TODOS', 'ARABICA', 'CONILON'));
+alter table public.bi_corretagem_conf drop constraint if exists bi_corretagem_conf_pkey;
+alter table public.bi_corretagem_conf add primary key (mes, corretor_cod, especie);
+notify pgrst, 'reload schema';

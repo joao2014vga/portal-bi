@@ -16,7 +16,13 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f2;color:#1a1a1a;mi
 .hdr input[type=month]{padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font-size:.85rem;color-scheme:dark}
 .hbtn{padding:5px 10px;border-radius:6px;border:1px solid #4a7a60;background:transparent;color:#8aab97;font-size:.78rem;cursor:pointer;text-decoration:none;white-space:nowrap;font-family:inherit}
 .hbtn:hover{background:#1a2e24;color:#e8f0ec}
-.hsel{padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font:inherit;font-size:.8rem}
+.cafes{display:flex;gap:.5rem;margin-bottom:1rem}
+.cafes button{flex:0 1 260px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:.65rem 1.1rem;border-radius:10px;border:1px solid #cfdcd4;background:#fff;color:#5a7a68;font:inherit;cursor:pointer;text-align:left}
+.cafes button .nm{font-size:.95rem;font-weight:600}
+.cafes button .vl{font-size:.75rem;font-variant-numeric:tabular-nums}
+.cafes button[data-esp=ARABICA][aria-selected=true]{background:#7a4f00;border-color:#7a4f00;color:#fff}
+.cafes button[data-esp=CONILON][aria-selected=true]{background:#4a1a7a;border-color:#4a1a7a;color:#fff}
+.cafes button[aria-selected=false]:hover{border-color:#4a7a60;color:#1a1a1a}
 .badge-ar{background:#fef3e2;color:#7a4f00}.badge-cn{background:#f0e8ff;color:#4a1a7a}
 .mover{margin-top:1rem;padding:.8rem 1rem;border:1px solid #dde8e2;border-radius:10px;background:#fafcfb}
 .mover h3{margin-top:0!important}
@@ -103,18 +109,17 @@ tr.ok td{background:#f1f8f3}
   <div class="ctl">
     <label for="mes">Reference month</label>
     <input type="month" id="mes">
-    <label for="filtroEspecie">Coffee</label>
-    <select id="filtroEspecie" class="hsel">
-      <option value="">All coffees</option>
-      <option value="ARABICA">Arabica</option>
-      <option value="CONILON">Conilon</option>
-    </select>
     <button class="hbtn" id="btnAtualizar" type="button">↻ Refresh</button>
     <button class="hbtn" id="btnExportar" type="button">⬇ Export Excel</button>
     <button class="hbtn" id="btnPdf" type="button">⬇ PDF report</button>
   </div>
 </div>
 <div id="erroBox"></div>
+<!-- cada café tem a sua lista e a sua conferência -->
+<nav class="cafes" role="tablist" aria-label="Coffee">
+  <button role="tab" data-esp="ARABICA" aria-selected="true"><span class="nm">Arabica</span><span class="vl" id="totARABICA"></span></button>
+  <button role="tab" data-esp="CONILON" aria-selected="false"><span class="nm">Conilon</span><span class="vl" id="totCONILON"></span></button>
+</nav>
 <div class="kpis" id="kpis"></div>
 
 <div class="card">
@@ -138,7 +143,6 @@ tr.ok td{background:#f1f8f3}
         <option value="paid">Paid</option>
       </select>
     </div>
-    <p class="help" id="avisoEspecie" hidden></p>
     <div class="tw"><table id="tabCorretores"></table></div>
   </section>
 
@@ -173,7 +177,7 @@ tr.ok td{background:#f1f8f3}
       <li>“+ Include contract” (Contracts tab) brings a contract due in another month into this month, with its data from Digisul. In the contract's own month it then shows the tag “Also in”, so it is not paid twice.</li>
       <li>“⇄ Broker” moves a contract to another broker's list in this month (e.g. a broker with more than one brokerage firm). The rate and the amount stay as in Digisul.</li>
       <li>“⇄ Broker / month” also moves a contract to another month, or keeps it aside until the whole contract is closed (tab “Moved to another month”).</li>
-      <li>Coffee (Arabica / Conilon) comes from the contract in Digisul. With a coffee chosen at the top, the statement total and the difference are hidden, because the broker's statement covers both coffees.</li>
+      <li>Arabica and Conilon are separate: each tab has its own brokers, contracts and check (statement amount, status, ticks and manual entries). The coffee comes from the contract in Digisul.</li>
     </ol>
     <p>Difference = statement amount − (calculated brokerage + manual entries).</p>
   </section>
@@ -318,7 +322,9 @@ const mesTexto=m=>String(m||'').split('-').reverse().join('/');
 // e as trocas de corretor (movs, tabela bi_corretagem_contrato) aplicados por cima
 // adiados = contratos passados para outro mês (coluna adiado_para, de qualquer mês);
 // saidas = linhas deste mês que foram passadas para outro mês (saem da lista)
-const E={mes:null,api:null,calc:null,conf:{},movs:{},incOutros:[],adiados:[],saidas:[],faltando:[],especie:'',
+// especie = aba de café aberta ("ARABICA" / "CONILON"); confRows = conferências do mês como vieram
+// do Supabase (uma por corretor + café); conf = as da aba aberta, por código do corretor
+const E={mes:null,api:null,calc:null,conf:{},confRows:[],movs:{},incOutros:[],adiados:[],saidas:[],faltando:[],especie:especieInicial(),
   ordem:{corretores:['nome',1],contratos:['corretorNome',1],cancelados:['emissao',-1],adiados:['mes',-1]},det:null,inc:null,mov:null};
 
 // ── acesso a dados ──────────────────────────────────────────────────────
@@ -335,22 +341,52 @@ function msgSupa(j,status){
   const m=j?.message||'';
   if(/bi_corretagem_conf/.test(m)&&/does not exist|schema cache/i.test(m))return 'The brokerage table is not set up yet: run section 18 of supabase/schema.sql in the Supabase SQL Editor.';
   if(/bi_corretagem_contrato/.test(m)&&/does not exist|schema cache/i.test(m))return 'Including contracts and changing brokers is not set up yet: run section 22 of supabase/schema.sql in the Supabase SQL Editor.';
+  if(/especie/.test(m)&&/column|schema cache|constraint|conflict/i.test(m))return 'The check per coffee is not set up yet: run section 24 of supabase/schema.sql in the Supabase SQL Editor.';
   if(status===401)return 'Your session has expired. Please reload the BI Portal.';
   if(status===403||/row-level security/i.test(m))return 'You do not have access to the Brokerage Statement.';
   return m||`Error ${status}`;
 }
+// todas as conferências do mês (os dois cafés); antes da seção 24 não há coluna especie: viram 'TODOS'
 async function lerConferencias(mes){
   const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_conf?mes=eq.${mes}&select=*`,{headers:supaHeaders()});
   const j=await res.json().catch(()=>null);
   if(!res.ok)throw new Error(msgSupa(j,res.status));
-  return Object.fromEntries(j.map(r=>[String(r.corretor_cod),r]));
+  return j.map(r=>({...r,especie:r.especie||'TODOS'}));
 }
+// grava sempre no café da aba aberta
 async function salvarConferencia(linha){
-  const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_conf?on_conflict=mes,corretor_cod`,{
-    method:'POST',headers:supaHeaders({Prefer:'resolution=merge-duplicates,return=representation'}),body:JSON.stringify([linha])});
+  const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_conf?on_conflict=mes,corretor_cod,especie`,{
+    method:'POST',headers:supaHeaders({Prefer:'resolution=merge-duplicates,return=representation'}),body:JSON.stringify([{...linha,especie:E.especie}])});
   const j=await res.json().catch(()=>null);
   if(!res.ok)throw new Error(msgSupa(j,res.status));
-  return j[0];
+  const s={...j[0],especie:j[0].especie||E.especie};
+  E.confRows=[...E.confRows.filter(r=>!(String(r.corretor_cod)===String(s.corretor_cod)&&r.especie===s.especie)),s];
+  return s;
+}
+// aba de café: lembra a última escolhida neste navegador
+function especieInicial(){
+  try{const s=localStorage.getItem('brascof_corretagem_cafe');if(s==='ARABICA'||s==='CONILON')return s;}catch(e){}
+  return 'ARABICA';
+}
+// café em que o corretor tem mais corretagem no mês
+function cafePrincipal(cod){
+  const t={ARABICA:0,CONILON:0};
+  for(const l of E.calc?.linhas||[])if(String(l.corretorCod)===String(cod)&&t[l.especie]!=null)t[l.especie]+=l.corretagem||0;
+  return t.CONILON>t.ARABICA?'CONILON':'ARABICA';
+}
+// E.conf = conferências da aba aberta. As salvas antes da separação por café ('TODOS') vão
+// inteiras para o café principal do corretor; no outro café só os checks dos contratos
+// (cada contrato é de um café só, então os checks não se misturam).
+function montarConf(){
+  const conf={};
+  for(const r of E.confRows)if(r.especie===E.especie)conf[String(r.corretor_cod)]=r;
+  for(const r of E.confRows){
+    const cod=String(r.corretor_cod);
+    if(r.especie!=='TODOS'||conf[cod])continue;
+    conf[cod]=cafePrincipal(cod)===E.especie?{...r,antiga:true}
+      :{corretor_cod:r.corretor_cod,corretor_nome:r.corretor_nome,status:'pending',linhas:{...(r.linhas||{})},ajustes:[],antiga:true};
+  }
+  E.conf=conf;
 }
 // contratos incluídos / com corretor trocado: os do mês e, para avisar de cobrança
 // em dobro, os incluídos em outros meses
@@ -441,8 +477,8 @@ function aplicarMovs(){
 // depois de gravar um ajuste: redesenha tudo e, se a conferência de um corretor está aberta, os contratos dela
 function aposMovs(){
   aplicarMovs();renderTudo();
-  if(E.det&&$('#det').open){E.det.linhas=E.calc.linhas.filter(l=>String(l.corretorCod)===E.det.cod);renderDetLinhas();renderDetRes();}
-  else if(E.det)E.det.linhas=E.calc.linhas.filter(l=>String(l.corretorCod)===E.det.cod);
+  if(E.det&&$('#det').open){E.det.linhas=linhasVis().filter(l=>String(l.corretorCod)===E.det.cod);renderDetLinhas();renderDetRes();}
+  else if(E.det)E.det.linhas=linhasVis().filter(l=>String(l.corretorCod)===E.det.cod);
 }
 
 // ── carga ───────────────────────────────────────────────────────────────
@@ -453,15 +489,15 @@ async function carregar(){
   $('#loading').hidden=false;$('#erroBox').innerHTML='';
   try{
     // primeiro o Supabase (rápido): a API precisa saber quais contratos de outros meses foram incluídos
-    const [conf,movs]=await Promise.all([lerConferencias(E.mes).catch(e=>{avisar(e.message);return {};}),lerMovs(E.mes).catch(e=>{avisar(e.message);return null;})]);
-    E.conf=conf;E.movs=movs?.mes||{};E.incOutros=movs?.outros||[];E.adiados=movs?.adiados||[];
+    const [conf,movs]=await Promise.all([lerConferencias(E.mes).catch(e=>{avisar(e.message);return [];}),lerMovs(E.mes).catch(e=>{avisar(e.message);return null;})]);
+    E.confRows=conf;E.movs=movs?.mes||{};E.incOutros=movs?.outros||[];E.adiados=movs?.adiados||[];
     const incluir=[...new Set(Object.values(E.movs).filter(m=>m.incluido).map(m=>m.contrato))];
     E.api=await apiCorretagem(E.mes,incluir);
   }catch(e){
-    E.api=null;E.conf={};
+    E.api=null;E.confRows=[];
     avisar(e.status===401||e.status===403?e.message:`Error loading Digisul data: ${e.message}`);
   }finally{
-    aplicarMovs();
+    aplicarMovs();montarConf();
     if(E.faltando.length)avisar(`Included contracts not found in Digisul: ${[...new Set(E.faltando)].join(', ')}`);
     $('#loading').hidden=true;renderTudo();
   }
@@ -473,30 +509,30 @@ const somaAjustes=a=>r2((a||[]).reduce((s,x)=>s+(Number(x.valor)||0),0));
 // café: "ARABICA" / "CONILON" (vem do cadastro do contrato no Digisul)
 const ESPECIE={ARABICA:'Arabica',CONILON:'Conilon'};
 const badgeEsp=e=>e?`<span class="badge ${e==='CONILON'?'badge-cn':'badge-ar'}">${ESPECIE[e]||esc(e)}</span>`:'—';
-// linhas do mês com o filtro de café do topo
-const linhasVis=(esp=E.especie)=>(E.calc?.linhas||[]).filter(l=>!esp||l.especie===esp);
-// Por corretor. Com um café escolhido, o espelho e a diferença ficam de fora: o espelho do corretor cobre os dois cafés
-function corretoresView(esp=E.especie){
+// linhas do mês do café da aba aberta. Um contrato sem café no Digisul aparece nas duas abas.
+const linhasVis=(esp=E.especie)=>(E.calc?.linhas||[]).filter(l=>!l.especie||l.especie===esp);
+// Por corretor, só com o café da aba aberta (a conferência de cada café é separada)
+function corretoresView(){
   const m=new Map();
-  const novo=(cod,nome)=>({cod,nome,contratos:0,sacas:0,base:0,corretagem:0,alertas:0,arabica:0,conilon:0});
-  for(const l of linhasVis(esp)){
+  const novo=(cod,nome)=>({cod,nome,contratos:0,sacas:0,base:0,corretagem:0,alertas:0});
+  for(const l of linhasVis()){
     const k=String(l.corretorCod);
     if(!m.has(k))m.set(k,novo(l.corretorCod,l.corretorNome));
     const c=m.get(k);
     c.contratos++;c.sacas+=l.sacas||0;c.base+=l.base||0;c.corretagem+=l.corretagem||0;
-    if(l.especie==='CONILON')c.conilon+=l.corretagem||0;else if(l.especie==='ARABICA')c.arabica+=l.corretagem||0;
     if(l.alertas.includes('pct')||l.alertas.includes('unpriced'))c.alertas++;
   }
-  if(!esp)for(const [cod,c] of Object.entries(E.conf)){
+  // corretor sem contrato neste café, mas com espelho ou lançamento digitado nele
+  for(const [cod,c] of Object.entries(E.conf)){
     if(!m.has(cod)&&((c.ajustes||[]).length||c.espelho_valor!=null))m.set(cod,novo(Number(cod),c.corretor_nome||`Broker ${cod}`));
   }
   return [...m.values()].map(c0=>{
-    const c={...c0,sacas:r2(c0.sacas),base:r2(c0.base),corretagem:r2(c0.corretagem),arabica:r2(c0.arabica),conilon:r2(c0.conilon)};
+    const c={...c0,sacas:r2(c0.sacas),base:r2(c0.base),corretagem:r2(c0.corretagem)};
     const cf=E.conf[String(c.cod)]||{};
-    const ajustes=esp?0:somaAjustes(cf.ajustes);
+    const ajustes=somaAjustes(cf.ajustes);
     const esperado=r2(c.corretagem+ajustes);
-    const espelho=esp||cf.espelho_valor==null?null:Number(cf.espelho_valor);
-    const linhasC=linhasVis(esp).filter(l=>String(l.corretorCod)===String(c.cod));
+    const espelho=cf.espelho_valor==null?null:Number(cf.espelho_valor);
+    const linhasC=linhasVis().filter(l=>String(l.corretorCod)===String(c.cod));
     // % de corretagem cadastradas nos contratos do corretor no mês (ex.: "0,5%" ou "0,5% / 0,52%")
     const pcts=[...new Set(linhasC.map(l=>l.pct))].sort((a,b)=>a-b);
     const taxas=pcts.map(p=>fmtN(p,3)+'%').join(' / ');
@@ -536,47 +572,56 @@ const textoAjuste=l=>[l.incluido?'Included manually':'',l.corretorOrig?`Broker c
   l.incluidoEm?.length?`Also included in ${l.incluidoEm.map(mesTexto).join(', ')}`:''].filter(Boolean).join('; ');
 // clique no "⇄ Broker" não abre a conferência do corretor (o clique da linha)
 function ligarMov(tab){$$('button[data-mov]',tab).forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();abrirMov(b.dataset.mov);}));}
-function renderTudo(){renderKpis();renderCorretores();renderContratos();renderCancelados();renderAdiados();}
+function renderTudo(){renderCafes();renderKpis();renderCorretores();renderContratos();renderCancelados();renderAdiados();}
+
+// abas de café: corretagem calculada de cada um no mês
+function renderCafes(){
+  for(const esp of ['ARABICA','CONILON']){
+    const ls=(E.calc?.linhas||[]).filter(l=>l.especie===esp);
+    $(`#tot${esp}`).textContent=E.calc?`${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))} · ${ls.length} contracts`:'';
+  }
+  $$('.cafes button').forEach(b=>b.setAttribute('aria-selected',b.dataset.esp===E.especie));
+}
+$$('.cafes button').forEach(b=>b.addEventListener('click',()=>{
+  if(b.dataset.esp===E.especie)return;
+  E.especie=b.dataset.esp;
+  try{localStorage.setItem('brascof_corretagem_cafe',E.especie);}catch(e){}
+  montarConf();renderTudo();
+}));
 
 function renderKpis(){
-  // espelhos recebidos / diferença / pagos: sempre com os dois cafés (o espelho do corretor cobre os dois)
-  const cs=corretoresView('');
-  const vis=corretoresView();
+  const cs=corretoresView();
   const com=cs.filter(c=>c.espelho!=null);
   const pagos=cs.filter(c=>c.status==='paid');
   const dif=r2(com.reduce((s,c)=>s+c.dif,0));
   const ls=linhasVis();
-  const arab=r2(ls.filter(l=>l.especie==='ARABICA').reduce((s,l)=>s+l.corretagem,0)),coni=r2(ls.filter(l=>l.especie==='CONILON').reduce((s,l)=>s+l.corretagem,0));
   $('#kpis').innerHTML=`
-    <div class="kpi"><small>Expected brokerage${E.especie?' · '+ESPECIE[E.especie]:''}</small><b>${fmtR$(r2(vis.reduce((s,c)=>s+c.esperado,0)))}</b><span>${ls.length} contracts${E.especie?'':` · Arabica ${fmtR$(arab)} · Conilon ${fmtR$(coni)}`}</span></div>
+    <div class="kpi"><small>Expected brokerage · ${ESPECIE[E.especie]}</small><b>${fmtR$(r2(cs.reduce((s,c)=>s+c.esperado,0)))}</b><span>${ls.length} contracts</span></div>
     <div class="kpi"><small>Statements received</small><b>${com.length} of ${cs.length}</b><span>${cs.length-com.length} pending</span></div>
     <div class="kpi"><small>Statements total</small><b>${fmtR$(r2(com.reduce((s,c)=>s+c.espelho,0)))}</b><span>Expected for these: ${fmtR$(r2(com.reduce((s,c)=>s+c.esperado,0)))}</span></div>
     <div class="kpi"><small>Difference</small><b class="${difClasse(com.length?dif:null)}">${com.length?difTexto(dif):'—'}</b><span>${com.filter(c=>Math.abs(c.dif)>1).length} divergent</span></div>
     <div class="kpi"><small>Paid</small><b>${pagos.length} of ${cs.length}</b><span>${fmtR$(r2(pagos.reduce((s,c)=>s+(c.espelho??c.esperado),0)))}</span></div>`;
-  $('#qtdCanc').textContent=E.calc?.cancelados?.length||'';
+  $('#qtdCanc').textContent=canceladosVis().length||'';
 }
+const canceladosVis=()=>(E.calc?.cancelados||[]).filter(c=>!c.especie||c.especie===E.especie);
 
 function renderCorretores(){
   const tab=$('#tabCorretores');
   const busca=$('#buscaCorretor').value.trim().toLowerCase(),st=$('#filtroStatus').value;
   const cs=ordenar(corretoresView().filter(c=>(!busca||c.nome.toLowerCase().includes(busca))&&(!st||c.status===st)),E.ordem.corretores);
-  const av=$('#avisoEspecie');av.hidden=!E.especie;
-  av.textContent=E.especie?`Showing ${ESPECIE[E.especie]} contracts only. Manual entries, statement and difference appear only with “All coffees”, because the broker's statement covers both coffees.`:'';
   const cols=[['nome','Broker'],['contratos','Contracts',1],['taxas','Brokerage %',1],['sacas','Bags',1],['base','Base',1],
-    ...(E.especie?[]:[['arabica','Arabica',1],['conilon','Conilon',1]]),
     ['corretagem','Calculated',1],['ajustes','Manual entries',1],['esperado','Expected',1],['espelho','Statement',1],['dif','Difference',1],['status','Status']];
   if(!cs.length){tab.innerHTML=cab('corretores',cols)+`<tbody><tr><td colspan="${cols.length}" class="empty">${E.calc?'No brokerage in this month.':'—'}</td></tr></tbody>`;ligarOrdem(tab,'corretores',renderCorretores);return;}
   const tot=k=>r2(cs.reduce((s,c)=>s+(c[k]||0),0));
   tab.innerHTML=cab('corretores',cols)+'<tbody>'+cs.map(c=>`
     <tr class="ck" data-cod="${c.cod}">
-      <td><b>${esc(c.nome)}</b> ${c.alertas?`<span class="tag" title="Non-standard rate or price not fixed">⚠ ${c.alertas}</span>`:''}${c.numero?`<div class="sub">${esc(c.numero)}</div>`:''}</td>
+      <td><b>${esc(c.nome)}</b> ${c.alertas?`<span class="tag" title="Non-standard rate or price not fixed">⚠ ${c.alertas}</span>`:''}${E.conf[String(c.cod)]?.antiga&&E.conf[String(c.cod)]?.espelho_valor!=null?'<span class="tag i" title="Checked before the split by coffee: review and save it in this tab">Before split</span>':''}${c.numero?`<div class="sub">${esc(c.numero)}</div>`:''}</td>
       <td class="n">${c.contratos}${c.conferidos?`<div class="sub ${c.conferidos===c.contratos?'zero':''}">${c.conferidos} ✓</div>`:''}</td><td class="n ${c.taxaFora?'pos':''}">${c.taxas||'—'}</td><td class="n">${fmtN(c.sacas,0)}</td><td class="n">${fmtR$(c.base)}</td>
-      ${E.especie?'':`<td class="n">${c.arabica?fmtR$(c.arabica):''}</td><td class="n">${c.conilon?fmtR$(c.conilon):''}</td>`}
       <td class="n">${fmtR$(c.corretagem)}</td><td class="n">${c.ajustes?fmtR$(c.ajustes):''}</td>
       <td class="n"><b>${fmtR$(c.esperado)}</b></td><td class="n">${fmtR$(c.espelho)}</td>
       <td class="n ${difClasse(c.dif)}">${difTexto(c.dif)}</td>
       <td><span class="st st-${c.status}">${STATUS[c.status]}</span></td>
-    </tr>`).join('')+`</tbody><tfoot><tr><td>Total (${cs.length})</td><td class="n">${tot('contratos')}</td><td></td><td class="n">${fmtN(tot('sacas'),0)}</td><td class="n">${fmtR$(tot('base'))}</td>${E.especie?'':`<td class="n">${fmtR$(tot('arabica'))}</td><td class="n">${fmtR$(tot('conilon'))}</td>`}<td class="n">${fmtR$(tot('corretagem'))}</td><td class="n">${fmtR$(tot('ajustes'))}</td><td class="n">${fmtR$(tot('esperado'))}</td><td class="n">${fmtR$(tot('espelho'))}</td><td></td><td></td></tr></tfoot>`;
+    </tr>`).join('')+`</tbody><tfoot><tr><td>Total (${cs.length})</td><td class="n">${tot('contratos')}</td><td></td><td class="n">${fmtN(tot('sacas'),0)}</td><td class="n">${fmtR$(tot('base'))}</td><td class="n">${fmtR$(tot('corretagem'))}</td><td class="n">${fmtR$(tot('ajustes'))}</td><td class="n">${fmtR$(tot('esperado'))}</td><td class="n">${fmtR$(tot('espelho'))}</td><td></td><td></td></tr></tfoot>`;
   ligarOrdem(tab,'corretores',renderCorretores);
   $$('tr[data-cod]',tab).forEach(tr=>tr.addEventListener('click',()=>abrirDet(tr.dataset.cod)));
 }
@@ -588,14 +633,14 @@ function renderContratos(){
   const busca=$('#buscaContrato').value.trim().toLowerCase(),tipo=$('#filtroTipo').value,soAlerta=$('#filtroAlerta').checked;
   const ls=ordenar(linhasVis().filter(l=>(!tipo||l.tipo===tipo)&&(!soAlerta||l.alertas.some(a=>a!=='pf'))&&
     (!busca||`${l.contrato} ${l.corretorNome} ${l.corretorOrig?.nome||''} ${l.contraparte}`.toLowerCase().includes(busca))),E.ordem.contratos);
-  const cols=[['tipo','Type'],['especie','Coffee'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Brokerage %',1],['corretagem','Brokerage',1],['alertas','Warnings'],['acao','']];
+  const cols=[['tipo','Type'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Brokerage %',1],['corretagem','Brokerage',1],['alertas','Warnings'],['acao','']];
   tab.innerHTML=cab('contratos',cols)+'<tbody>'+(ls.length?ls.map(l=>`
-    <tr class="ck" data-cod="${l.corretorCod}"><td><span class="badge ${l.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[l.tipo]}</span></td><td>${badgeEsp(l.especie)}</td><td><b>${esc(l.contrato)}</b></td><td>${fmtData(l.data)}</td>
+    <tr class="ck" data-cod="${l.corretorCod}"><td><span class="badge ${l.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[l.tipo]}</span></td><td><b>${esc(l.contrato)}</b></td><td>${fmtData(l.data)}</td>
     <td>${esc(l.corretorNome)}${l.corretorOrig?`<div class="sub">Digisul: ${esc(l.corretorOrig.nome)}</div>`:''}</td><td class="w">${esc(l.contraparte)}</td><td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td>
     <td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td><td>${tags(l)}</td>
     <td><button class="btn s" data-mov="${esc(l.id)}" type="button" title="Change broker or move to another month">⇄ Broker / month</button></td></tr>`).join('')
     :`<tr><td colspan="${cols.length}" class="empty">No contracts.</td></tr>`)+'</tbody>'+
-    (ls.length?`<tfoot><tr><td colspan="6">${ls.length} lines</td><td class="n">${fmtN(ls.reduce((s,l)=>s+l.sacas,0),0)}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.base,0)))}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))}</td><td></td><td></td></tr></tfoot>`:'');
+    (ls.length?`<tfoot><tr><td colspan="5">${ls.length} lines</td><td class="n">${fmtN(ls.reduce((s,l)=>s+l.sacas,0),0)}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.base,0)))}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))}</td><td></td><td></td></tr></tfoot>`:'');
   ligarOrdem(tab,'contratos',renderContratos);
   $$('tr[data-cod]',tab).forEach(tr=>tr.addEventListener('click',()=>abrirDet(tr.dataset.cod)));
   ligarMov(tab);
@@ -606,7 +651,7 @@ $('#filtroAlerta').addEventListener('change',renderContratos);
 
 function renderCancelados(){
   const tab=$('#tabCancelados');
-  const cs=ordenar(E.calc?.cancelados||[],E.ordem.cancelados);
+  const cs=ordenar(canceladosVis(),E.ordem.cancelados);
   const cols=[['tipo','Type'],['contrato','Contract'],['emissao','Issued'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['pct','Brokerage %',1],['corretagem','Commission in Digisul',1],['acao','']];
   tab.innerHTML=cab('cancelados',cols)+'<tbody>'+(cs.length?cs.map((c,i)=>{
     const lancado=E.movs[idLinha(c)]?.incluido||temAjuste(c.corretorCod,c.contrato);
@@ -680,13 +725,13 @@ function abrirDet(cod,extra={}){
   const cv=corretoresView().find(c=>String(c.cod)===String(cod));
   const cf=E.conf[String(cod)]||{};
   const d={cod:String(cod),nome:cv?.nome||extra.nome||cf.corretor_nome||`Broker ${cod}`,
-    linhas:(E.calc?.linhas||[]).filter(l=>String(l.corretorCod)===String(cod)),
+    linhas:linhasVis().filter(l=>String(l.corretorCod)===String(cod)),
     r:{espelho_numero:cf.espelho_numero||'',espelho_valor:cf.espelho_valor==null?null:Number(cf.espelho_valor),status:cf.status||'pending',
        obs:cf.obs||'',linhas:{...(cf.linhas||{})},ajustes:(cf.ajustes||[]).map(a=>({...a}))}};
   if(extra.novoAjuste){d.r.ajustes.push({id:novoId(),...extra.novoAjuste});d.sujo=true;}
   E.det=d;
   $('#detNome').textContent=d.nome;
-  $('#detSub').textContent=`Code ${cod} · ${E.mes.split('-').reverse().join('/')}`;
+  $('#detSub').textContent=`${ESPECIE[E.especie]} · Code ${cod} · ${E.mes.split('-').reverse().join('/')}`;
   $('#detNumero').value=d.r.espelho_numero;
   $('#detValor').value=editavel(d.r.espelho_valor);
   $('#detStatus').value=d.r.status;
@@ -742,7 +787,7 @@ function renderDetLinhas(){
   tab.innerHTML=`<thead><tr><th class="c" title="Tick each contract as you check it against the statement"><input type="checkbox" class="chk" id="okTodos" ${todos?'checked':''} aria-label="Check all"> ✓</th><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Brokerage %</th><th class="n">Calculated</th><th class="n" title="Amount the broker charged for this contract in the statement (optional)">In statement (R$)</th><th class="n">Difference</th><th>Warnings</th><th></th></tr></thead><tbody>`+
     d.linhas.map(l=>{
       const v=typeof d.r.linhas[l.id]==='number'?d.r.linhas[l.id]:null,dif=v==null?null:r2(v-l.corretagem);
-      return `<tr class="${ok.has(l.id)?'ok':''}"><td class="c"><input type="checkbox" class="chk" data-ok="${esc(l.id)}" ${ok.has(l.id)?'checked':''} aria-label="Checked ${esc(l.contrato)}"></td><td><b>${esc(l.contrato)}</b> ${badgeEsp(l.especie)}<div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
+      return `<tr class="${ok.has(l.id)?'ok':''}"><td class="c"><input type="checkbox" class="chk" data-ok="${esc(l.id)}" ${ok.has(l.id)?'checked':''} aria-label="Checked ${esc(l.contrato)}"></td><td><b>${esc(l.contrato)}</b><div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
         <td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td><td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td>
         <td class="n"><input data-l="${esc(l.id)}" inputmode="decimal" value="${editavel(v)}" placeholder="—"></td>
         <td class="n ${difClasse(dif)}">${difTexto(dif)}</td><td>${tags(l)}</td>
@@ -993,18 +1038,18 @@ $('#btnExportar').addEventListener('click',()=>{
   if(!window.XLSX||!E.calc)return;
   const X=XLSX,wb=X.utils.book_new();
   X.utils.book_append_sheet(wb,X.utils.json_to_sheet(ordenar(corretoresView(),['nome',1]).map(c=>({Broker:c.nome,Code:c.cod,'Statement no.':c.numero,Contracts:c.contratos,'Brokerage %':c.taxas,Bags:c.sacas,Base:c.base,
-    ...(E.especie?{}:{Arabica:c.arabica,Conilon:c.conilon}),Calculated:c.corretagem,'Manual entries':c.ajustes,Expected:c.esperado,Statement:c.espelho??'',Difference:c.dif??'',Status:STATUS[c.status]}))),'Summary');
+    Coffee:ESPECIE[E.especie],Calculated:c.corretagem,'Manual entries':c.ajustes,Expected:c.esperado,Statement:c.espelho??'',Difference:c.dif??'',Status:STATUS[c.status]}))),'Summary');
   X.utils.book_append_sheet(wb,X.utils.json_to_sheet(linhasExport()),'Contracts');
   const aj=Object.values(E.conf).flatMap(c=>(c.ajustes||[]).map(a=>({Broker:c.corretor_nome,Contract:a.contrato,Description:a.descricao,Amount:a.valor})));
   if(aj.length)X.utils.book_append_sheet(wb,X.utils.json_to_sheet(aj),'Manual entries');
-  X.writeFile(wb,`Brokerage ${E.mes}.xlsx`);
+  X.writeFile(wb,`Brokerage ${E.mes} ${ESPECIE[E.especie]}.xlsx`);
 });
 $('#detExportar').addEventListener('click',()=>{
   if(!window.XLSX)return;
   const X=XLSX,d=E.det,wb=X.utils.book_new();
   X.utils.book_append_sheet(wb,X.utils.json_to_sheet(linhasExport(d.cod)),'Contracts');
   if(d.r.ajustes.length)X.utils.book_append_sheet(wb,X.utils.json_to_sheet(d.r.ajustes.map(a=>({Contract:a.contrato,Description:a.descricao,Amount:a.valor}))),'Manual entries');
-  X.writeFile(wb,`Brokerage ${E.mes} - ${d.nome.slice(0,40).replace(/[\\/:*?"<>|]/g,'')}.xlsx`);
+  X.writeFile(wb,`Brokerage ${E.mes} ${ESPECIE[E.especie]} - ${d.nome.slice(0,40).replace(/[\\/:*?"<>|]/g,'')}.xlsx`);
 });
 
 // ── relatório final em PDF (corretor → contratos, como a tabela dinâmica da conferência) ──
@@ -1022,56 +1067,45 @@ async function gerarPdf(){
     let t=s=>s;try{const m=await import('../js/i18n.js');t=s=>m.t(s);}catch(e){}
     const doc=new window.jspdf.jsPDF({unit:'pt',format:'a4'});
     const verde=[45,74,62],claro=[227,238,232];
-    const cafe=E.especie?t(ESPECIE[E.especie]):t('All coffees');
+    const cafe=t(ESPECIE[E.especie]);
     doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(...verde);
     doc.text(`Brascof · ${t('Brokerage Statement')}`,40,44);
     doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(90,122,104);
     doc.text(`${t('Reference month')}: ${mesTexto(E.mes)}   ·   ${t('Coffee')}: ${cafe}   ·   ${t('Generated on')} ${new Date().toLocaleString('pt-BR')}`,40,60);
 
+    // um relatório por café: corretor (com os totais) e os contratos dele embaixo
     const corpo=[];
-    const totEsp={ARABICA:0,CONILON:0},tot={sacas:0,base:0,corretagem:0};
+    const tot={sacas:0,base:0,corretagem:0};
+    const fundo=v=>({content:v,styles:{fontStyle:'bold',fillColor:claro}});
     for(const c of ordenar(corretoresView(),['nome',1])){
-      const ls=linhasVis().filter(l=>String(l.corretorCod)===String(c.cod))
-        .sort((a,b)=>String(a.especie).localeCompare(String(b.especie))||a.contrato.localeCompare(b.contrato));
-      const aj=E.especie?[]:(E.conf[String(c.cod)]?.ajustes||[]);
+      const ls=linhasVis().filter(l=>String(l.corretorCod)===String(c.cod)).sort((a,b)=>a.contrato.localeCompare(b.contrato));
+      const aj=E.conf[String(c.cod)]?.ajustes||[];
       if(!ls.length&&!aj.length)continue;
-      corpo.push([{content:c.nome,styles:{fontStyle:'bold',fillColor:claro}},
-        {content:'',styles:{fillColor:claro}},{content:'',styles:{fillColor:claro}},
-        {content:fmtN(c.sacas,0),styles:{fontStyle:'bold',fillColor:claro}},{content:fmt2(c.base),styles:{fontStyle:'bold',fillColor:claro}},
-        {content:'',styles:{fillColor:claro}},{content:fmt2(c.esperado),styles:{fontStyle:'bold',fillColor:claro}}]);
-      for(const l of ls){
-        corpo.push([`    ${l.contrato}`,t(ESPECIE[l.especie]||l.especie||'—'),fmtData(l.data),fmtN(l.sacas),fmt2(l.base),fmtN(l.pct,3)+'%',fmt2(l.corretagem)]);
-        if(totEsp[l.especie]!=null)totEsp[l.especie]+=l.corretagem;
-      }
-      for(const a of aj)corpo.push([`    ${a.contrato||'—'}${a.descricao?' · '+a.descricao:''}`,t('Manual entry'),'','','','',fmt2(a.valor)]);
+      corpo.push([fundo(c.nome),fundo(''),fundo(fmtN(c.sacas,0)),fundo(fmt2(c.base)),fundo(''),fundo(fmt2(c.esperado))]);
+      for(const l of ls)corpo.push([`    ${l.contrato}`,fmtData(l.data),fmtN(l.sacas),fmt2(l.base),fmtN(l.pct,3)+'%',fmt2(l.corretagem)]);
+      for(const a of aj)corpo.push([`    ${a.contrato||'—'} · ${t('Manual entry')}${a.descricao?' · '+a.descricao:''}`,'','','','',fmt2(a.valor)]);
       tot.sacas+=c.sacas;tot.base+=c.base;tot.corretagem+=c.esperado;
     }
-    const pe=[];
-    if(!E.especie){
-      pe.push([t('Total Arabica'),'','','','','',fmt2(totEsp.ARABICA)]);
-      pe.push([t('Total Conilon'),'','','','','',fmt2(totEsp.CONILON)]);
-    }
-    pe.push([t('Grand total'),'','',fmtN(tot.sacas,0),fmt2(tot.base),'',fmt2(tot.corretagem)]);
+    const pe=[[`${t('Total')} ${cafe}`,'',fmtN(tot.sacas,0),fmt2(tot.base),'',fmt2(tot.corretagem)]];
     doc.autoTable({
       startY:74,margin:{left:40,right:40},
-      head:[[t('Broker / contract'),t('Coffee'),t('Due / shipped'),t('Bags'),t('Total (R$)'),'%',t('Brokerage (R$)')]],
+      head:[[t('Broker / contract'),t('Due / shipped'),t('Bags'),t('Total (R$)'),'%',t('Brokerage (R$)')]],
       body:corpo,foot:pe,showFoot:'lastPage',
       styles:{font:'helvetica',fontSize:8,cellPadding:3,textColor:[26,26,26],lineColor:[221,232,226],lineWidth:.5},
       headStyles:{fillColor:verde,textColor:255,fontStyle:'bold'},
       footStyles:{fillColor:[245,249,246],textColor:[26,26,26],fontStyle:'bold'},
-      columnStyles:{3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right'}},
+      columnStyles:{2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'}},
       didDrawPage:d=>{
         const n=doc.internal.getNumberOfPages();
         doc.setFontSize(8);doc.setTextColor(138,171,151);
         doc.text(`${t('Page')} ${n}`,doc.internal.pageSize.getWidth()-40,doc.internal.pageSize.getHeight()-20,{align:'right'});
       },
     });
-    doc.save(`Brokerage ${E.mes}${E.especie?' '+ESPECIE[E.especie]:''}.pdf`);
+    doc.save(`Brokerage ${E.mes} ${ESPECIE[E.especie]}.pdf`);
   }catch(e){avisar('Could not create the PDF: '+e.message);}
   finally{btn.disabled=false;btn.textContent=txt;}
 }
 $('#btnPdf').addEventListener('click',gerarPdf);
-$('#filtroEspecie').addEventListener('change',ev=>{E.especie=ev.target.value;renderTudo();});
 
 // ── início ──────────────────────────────────────────────────────────────
 const mesUrl=new URLSearchParams(location.search).get('mes');

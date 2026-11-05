@@ -669,6 +669,12 @@ const PT = {
   "Contracts in this month": "Contratos do mês", "+ Add entry": "+ Adicionar lançamento", "Export this broker": "Exportar este corretor",
   "Contracts checked": "Contratos conferidos", "Not saved yet.": "Ainda não salvo.", "Check all": "Marcar todos",
   "Tick each contract as you check it against the statement": "Marque cada contrato conforme for conferindo com o espelho",
+  "Before split": "Antes da separação", "Checked before the split by coffee: review and save it in this tab":
+    "Conferido antes da separação por café: revise e salve nesta aba",
+  "The check per coffee is not set up yet: run section 24 of supabase/schema.sql in the Supabase SQL Editor.":
+    "A conferência por café ainda não está configurada: rode a seção 24 do supabase/schema.sql no SQL Editor do Supabase.",
+  "Arabica and Conilon are separate: each tab has its own brokers, contracts and check (statement amount, status, ticks and manual entries). The coffee comes from the contract in Digisul.":
+    "Arábica e conilon são separados: cada aba tem seus corretores, contratos e conferência (valor do espelho, status, checks e lançamentos). O café vem do contrato no Digisul.",
   "Coffee": "Café", "All coffees": "Todos os cafés", "⬇ PDF report": "⬇ Relatório PDF", "⏳ PDF...": "⏳ PDF...",
   "Moved to another month": "Passados para outro mês", "Moved from": "Saiu de", "Moved to": "Vai para", "Changed by": "Alterado por",
   "Bring to this month": "Trazer para este mês", "Undo": "Desfazer", "Move to another month": "Passar para outro mês", "Move": "Passar",
