@@ -705,7 +705,11 @@ async function buscarInc(){
     if(!Array.isArray(r.incluidos))throw new Error('The brokerage API has not been updated yet (brascof-api), so contract search is not available.');
     if(r.listaCorretores&&!E.api.listaCorretores)E.api.listaCorretores=r.listaCorretores;
     E.inc.achados=r.incluidos;E.inc.sel={};
-    for(const l of r.incluidos)if(!bloqueioInc(l))E.inc.sel[l.id]={on:true,cod:String(E.inc.destino??l.corretorCod)};
+    // aberto da conferência de um corretor: se o contrato tem esse corretor no Digisul, já vem
+    // marcada só a linha dele (contrato com dois corretores não entra em dobro); as outras ficam desmarcadas
+    const livres=r.incluidos.filter(l=>!bloqueioInc(l));
+    const dele=E.inc.destino!=null&&livres.some(l=>String(l.corretorCod)===String(E.inc.destino));
+    for(const l of livres)E.inc.sel[l.id]={on:!dele||String(l.corretorCod)===String(E.inc.destino),cod:String(E.inc.destino??l.corretorCod)};
     $('#incMsg').textContent=r.incluidos.length?'':'No contract found with this number.';
     renderInc();
   }catch(e){$('#incMsg').textContent=e.message;}
