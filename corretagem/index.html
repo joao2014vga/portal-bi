@@ -16,6 +16,13 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f2;color:#1a1a1a;mi
 .hdr input[type=month]{padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font-size:.85rem;color-scheme:dark}
 .hbtn{padding:5px 10px;border-radius:6px;border:1px solid #4a7a60;background:transparent;color:#8aab97;font-size:.78rem;cursor:pointer;text-decoration:none;white-space:nowrap;font-family:inherit}
 .hbtn:hover{background:#1a2e24;color:#e8f0ec}
+.hsel{padding:5px 8px;border-radius:6px;border:1px solid #4a7a60;background:#1a2e24;color:#e8f0ec;font:inherit;font-size:.8rem}
+.badge-ar{background:#fef3e2;color:#7a4f00}.badge-cn{background:#f0e8ff;color:#4a1a7a}
+.mover{margin-top:1rem;padding:.8rem 1rem;border:1px solid #dde8e2;border-radius:10px;background:#fafcfb}
+.mover h3{margin-top:0!important}
+.mover .lin{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+.mover input[type=month]{padding:5px 8px;border:1px solid #cfdcd4;border-radius:6px;font:inherit;font-size:.82rem}
+.mover label{font-size:.78rem;color:#5a7a68;display:flex;gap:5px;align-items:center}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:1.25rem}
 .kpi{background:#fff;border:1px solid #dde8e2;border-radius:12px;padding:.9rem 1.1rem}
 .kpi small{display:block;font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:#4a7a60;font-weight:600}
@@ -96,8 +103,15 @@ tr.ok td{background:#f1f8f3}
   <div class="ctl">
     <label for="mes">Reference month</label>
     <input type="month" id="mes">
+    <label for="filtroEspecie">Coffee</label>
+    <select id="filtroEspecie" class="hsel">
+      <option value="">All coffees</option>
+      <option value="ARABICA">Arabica</option>
+      <option value="CONILON">Conilon</option>
+    </select>
     <button class="hbtn" id="btnAtualizar" type="button">↻ Refresh</button>
     <button class="hbtn" id="btnExportar" type="button">⬇ Export Excel</button>
+    <button class="hbtn" id="btnPdf" type="button">⬇ PDF report</button>
   </div>
 </div>
 <div id="erroBox"></div>
@@ -108,6 +122,7 @@ tr.ok td{background:#f1f8f3}
     <button role="tab" data-aba="corretores" aria-selected="true">By broker</button>
     <button role="tab" data-aba="contratos">Contracts</button>
     <button role="tab" data-aba="cancelados">Cancelled with commission<span class="cnt" id="qtdCanc"></span></button>
+    <button role="tab" data-aba="adiados">Moved to another month<span class="cnt" id="qtdAdi"></span></button>
     <button role="tab" data-aba="regras">How it is calculated</button>
   </nav>
 
@@ -123,6 +138,7 @@ tr.ok td{background:#f1f8f3}
         <option value="paid">Paid</option>
       </select>
     </div>
+    <p class="help" id="avisoEspecie" hidden></p>
     <div class="tw"><table id="tabCorretores"></table></div>
   </section>
 
@@ -141,6 +157,11 @@ tr.ok td{background:#f1f8f3}
     <div class="tw"><table id="tabCancelados"></table></div>
   </section>
 
+  <section data-painel="adiados" hidden>
+    <p class="help">Contracts taken out of the month they belong to, e.g. when the broker prefers to bill a partial contract only when the whole contract is closed. “When fully closed” contracts wait here: open the month in which they will be paid and use “Bring to this month”.</p>
+    <div class="tw"><table id="tabAdiados"></table></div>
+  </section>
+
   <section data-painel="regras" class="rules" hidden>
     <ol>
       <li>Broker and rate come from the Digisul brokerage queries (brascof_pesq_corretagem_compras / _vendas). A contract with two brokers gives one line per broker.</li>
@@ -151,6 +172,8 @@ tr.ok td{background:#f1f8f3}
       <li>Brokerage = base × rate registered in Digisul. Lines with a rate other than 0.5% are flagged.</li>
       <li>“+ Include contract” (Contracts tab) brings a contract due in another month into this month, with its data from Digisul. In the contract's own month it then shows the tag “Also in”, so it is not paid twice.</li>
       <li>“⇄ Broker” moves a contract to another broker's list in this month (e.g. a broker with more than one brokerage firm). The rate and the amount stay as in Digisul.</li>
+      <li>“⇄ Broker / month” also moves a contract to another month, or keeps it aside until the whole contract is closed (tab “Moved to another month”).</li>
+      <li>Coffee (Arabica / Conilon) comes from the contract in Digisul. With a coffee chosen at the top, the statement total and the difference are hidden, because the broker's statement covers both coffees.</li>
     </ol>
     <p>Difference = statement amount − (calculated brokerage + manual entries).</p>
   </section>
@@ -177,6 +200,7 @@ tr.ok td{background:#f1f8f3}
     <h3>Contracts in this month</h3>
     <p class="help">Optional: in “In statement (R$)” type the amount the broker charged for each contract. The Difference column then shows exactly which contracts do not match.</p>
     <div class="tw"><table id="detLinhas"></table></div>
+    <p class="sub" id="detSaidas" style="margin-top:.4rem"></p>
     <button class="btn s" id="detIncluir" type="button" style="margin-top:.5rem">+ Include contract</button>
     <h3>Manual entries</h3>
     <div class="tw"><table id="detAjustes"></table></div>
@@ -226,6 +250,15 @@ tr.ok td{background:#f1f8f3}
     </div>
     <p class="help" style="margin-top:.5rem">The contract leaves the current broker's list and goes to the chosen one, in this month only. Use it when a broker with more than one brokerage firm asks to bill the contract through another one.</p>
     <label class="obs">Notes<textarea id="movObs" rows="2" maxlength="500"></textarea></label>
+    <div class="mover">
+      <h3>Move to another month</h3>
+      <div class="lin">
+        <input type="month" id="movPara" aria-label="Month">
+        <label><input type="checkbox" id="movAberto"> When the whole contract is closed (no month yet)</label>
+        <button class="btn s" id="movMover" type="button">Move</button>
+      </div>
+      <p class="sub" style="margin-top:.4rem">The contract leaves this month's list and goes to the chosen month. It uses the notes above as the reason.</p>
+    </div>
     <div class="res" id="movInc" hidden style="align-items:center">
       <span class="sub" style="flex:1">Included by hand: in Digisul this contract is due in another month.</span>
       <button class="btn s" id="movRemover" type="button">Remove from this month</button>
@@ -283,7 +316,10 @@ const mesTexto=m=>String(m||'').split('-').reverse().join('/');
 // ── estado ──────────────────────────────────────────────────────────────
 // api = resposta da API como veio; calc = a mesma coisa com os contratos incluídos
 // e as trocas de corretor (movs, tabela bi_corretagem_contrato) aplicados por cima
-const E={mes:null,api:null,calc:null,conf:{},movs:{},incOutros:[],faltando:[],ordem:{corretores:['esperado',-1],contratos:['corretorNome',1],cancelados:['emissao',-1]},det:null,inc:null,mov:null};
+// adiados = contratos passados para outro mês (coluna adiado_para, de qualquer mês);
+// saidas = linhas deste mês que foram passadas para outro mês (saem da lista)
+const E={mes:null,api:null,calc:null,conf:{},movs:{},incOutros:[],adiados:[],saidas:[],faltando:[],especie:'',
+  ordem:{corretores:['nome',1],contratos:['corretorNome',1],cancelados:['emissao',-1],adiados:['mes',-1]},det:null,inc:null,mov:null};
 
 // ── acesso a dados ──────────────────────────────────────────────────────
 // `incluir`: contratos de outros meses que a API deve devolver em `incluidos`
@@ -318,11 +354,19 @@ async function salvarConferencia(linha){
 }
 // contratos incluídos / com corretor trocado: os do mês e, para avisar de cobrança
 // em dobro, os incluídos em outros meses
+// e os passados para outro mês (aba "Moved to another month", seção 23)
 async function lerMovs(mes){
-  const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_contrato?select=*&or=(mes.eq.${mes},incluido.is.true)`,{headers:supaHeaders()});
-  const j=await res.json().catch(()=>null);
+  let res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_contrato?select=*&or=(mes.eq.${mes},incluido.is.true,adiado_para.not.is.null)`,{headers:supaHeaders()});
+  let j=await res.json().catch(()=>null);
+  // seção 23 ainda não rodada: lê como antes e avisa
+  if(!res.ok&&/adiado_para/.test(j?.message||'')){
+    avisar('Moving contracts to another month is not set up yet: run section 23 of supabase/schema.sql in the Supabase SQL Editor.');
+    res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_contrato?select=*&or=(mes.eq.${mes},incluido.is.true)`,{headers:supaHeaders()});
+    j=await res.json().catch(()=>null);
+  }
   if(!res.ok)throw new Error(msgSupa(j,res.status));
-  return{mes:Object.fromEntries(j.filter(r=>r.mes===mes).map(r=>[r.linha_id,r])),outros:j.filter(r=>r.mes!==mes)};
+  return{mes:Object.fromEntries(j.filter(r=>r.mes===mes).map(r=>[r.linha_id,r])),
+    outros:j.filter(r=>r.mes!==mes&&r.incluido),adiados:j.filter(r=>r.adiado_para)};
 }
 async function gravarMovs(linhas){
   const res=await fetch(`${SUPA_URL}/rest/v1/bi_corretagem_contrato?on_conflict=mes,linha_id`,{
@@ -376,7 +420,12 @@ function aplicarMovs(){
       l.corretorOrig={cod:l.corretorCod,nome:l.corretorNome};
       l.corretorCod=m.corretor_cod;l.corretorNome=m.corretor_nome||nomeCorretor(m.corretor_cod);
     }
+    const veio=E.adiados.find(a=>a.linha_id===l.id&&a.adiado_para===E.mes);
+    if(veio)l.movidoDe=veio.mes;
   }
+  // passados para outro mês saem da lista deste mês
+  E.saidas=linhas.filter(l=>E.movs[l.id]?.adiado_para).map(l=>({...l,adiadoPara:E.movs[l.id].adiado_para}));
+  for(const s of E.saidas)linhas.splice(linhas.findIndex(l=>l.id===s.id),1);
   // mesmo agrupamento da API (lib/corretagem.js), agora com os ajustes
   const pc=new Map();
   for(const l of linhas){
@@ -393,6 +442,7 @@ function aplicarMovs(){
 function aposMovs(){
   aplicarMovs();renderTudo();
   if(E.det&&$('#det').open){E.det.linhas=E.calc.linhas.filter(l=>String(l.corretorCod)===E.det.cod);renderDetLinhas();renderDetRes();}
+  else if(E.det)E.det.linhas=E.calc.linhas.filter(l=>String(l.corretorCod)===E.det.cod);
 }
 
 // ── carga ───────────────────────────────────────────────────────────────
@@ -404,7 +454,7 @@ async function carregar(){
   try{
     // primeiro o Supabase (rápido): a API precisa saber quais contratos de outros meses foram incluídos
     const [conf,movs]=await Promise.all([lerConferencias(E.mes).catch(e=>{avisar(e.message);return {};}),lerMovs(E.mes).catch(e=>{avisar(e.message);return null;})]);
-    E.conf=conf;E.movs=movs?.mes||{};E.incOutros=movs?.outros||[];
+    E.conf=conf;E.movs=movs?.mes||{};E.incOutros=movs?.outros||[];E.adiados=movs?.adiados||[];
     const incluir=[...new Set(Object.values(E.movs).filter(m=>m.incluido).map(m=>m.contrato))];
     E.api=await apiCorretagem(E.mes,incluir);
   }catch(e){
@@ -420,24 +470,39 @@ function avisar(msg){$('#erroBox').insertAdjacentHTML('beforeend',`<div class="e
 
 // ── visão por corretor (cálculo + conferência) ──────────────────────────
 const somaAjustes=a=>r2((a||[]).reduce((s,x)=>s+(Number(x.valor)||0),0));
-function corretoresView(){
+// café: "ARABICA" / "CONILON" (vem do cadastro do contrato no Digisul)
+const ESPECIE={ARABICA:'Arabica',CONILON:'Conilon'};
+const badgeEsp=e=>e?`<span class="badge ${e==='CONILON'?'badge-cn':'badge-ar'}">${ESPECIE[e]||esc(e)}</span>`:'—';
+// linhas do mês com o filtro de café do topo
+const linhasVis=(esp=E.especie)=>(E.calc?.linhas||[]).filter(l=>!esp||l.especie===esp);
+// Por corretor. Com um café escolhido, o espelho e a diferença ficam de fora: o espelho do corretor cobre os dois cafés
+function corretoresView(esp=E.especie){
   const m=new Map();
-  for(const c of E.calc?.corretores||[])m.set(String(c.cod),{...c});
-  for(const [cod,c] of Object.entries(E.conf)){
-    if(!m.has(cod)&&((c.ajustes||[]).length||c.espelho_valor!=null))
-      m.set(cod,{cod:Number(cod),nome:c.corretor_nome||`Broker ${cod}`,contratos:0,sacas:0,base:0,corretagem:0,alertas:0});
+  const novo=(cod,nome)=>({cod,nome,contratos:0,sacas:0,base:0,corretagem:0,alertas:0,arabica:0,conilon:0});
+  for(const l of linhasVis(esp)){
+    const k=String(l.corretorCod);
+    if(!m.has(k))m.set(k,novo(l.corretorCod,l.corretorNome));
+    const c=m.get(k);
+    c.contratos++;c.sacas+=l.sacas||0;c.base+=l.base||0;c.corretagem+=l.corretagem||0;
+    if(l.especie==='CONILON')c.conilon+=l.corretagem||0;else if(l.especie==='ARABICA')c.arabica+=l.corretagem||0;
+    if(l.alertas.includes('pct')||l.alertas.includes('unpriced'))c.alertas++;
   }
-  return [...m.values()].map(c=>{
+  if(!esp)for(const [cod,c] of Object.entries(E.conf)){
+    if(!m.has(cod)&&((c.ajustes||[]).length||c.espelho_valor!=null))m.set(cod,novo(Number(cod),c.corretor_nome||`Broker ${cod}`));
+  }
+  return [...m.values()].map(c0=>{
+    const c={...c0,sacas:r2(c0.sacas),base:r2(c0.base),corretagem:r2(c0.corretagem),arabica:r2(c0.arabica),conilon:r2(c0.conilon)};
     const cf=E.conf[String(c.cod)]||{};
-    const ajustes=somaAjustes(cf.ajustes);
+    const ajustes=esp?0:somaAjustes(cf.ajustes);
     const esperado=r2(c.corretagem+ajustes);
-    const espelho=cf.espelho_valor==null?null:Number(cf.espelho_valor);
+    const espelho=esp||cf.espelho_valor==null?null:Number(cf.espelho_valor);
+    const linhasC=linhasVis(esp).filter(l=>String(l.corretorCod)===String(c.cod));
     // % de corretagem cadastradas nos contratos do corretor no mês (ex.: "0,5%" ou "0,5% / 0,52%")
-    const pcts=[...new Set((E.calc?.linhas||[]).filter(l=>String(l.corretorCod)===String(c.cod)).map(l=>l.pct))].sort((a,b)=>a-b);
+    const pcts=[...new Set(linhasC.map(l=>l.pct))].sort((a,b)=>a-b);
     const taxas=pcts.map(p=>fmtN(p,3)+'%').join(' / ');
     const taxaFora=pcts.some(p=>Math.abs(p-PCT_PADRAO)>1e-9);
     const okIds=okSet(cf.linhas);
-    const conferidos=(E.calc?.linhas||[]).filter(l=>String(l.corretorCod)===String(c.cod)&&okIds.has(l.id)).length;
+    const conferidos=linhasC.filter(l=>okIds.has(l.id)).length;
     return{...c,taxas,taxaFora,conferidos,ajustes,esperado,espelho,dif:espelho==null?null:r2(espelho-esperado),status:cf.status||'pending',numero:cf.espelho_numero||''};
   });
 }
@@ -462,7 +527,8 @@ function ligarOrdem(tab,chave,re){
 }
 const tags=l=>(l.alertas||[]).map(a=>`<span class="tag ${a==='pf'?'i':''}">${ALERTA[a]||a}</span>`).join('')+
   (l.cancelado?'<span class="tag" title="Cancelled in Digisul: the amount is the commission registered there">Cancelled (washout)</span>':'')+
-  (l.incluido?`<span class="tag a" title="In Digisul: ${esc(fmtData(l.data))}">Included manually</span>`:'')+
+  (l.movidoDe?`<span class="tag a" title="Moved into this month from ${esc(mesTexto(l.movidoDe))}">Moved from ${esc(mesTexto(l.movidoDe))}</span>`:
+   l.incluido?`<span class="tag a" title="In Digisul: ${esc(fmtData(l.data))}">Included manually</span>`:'')+
   (l.incluido&&temAjuste(l.corretorCod,l.contrato)?'<span class="tag" title="This contract is also in this broker\'s manual entries: remove one of them">Also in manual entries</span>':'')+
   (l.corretorOrig?`<span class="tag m" title="Broker in Digisul: ${esc(l.corretorOrig.nome)}">Broker changed</span>`:'')+
   (l.incluidoEm?.length?`<span class="tag" title="Included by hand in another month too: check it is not paid twice">Also in ${l.incluidoEm.map(mesTexto).join(', ')}</span>`:'');
@@ -470,16 +536,19 @@ const textoAjuste=l=>[l.incluido?'Included manually':'',l.corretorOrig?`Broker c
   l.incluidoEm?.length?`Also included in ${l.incluidoEm.map(mesTexto).join(', ')}`:''].filter(Boolean).join('; ');
 // clique no "⇄ Broker" não abre a conferência do corretor (o clique da linha)
 function ligarMov(tab){$$('button[data-mov]',tab).forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();abrirMov(b.dataset.mov);}));}
-function renderTudo(){renderKpis();renderCorretores();renderContratos();renderCancelados();}
+function renderTudo(){renderKpis();renderCorretores();renderContratos();renderCancelados();renderAdiados();}
 
 function renderKpis(){
-  const cs=corretoresView();
+  // espelhos recebidos / diferença / pagos: sempre com os dois cafés (o espelho do corretor cobre os dois)
+  const cs=corretoresView('');
+  const vis=corretoresView();
   const com=cs.filter(c=>c.espelho!=null);
   const pagos=cs.filter(c=>c.status==='paid');
   const dif=r2(com.reduce((s,c)=>s+c.dif,0));
-  const t=E.calc?.totais||{};
+  const ls=linhasVis();
+  const arab=r2(ls.filter(l=>l.especie==='ARABICA').reduce((s,l)=>s+l.corretagem,0)),coni=r2(ls.filter(l=>l.especie==='CONILON').reduce((s,l)=>s+l.corretagem,0));
   $('#kpis').innerHTML=`
-    <div class="kpi"><small>Expected brokerage</small><b>${fmtR$(r2(cs.reduce((s,c)=>s+c.esperado,0)))}</b><span>${t.contratos||0} contracts</span></div>
+    <div class="kpi"><small>Expected brokerage${E.especie?' · '+ESPECIE[E.especie]:''}</small><b>${fmtR$(r2(vis.reduce((s,c)=>s+c.esperado,0)))}</b><span>${ls.length} contracts${E.especie?'':` · Arabica ${fmtR$(arab)} · Conilon ${fmtR$(coni)}`}</span></div>
     <div class="kpi"><small>Statements received</small><b>${com.length} of ${cs.length}</b><span>${cs.length-com.length} pending</span></div>
     <div class="kpi"><small>Statements total</small><b>${fmtR$(r2(com.reduce((s,c)=>s+c.espelho,0)))}</b><span>Expected for these: ${fmtR$(r2(com.reduce((s,c)=>s+c.esperado,0)))}</span></div>
     <div class="kpi"><small>Difference</small><b class="${difClasse(com.length?dif:null)}">${com.length?difTexto(dif):'—'}</b><span>${com.filter(c=>Math.abs(c.dif)>1).length} divergent</span></div>
@@ -491,18 +560,23 @@ function renderCorretores(){
   const tab=$('#tabCorretores');
   const busca=$('#buscaCorretor').value.trim().toLowerCase(),st=$('#filtroStatus').value;
   const cs=ordenar(corretoresView().filter(c=>(!busca||c.nome.toLowerCase().includes(busca))&&(!st||c.status===st)),E.ordem.corretores);
-  const cols=[['nome','Broker'],['contratos','Contracts',1],['taxas','Brokerage %',1],['sacas','Bags',1],['base','Base',1],['corretagem','Calculated',1],['ajustes','Manual entries',1],['esperado','Expected',1],['espelho','Statement',1],['dif','Difference',1],['status','Status']];
+  const av=$('#avisoEspecie');av.hidden=!E.especie;
+  av.textContent=E.especie?`Showing ${ESPECIE[E.especie]} contracts only. Manual entries, statement and difference appear only with “All coffees”, because the broker's statement covers both coffees.`:'';
+  const cols=[['nome','Broker'],['contratos','Contracts',1],['taxas','Brokerage %',1],['sacas','Bags',1],['base','Base',1],
+    ...(E.especie?[]:[['arabica','Arabica',1],['conilon','Conilon',1]]),
+    ['corretagem','Calculated',1],['ajustes','Manual entries',1],['esperado','Expected',1],['espelho','Statement',1],['dif','Difference',1],['status','Status']];
   if(!cs.length){tab.innerHTML=cab('corretores',cols)+`<tbody><tr><td colspan="${cols.length}" class="empty">${E.calc?'No brokerage in this month.':'—'}</td></tr></tbody>`;ligarOrdem(tab,'corretores',renderCorretores);return;}
   const tot=k=>r2(cs.reduce((s,c)=>s+(c[k]||0),0));
   tab.innerHTML=cab('corretores',cols)+'<tbody>'+cs.map(c=>`
     <tr class="ck" data-cod="${c.cod}">
       <td><b>${esc(c.nome)}</b> ${c.alertas?`<span class="tag" title="Non-standard rate or price not fixed">⚠ ${c.alertas}</span>`:''}${c.numero?`<div class="sub">${esc(c.numero)}</div>`:''}</td>
       <td class="n">${c.contratos}${c.conferidos?`<div class="sub ${c.conferidos===c.contratos?'zero':''}">${c.conferidos} ✓</div>`:''}</td><td class="n ${c.taxaFora?'pos':''}">${c.taxas||'—'}</td><td class="n">${fmtN(c.sacas,0)}</td><td class="n">${fmtR$(c.base)}</td>
+      ${E.especie?'':`<td class="n">${c.arabica?fmtR$(c.arabica):''}</td><td class="n">${c.conilon?fmtR$(c.conilon):''}</td>`}
       <td class="n">${fmtR$(c.corretagem)}</td><td class="n">${c.ajustes?fmtR$(c.ajustes):''}</td>
       <td class="n"><b>${fmtR$(c.esperado)}</b></td><td class="n">${fmtR$(c.espelho)}</td>
       <td class="n ${difClasse(c.dif)}">${difTexto(c.dif)}</td>
       <td><span class="st st-${c.status}">${STATUS[c.status]}</span></td>
-    </tr>`).join('')+`</tbody><tfoot><tr><td>Total (${cs.length})</td><td class="n">${tot('contratos')}</td><td></td><td class="n">${fmtN(tot('sacas'),0)}</td><td class="n">${fmtR$(tot('base'))}</td><td class="n">${fmtR$(tot('corretagem'))}</td><td class="n">${fmtR$(tot('ajustes'))}</td><td class="n">${fmtR$(tot('esperado'))}</td><td class="n">${fmtR$(tot('espelho'))}</td><td></td><td></td></tr></tfoot>`;
+    </tr>`).join('')+`</tbody><tfoot><tr><td>Total (${cs.length})</td><td class="n">${tot('contratos')}</td><td></td><td class="n">${fmtN(tot('sacas'),0)}</td><td class="n">${fmtR$(tot('base'))}</td>${E.especie?'':`<td class="n">${fmtR$(tot('arabica'))}</td><td class="n">${fmtR$(tot('conilon'))}</td>`}<td class="n">${fmtR$(tot('corretagem'))}</td><td class="n">${fmtR$(tot('ajustes'))}</td><td class="n">${fmtR$(tot('esperado'))}</td><td class="n">${fmtR$(tot('espelho'))}</td><td></td><td></td></tr></tfoot>`;
   ligarOrdem(tab,'corretores',renderCorretores);
   $$('tr[data-cod]',tab).forEach(tr=>tr.addEventListener('click',()=>abrirDet(tr.dataset.cod)));
 }
@@ -512,16 +586,16 @@ $('#filtroStatus').addEventListener('change',renderCorretores);
 function renderContratos(){
   const tab=$('#tabContratos');
   const busca=$('#buscaContrato').value.trim().toLowerCase(),tipo=$('#filtroTipo').value,soAlerta=$('#filtroAlerta').checked;
-  const ls=ordenar((E.calc?.linhas||[]).filter(l=>(!tipo||l.tipo===tipo)&&(!soAlerta||l.alertas.some(a=>a!=='pf'))&&
+  const ls=ordenar(linhasVis().filter(l=>(!tipo||l.tipo===tipo)&&(!soAlerta||l.alertas.some(a=>a!=='pf'))&&
     (!busca||`${l.contrato} ${l.corretorNome} ${l.corretorOrig?.nome||''} ${l.contraparte}`.toLowerCase().includes(busca))),E.ordem.contratos);
-  const cols=[['tipo','Type'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Brokerage %',1],['corretagem','Brokerage',1],['alertas','Warnings'],['acao','']];
+  const cols=[['tipo','Type'],['especie','Coffee'],['contrato','Contract'],['data','Due / shipped'],['corretorNome','Broker'],['contraparte','Supplier / client'],['sacas','Bags',1],['preco','Price/Bag',1],['base','Base',1],['pct','Brokerage %',1],['corretagem','Brokerage',1],['alertas','Warnings'],['acao','']];
   tab.innerHTML=cab('contratos',cols)+'<tbody>'+(ls.length?ls.map(l=>`
-    <tr class="ck" data-cod="${l.corretorCod}"><td><span class="badge ${l.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[l.tipo]}</span></td><td><b>${esc(l.contrato)}</b></td><td>${fmtData(l.data)}</td>
+    <tr class="ck" data-cod="${l.corretorCod}"><td><span class="badge ${l.tipo==='PURCHASE'?'badge-c':'badge-v'}">${TIPO[l.tipo]}</span></td><td>${badgeEsp(l.especie)}</td><td><b>${esc(l.contrato)}</b></td><td>${fmtData(l.data)}</td>
     <td>${esc(l.corretorNome)}${l.corretorOrig?`<div class="sub">Digisul: ${esc(l.corretorOrig.nome)}</div>`:''}</td><td class="w">${esc(l.contraparte)}</td><td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td>
     <td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td><td>${tags(l)}</td>
-    <td><button class="btn s" data-mov="${esc(l.id)}" type="button" title="Change broker">⇄ Broker</button></td></tr>`).join('')
+    <td><button class="btn s" data-mov="${esc(l.id)}" type="button" title="Change broker or move to another month">⇄ Broker / month</button></td></tr>`).join('')
     :`<tr><td colspan="${cols.length}" class="empty">No contracts.</td></tr>`)+'</tbody>'+
-    (ls.length?`<tfoot><tr><td colspan="5">${ls.length} lines</td><td class="n">${fmtN(ls.reduce((s,l)=>s+l.sacas,0),0)}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.base,0)))}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))}</td><td></td><td></td></tr></tfoot>`:'');
+    (ls.length?`<tfoot><tr><td colspan="6">${ls.length} lines</td><td class="n">${fmtN(ls.reduce((s,l)=>s+l.sacas,0),0)}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.base,0)))}</td><td></td><td class="n">${fmtR$(r2(ls.reduce((s,l)=>s+l.corretagem,0)))}</td><td></td><td></td></tr></tfoot>`:'');
   ligarOrdem(tab,'contratos',renderContratos);
   $$('tr[data-cod]',tab).forEach(tr=>tr.addEventListener('click',()=>abrirDet(tr.dataset.cod)));
   ligarMov(tab);
@@ -548,6 +622,52 @@ function renderCancelados(){
     try{await gravarInclusoes([{l:c,cod:String(c.corretorCod)}],null);}
     catch(e){avisar(e.message);b.disabled=false;}
   }));
+}
+
+// ── contratos passados para outro mês ───────────────────────────────────
+// mostra os que esperam "quando o contrato encerrar" e os que saem ou entram neste mês
+function adiadosVisiveis(){return E.adiados.filter(r=>r.adiado_para==='aberto'||r.mes===E.mes||r.adiado_para===E.mes);}
+function renderAdiados(){
+  const tab=$('#tabAdiados');
+  const rs=ordenar(adiadosVisiveis().map(r=>({...r,corretor:r.corretor_nome||nomeCorretor(String(r.linha_id).split('|').pop()),
+    destino:r.adiado_para==='aberto'?'~':r.adiado_para})),E.ordem.adiados);
+  $('#qtdAdi').textContent=E.adiados.filter(r=>r.adiado_para==='aberto').length||'';
+  const cols=[['contrato','Contract'],['corretor','Broker'],['mes','Moved from'],['destino','Moved to'],['obs','Notes'],['autor','Changed by'],['acao','']];
+  tab.innerHTML=cab('adiados',cols)+'<tbody>'+(rs.length?rs.map((r,i)=>{
+    const aberto=r.adiado_para==='aberto';
+    const acoes=(aberto&&r.mes!==E.mes?`<button class="btn s" data-trazer="${i}" type="button">Bring to this month</button> `:'')+
+      `<button class="btn s" data-desfazer="${i}" type="button" title="The contract goes back to ${esc(mesTexto(r.mes))}">Undo</button>`;
+    return `<tr><td><b>${esc(r.contrato)}</b></td><td>${esc(r.corretor)}</td><td>${esc(mesTexto(r.mes))}</td>
+      <td>${aberto?'<span class="tag">When the whole contract is closed</span>':esc(mesTexto(r.adiado_para))}</td>
+      <td class="w">${esc(r.obs||'')}</td><td>${esc(r.autor||'')}</td><td>${acoes}</td></tr>`;
+  }).join(''):`<tr><td colspan="${cols.length}" class="empty">No contracts moved to or from this month.</td></tr>`)+'</tbody>';
+  ligarOrdem(tab,'adiados',renderAdiados);
+  $$('button[data-trazer]',tab).forEach(b=>b.addEventListener('click',()=>trazerAdiado(rs[Number(b.dataset.trazer)],b)));
+  $$('button[data-desfazer]',tab).forEach(b=>b.addEventListener('click',()=>desfazerAdiado(rs[Number(b.dataset.desfazer)],b)));
+}
+// linha de bi_corretagem_contrato com todos os campos (o upsert grava a linha inteira)
+const linhaMov=(r,mudar)=>({mes:r.mes,linha_id:r.linha_id,contrato:r.contrato,incluido:!!r.incluido,
+  corretor_cod:r.corretor_cod??null,corretor_nome:r.corretor_nome??null,obs:r.obs??null,adiado_para:r.adiado_para??null,...mudar});
+// "aberto" -> traz para o mês aberto na tela: entra aqui como incluído e o de origem passa a apontar para cá
+async function trazerAdiado(r,btn){
+  btn.disabled=true;
+  try{
+    await gravarMovs([linhaMov(r,{adiado_para:E.mes}),
+      linhaMov({mes:E.mes,linha_id:r.linha_id,contrato:r.contrato,corretor_cod:r.corretor_cod,corretor_nome:r.corretor_nome},
+        {incluido:true,obs:`Moved from ${mesTexto(r.mes)}`+(r.obs?` — ${r.obs}`:'')})]);
+    await carregar();
+  }catch(e){avisar(e.message);btn.disabled=false;}
+}
+// volta o contrato para o mês de origem: tira a marca de lá e a inclusão no mês de destino
+async function desfazerAdiado(r,btn){
+  if(!confirm(`Bring ${r.contrato} back to ${mesTexto(r.mes)}?`))return;
+  btn.disabled=true;
+  try{
+    if(r.adiado_para&&r.adiado_para!=='aberto')await apagarMov(r.adiado_para,r.linha_id);
+    if(r.incluido||r.corretor_cod!=null)await gravarMovs([linhaMov(r,{adiado_para:null})]);
+    else await apagarMov(r.mes,r.linha_id);
+    await carregar();
+  }catch(e){avisar(e.message);btn.disabled=false;}
 }
 
 $$('.tabs button').forEach(b=>b.addEventListener('click',()=>{
@@ -607,19 +727,26 @@ function statusAuto(){
   R.status=Math.abs(R.espelho_valor-(calcDet()+somaAjustes(R.ajustes)))<=1?'checked':'divergent';
   $('#detStatus').value=R.status;
 }
+// contratos deste corretor que saíram deste mês ("⇄ → Move to another month")
+const destinoTexto=p=>p==='aberto'?'when the whole contract is closed':mesTexto(p);
+function renderDetSaidas(){
+  const s=E.saidas.filter(l=>String(l.corretorCod)===E.det.cod);
+  $('#detSaidas').textContent=s.length?`Moved out of this month: ${s.map(l=>`${l.contrato} (${fmtR$(l.corretagem)}) → ${destinoTexto(l.adiadoPara)}`).join('; ')}`:'';
+}
 function renderDetLinhas(){
   const d=E.det,tab=$('#detLinhas');
+  renderDetSaidas();
   if(!d.linhas.length){tab.innerHTML='<tbody><tr><td class="empty">No contracts due in this month for this broker.</td></tr></tbody>';return;}
   const ok=okSet(d.r.linhas);
   const todos=d.linhas.every(l=>ok.has(l.id));
   tab.innerHTML=`<thead><tr><th class="c" title="Tick each contract as you check it against the statement"><input type="checkbox" class="chk" id="okTodos" ${todos?'checked':''} aria-label="Check all"> ✓</th><th>Contract</th><th>Due / shipped</th><th>Supplier / client</th><th class="n">Bags</th><th class="n">Price/Bag</th><th class="n">Base</th><th class="n">Brokerage %</th><th class="n">Calculated</th><th class="n" title="Amount the broker charged for this contract in the statement (optional)">In statement (R$)</th><th class="n">Difference</th><th>Warnings</th><th></th></tr></thead><tbody>`+
     d.linhas.map(l=>{
       const v=typeof d.r.linhas[l.id]==='number'?d.r.linhas[l.id]:null,dif=v==null?null:r2(v-l.corretagem);
-      return `<tr class="${ok.has(l.id)?'ok':''}"><td class="c"><input type="checkbox" class="chk" data-ok="${esc(l.id)}" ${ok.has(l.id)?'checked':''} aria-label="Checked ${esc(l.contrato)}"></td><td><b>${esc(l.contrato)}</b><div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
+      return `<tr class="${ok.has(l.id)?'ok':''}"><td class="c"><input type="checkbox" class="chk" data-ok="${esc(l.id)}" ${ok.has(l.id)?'checked':''} aria-label="Checked ${esc(l.contrato)}"></td><td><b>${esc(l.contrato)}</b> ${badgeEsp(l.especie)}<div class="sub">${TIPO[l.tipo]}${l.pai!==l.contrato?' · '+esc(l.pai):''}</div></td><td>${fmtData(l.data)}</td><td class="w">${esc(l.contraparte)}</td>
         <td class="n">${fmtN(l.sacas)}</td><td class="n">${fmtR$(l.preco)}</td><td class="n">${fmtR$(l.base)}</td><td class="n">${fmtN(l.pct,3)}%</td><td class="n">${fmtR$(l.corretagem)}</td>
         <td class="n"><input data-l="${esc(l.id)}" inputmode="decimal" value="${editavel(v)}" placeholder="—"></td>
         <td class="n ${difClasse(dif)}">${difTexto(dif)}</td><td>${tags(l)}</td>
-        <td><button class="btn s" data-mov="${esc(l.id)}" type="button" title="Change broker">⇄</button></td></tr>`;
+        <td><button class="btn s" data-mov="${esc(l.id)}" type="button" title="Change broker or move to another month">⇄</button></td></tr>`;
     }).join('')+'</tbody>';
   ligarMov(tab);
   $$('input[data-l]',tab).forEach(inp=>inp.addEventListener('change',()=>{
@@ -798,8 +925,33 @@ function abrirMov(id){
   $('#movVoltar').hidden=!l.corretorOrig;
   $('#movMeta').textContent=m?.autor?`Last change by ${m.autor} on ${new Date(m.updated_at).toLocaleString('pt-BR')}`:'';
   $('#movMsg').textContent='';
+  // "Move to another month": sugere o mês seguinte
+  const [a,mm]=E.mes.split('-').map(Number),prox=new Date(a,mm,1);
+  $('#movPara').value=`${prox.getFullYear()}-${String(prox.getMonth()+1).padStart(2,'0')}`;
+  $('#movAberto').checked=false;$('#movPara').disabled=false;
   $('#mov').showModal();
 }
+$('#movAberto').addEventListener('change',ev=>{$('#movPara').disabled=ev.target.checked;});
+// tira o contrato deste mês: para um mês escolhido (lá entra como incluído) ou "quando o contrato encerrar"
+$('#movMover').addEventListener('click',async()=>{
+  const {l,m}=E.mov,aberto=$('#movAberto').checked,para=aberto?'aberto':$('#movPara').value;
+  if(!aberto&&!/^\d{4}-\d{2}$/.test(para)){$('#movMsg').textContent='Choose the month.';return;}
+  if(para===E.mes){$('#movMsg').textContent='Choose a month other than the current one.';return;}
+  const obs=$('#movObs').value.trim()||null;
+  const btn=$('#movMover');btn.disabled=true;$('#movMsg').textContent='Saving...';
+  try{
+    const base={linha_id:l.id,contrato:l.contrato,corretor_cod:m?.corretor_cod??null,corretor_nome:m?.corretor_nome??null};
+    const linhas=[linhaMov({...base,mes:E.mes,incluido:!!l.incluido,obs},{adiado_para:para})];
+    if(!aberto)linhas.push(linhaMov({...base,mes:para},{incluido:true,obs:`Moved from ${mesTexto(E.mes)}`+(obs?` — ${obs}`:'')}));
+    const gravadas=await gravarMovs(linhas);
+    const origem=gravadas.find(r=>r.mes===E.mes);
+    E.movs[l.id]=origem;
+    E.adiados=[...E.adiados.filter(r=>!(r.mes===E.mes&&r.linha_id===l.id)),origem];
+    aposMovs();
+    $('#mov').close();
+  }catch(e){$('#movMsg').textContent=e.message;}
+  finally{btn.disabled=false;}
+});
 async function salvarMov(){
   const {l,orig,m}=E.mov,cod=$('#movCorretor').value,muda=cod!==String(orig.cod),obs=$('#movObs').value.trim()||null;
   const btn=$('#movSalvar');btn.disabled=true;$('#movMsg').textContent='Saving...';
@@ -829,9 +981,9 @@ $('#movFechar').addEventListener('click',()=>$('#mov').close());
 
 // ── exportação Excel ────────────────────────────────────────────────────
 function linhasExport(cod){
-  return (E.calc?.linhas||[]).filter(l=>!cod||String(l.corretorCod)===String(cod)).map(l=>{
+  return (cod?(E.calc?.linhas||[]):linhasVis()).filter(l=>!cod||String(l.corretorCod)===String(cod)).map(l=>{
     const v=E.conf[String(l.corretorCod)]?.linhas?.[l.id];
-    return{Type:TIPO[l.tipo],Contract:l.contrato,'Original contract':l.pai,'Due / shipped':fmtData(l.data),Broker:l.corretorNome,'Supplier / client':l.contraparte,
+    return{Type:TIPO[l.tipo],Coffee:ESPECIE[l.especie]||l.especie||'',Contract:l.contrato,'Original contract':l.pai,'Due / shipped':fmtData(l.data),Broker:l.corretorNome,'Supplier / client':l.contraparte,
       Branch:l.filial||'',Bags:l.sacas,'Price/Bag':l.preco,Base:l.base,'Brokerage %':l.pct,Brokerage:l.corretagem,'In statement (R$)':v??'',Difference:v==null?'':r2(v-l.corretagem),
       Checked:okSet(E.conf[String(l.corretorCod)]?.linhas).has(l.id)?'Yes':'',
       Warnings:l.alertas.map(a=>ALERTA[a]).join('; '),Adjustment:textoAjuste(l),Notes:E.movs[l.id]?.obs||''};
@@ -841,7 +993,7 @@ $('#btnExportar').addEventListener('click',()=>{
   if(!window.XLSX||!E.calc)return;
   const X=XLSX,wb=X.utils.book_new();
   X.utils.book_append_sheet(wb,X.utils.json_to_sheet(ordenar(corretoresView(),['nome',1]).map(c=>({Broker:c.nome,Code:c.cod,'Statement no.':c.numero,Contracts:c.contratos,'Brokerage %':c.taxas,Bags:c.sacas,Base:c.base,
-    Calculated:c.corretagem,'Manual entries':c.ajustes,Expected:c.esperado,Statement:c.espelho??'',Difference:c.dif??'',Status:STATUS[c.status]}))),'Summary');
+    ...(E.especie?{}:{Arabica:c.arabica,Conilon:c.conilon}),Calculated:c.corretagem,'Manual entries':c.ajustes,Expected:c.esperado,Statement:c.espelho??'',Difference:c.dif??'',Status:STATUS[c.status]}))),'Summary');
   X.utils.book_append_sheet(wb,X.utils.json_to_sheet(linhasExport()),'Contracts');
   const aj=Object.values(E.conf).flatMap(c=>(c.ajustes||[]).map(a=>({Broker:c.corretor_nome,Contract:a.contrato,Description:a.descricao,Amount:a.valor})));
   if(aj.length)X.utils.book_append_sheet(wb,X.utils.json_to_sheet(aj),'Manual entries');
@@ -854,6 +1006,72 @@ $('#detExportar').addEventListener('click',()=>{
   if(d.r.ajustes.length)X.utils.book_append_sheet(wb,X.utils.json_to_sheet(d.r.ajustes.map(a=>({Contract:a.contrato,Description:a.descricao,Amount:a.valor}))),'Manual entries');
   X.writeFile(wb,`Brokerage ${E.mes} - ${d.nome.slice(0,40).replace(/[\\/:*?"<>|]/g,'')}.xlsx`);
 });
+
+// ── relatório final em PDF (corretor → contratos, como a tabela dinâmica da conferência) ──
+function carregarScript(src){
+  return new Promise((ok,erro)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>erro(new Error('Could not load '+src));document.head.appendChild(s);});
+}
+const fmt2=v=>Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+async function gerarPdf(){
+  if(!E.calc)return;
+  const btn=$('#btnPdf'),txt=btn.textContent;btn.disabled=true;btn.textContent='⏳ PDF...';
+  try{
+    if(!window.jspdf)await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    if(!window.jspdf.jsPDF.API.autoTable)await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    // o PDF sai no idioma do portal (CONFIG.IDIOMA)
+    let t=s=>s;try{const m=await import('../js/i18n.js');t=s=>m.t(s);}catch(e){}
+    const doc=new window.jspdf.jsPDF({unit:'pt',format:'a4'});
+    const verde=[45,74,62],claro=[227,238,232];
+    const cafe=E.especie?t(ESPECIE[E.especie]):t('All coffees');
+    doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(...verde);
+    doc.text(`Brascof · ${t('Brokerage Statement')}`,40,44);
+    doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(90,122,104);
+    doc.text(`${t('Reference month')}: ${mesTexto(E.mes)}   ·   ${t('Coffee')}: ${cafe}   ·   ${t('Generated on')} ${new Date().toLocaleString('pt-BR')}`,40,60);
+
+    const corpo=[];
+    const totEsp={ARABICA:0,CONILON:0},tot={sacas:0,base:0,corretagem:0};
+    for(const c of ordenar(corretoresView(),['nome',1])){
+      const ls=linhasVis().filter(l=>String(l.corretorCod)===String(c.cod))
+        .sort((a,b)=>String(a.especie).localeCompare(String(b.especie))||a.contrato.localeCompare(b.contrato));
+      const aj=E.especie?[]:(E.conf[String(c.cod)]?.ajustes||[]);
+      if(!ls.length&&!aj.length)continue;
+      corpo.push([{content:c.nome,styles:{fontStyle:'bold',fillColor:claro}},
+        {content:'',styles:{fillColor:claro}},{content:'',styles:{fillColor:claro}},
+        {content:fmtN(c.sacas,0),styles:{fontStyle:'bold',fillColor:claro}},{content:fmt2(c.base),styles:{fontStyle:'bold',fillColor:claro}},
+        {content:'',styles:{fillColor:claro}},{content:fmt2(c.esperado),styles:{fontStyle:'bold',fillColor:claro}}]);
+      for(const l of ls){
+        corpo.push([`    ${l.contrato}`,t(ESPECIE[l.especie]||l.especie||'—'),fmtData(l.data),fmtN(l.sacas),fmt2(l.base),fmtN(l.pct,3)+'%',fmt2(l.corretagem)]);
+        if(totEsp[l.especie]!=null)totEsp[l.especie]+=l.corretagem;
+      }
+      for(const a of aj)corpo.push([`    ${a.contrato||'—'}${a.descricao?' · '+a.descricao:''}`,t('Manual entry'),'','','','',fmt2(a.valor)]);
+      tot.sacas+=c.sacas;tot.base+=c.base;tot.corretagem+=c.esperado;
+    }
+    const pe=[];
+    if(!E.especie){
+      pe.push([t('Total Arabica'),'','','','','',fmt2(totEsp.ARABICA)]);
+      pe.push([t('Total Conilon'),'','','','','',fmt2(totEsp.CONILON)]);
+    }
+    pe.push([t('Grand total'),'','',fmtN(tot.sacas,0),fmt2(tot.base),'',fmt2(tot.corretagem)]);
+    doc.autoTable({
+      startY:74,margin:{left:40,right:40},
+      head:[[t('Broker / contract'),t('Coffee'),t('Due / shipped'),t('Bags'),t('Total (R$)'),'%',t('Brokerage (R$)')]],
+      body:corpo,foot:pe,showFoot:'lastPage',
+      styles:{font:'helvetica',fontSize:8,cellPadding:3,textColor:[26,26,26],lineColor:[221,232,226],lineWidth:.5},
+      headStyles:{fillColor:verde,textColor:255,fontStyle:'bold'},
+      footStyles:{fillColor:[245,249,246],textColor:[26,26,26],fontStyle:'bold'},
+      columnStyles:{3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right'}},
+      didDrawPage:d=>{
+        const n=doc.internal.getNumberOfPages();
+        doc.setFontSize(8);doc.setTextColor(138,171,151);
+        doc.text(`${t('Page')} ${n}`,doc.internal.pageSize.getWidth()-40,doc.internal.pageSize.getHeight()-20,{align:'right'});
+      },
+    });
+    doc.save(`Brokerage ${E.mes}${E.especie?' '+ESPECIE[E.especie]:''}.pdf`);
+  }catch(e){avisar('Could not create the PDF: '+e.message);}
+  finally{btn.disabled=false;btn.textContent=txt;}
+}
+$('#btnPdf').addEventListener('click',gerarPdf);
+$('#filtroEspecie').addEventListener('change',ev=>{E.especie=ev.target.value;renderTudo();});
 
 // ── início ──────────────────────────────────────────────────────────────
 const mesUrl=new URLSearchParams(location.search).get('mes');

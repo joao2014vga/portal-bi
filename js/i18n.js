@@ -669,6 +669,27 @@ const PT = {
   "Contracts in this month": "Contratos do mês", "+ Add entry": "+ Adicionar lançamento", "Export this broker": "Exportar este corretor",
   "Contracts checked": "Contratos conferidos", "Not saved yet.": "Ainda não salvo.", "Check all": "Marcar todos",
   "Tick each contract as you check it against the statement": "Marque cada contrato conforme for conferindo com o espelho",
+  "Coffee": "Café", "All coffees": "Todos os cafés", "⬇ PDF report": "⬇ Relatório PDF", "⏳ PDF...": "⏳ PDF...",
+  "Moved to another month": "Passados para outro mês", "Moved from": "Saiu de", "Moved to": "Vai para", "Changed by": "Alterado por",
+  "Bring to this month": "Trazer para este mês", "Undo": "Desfazer", "Move to another month": "Passar para outro mês", "Move": "Passar",
+  "When the whole contract is closed (no month yet)": "Quando o contrato inteiro encerrar (sem mês ainda)",
+  "When the whole contract is closed": "Quando o contrato inteiro encerrar",
+  "⇄ Broker / month": "⇄ Corretor / mês", "Change broker or move to another month": "Trocar o corretor ou passar para outro mês",
+  "The contract leaves this month's list and goes to the chosen month. It uses the notes above as the reason.":
+    "O contrato sai da lista deste mês e vai para o mês escolhido. As observações acima ficam como motivo.",
+  "Contracts taken out of the month they belong to, e.g. when the broker prefers to bill a partial contract only when the whole contract is closed. “When fully closed” contracts wait here: open the month in which they will be paid and use “Bring to this month”.":
+    "Contratos tirados do mês em que venceram, ex.: quando o corretor prefere cobrar um contrato parcial só quando o contrato inteiro encerrar. Os de “quando encerrar” esperam aqui: abra o mês em que serão pagos e use “Trazer para este mês”.",
+  "No contracts moved to or from this month.": "Nenhum contrato passado para este mês ou saído dele.",
+  "Choose the month.": "Escolha o mês.", "Choose a month other than the current one.": "Escolha um mês diferente do atual.",
+  "Moving contracts to another month is not set up yet: run section 23 of supabase/schema.sql in the Supabase SQL Editor.":
+    "Passar contrato para outro mês ainda não está configurado: rode a seção 23 do supabase/schema.sql no SQL Editor do Supabase.",
+  "Generated on": "Gerado em", "Broker / contract": "Corretor / contrato",
+  "Total (R$)": "Total (R$)", "Brokerage (R$)": "Corretagem (R$)", "Manual entry": "Lançamento manual",
+  "Total Arabica": "Total arábica", "Total Conilon": "Total conilon", "Grand total": "Total geral", "Page": "Página",
+  "“⇄ Broker / month” also moves a contract to another month, or keeps it aside until the whole contract is closed (tab “Moved to another month”).":
+    "“⇄ Corretor / mês” também passa um contrato para outro mês, ou deixa separado até o contrato inteiro encerrar (aba “Passados para outro mês”).",
+  "Coffee (Arabica / Conilon) comes from the contract in Digisul. With a coffee chosen at the top, the statement total and the difference are hidden, because the broker's statement covers both coffees.":
+    "O café (arábica / conilon) vem do contrato no Digisul. Com um café escolhido no topo, o valor do espelho e a diferença ficam ocultos, porque o espelho do corretor cobre os dois cafés.",
   "In statement": "No espelho", "In statement (R$)": "No espelho (R$)", "Typed per contract": "Digitado por contrato", "Brokerage %": "% corretagem",
   "Amount the broker charged for this contract in the statement (optional)": "Valor que o corretor cobrou por este contrato no espelho (opcional)",
   "Optional: in “In statement (R$)” type the amount the broker charged for each contract. The Difference column then shows exactly which contracts do not match.":

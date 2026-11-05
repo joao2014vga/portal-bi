@@ -1441,3 +1441,20 @@ create policy bi_corretagem_contrato_update on public.bi_corretagem_contrato for
 drop policy if exists bi_corretagem_contrato_delete on public.bi_corretagem_contrato;
 create policy bi_corretagem_contrato_delete on public.bi_corretagem_contrato for delete to authenticated
   using (public.bi_ve_painel('/portal-bi/corretagem'));
+
+
+-- =====================================================================
+-- 23. ESPELHO DE CORRETAGEM: PASSAR UM CONTRATO PARA OUTRO MÊS
+-- Ex.: o corretor prefere receber o BRV-0143/26\1 só quando o BRV-0143/26 inteiro
+-- encerrar. Na linha do mês de origem (bi_corretagem_contrato), adiado_para guarda:
+--   'aaaa-mm' -> o contrato sai deste mês e entra no mês indicado (lá vira incluido = true);
+--   'aberto'  -> sai deste mês e fica na aba "Moved" até alguém trazer para um mês.
+-- Rode depois da seção 22.
+-- =====================================================================
+alter table public.bi_corretagem_contrato add column if not exists adiado_para text;
+alter table public.bi_corretagem_contrato drop constraint if exists bi_corretagem_contrato_adiado_para_check;
+alter table public.bi_corretagem_contrato add constraint bi_corretagem_contrato_adiado_para_check
+  check (adiado_para is null or adiado_para = 'aberto'
+         or (adiado_para ~ '^\d{4}-(0[1-9]|1[0-2])$' and adiado_para <> mes));
+-- a API do Supabase passa a enxergar a coluna nova na hora
+notify pgrst, 'reload schema';
