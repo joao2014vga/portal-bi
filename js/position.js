@@ -1109,18 +1109,14 @@ function gruposDaPlanilha(colunas, temQualidade) {
   return grupos;
 }
 
-function matrizPorPadrao(f, estado) {
-  const conilon = estado.especie === "conilon";
+// Números da matriz de uma espécie com os filtros da tela (componentes, período, grupos);
+// usado pela tela e pela imagem (que leva as duas espécies). null = sem dados por padrão.
+function dadosMatriz(f, estado, especie = estado.especie) {
+  const conilon = especie === "conilon";
   // Arábica: componentes da planilha (ou a matriz pronta, em dados antigos); Conilon: calculado das abas base
   const comp = conilon ? f.conilon : f.componentes;
   const q = conilon ? null : f.qualidades;
-  const temConilon = !!f.conilon;
-  const segEspecie = `<div class="pbi-seg pbi-especie" role="group" aria-label="Species">${[["arabica", "ARÁBICA"], ["conilon", "CONILON"]].map(([k, rot]) =>
-    `<button type="button" data-especie="${k}" class="${estado.especie === k ? "on" : ""}" aria-pressed="${estado.especie === k}" ${k === "conilon" && !temConilon ? "disabled" : ""}>${esc(rot)}</button>`).join("")}</div>`;
-  if (!comp && !q) {
-    return `<section class="pos-card pbi-fisica"><div class="pbi-topo">${segEspecie}</div>
-      <p class="muted pos-nota">${icon("info")} ${conilon ? "Upload the Position again to see Conilon by standard." : "No data by standard in this Position."}</p></section>`;
-  }
+  if (!comp && !q) return null;
   // componentes ligados (nenhum = todos, como no Power BI)
   const ligados = estado.comps.size ? COMPS_FISICA.map(([k]) => k).filter((k) => estado.comps.has(k)) : COMPS_FISICA.map(([k]) => k);
   const meses = comp ? comp.meses : q.com.map((l) => l.mes);
@@ -1147,9 +1143,26 @@ function matrizPorPadrao(f, estado) {
   let de = estado.de && ym.includes(estado.de) ? estado.de : ym.find((m) => m >= estado.mesRef) ?? ym[0];
   let ate = estado.ate && ym.includes(estado.ate) ? estado.ate : ym.at(-1);
   if (de > ate) [de, ate] = [ate, de];
+  return { conilon, comp, q, ligados, meses, acumulado, grupos, totGrupo, ym, de, ate };
+}
+// "Inventory + Purchases – Export Sales – Domestic Sales", conforme os componentes ligados
+const formulaComps = (ligados) => Object.keys(NOME_COMP).filter((k) => ligados.includes(k))
+  .map((k, i) => `${i === 0 && SINAL_COMP[k] === "+" ? "" : ` ${SINAL_COMP[k]} `}${tr(NOME_COMP[k])}`).join("").trim();
+
+function matrizPorPadrao(f, estado) {
+  const conilon = estado.especie === "conilon";
+  const temConilon = !!f.conilon;
+  const segEspecie = `<div class="pbi-seg pbi-especie" role="group" aria-label="Species">${[["arabica", "ARÁBICA"], ["conilon", "CONILON"]].map(([k, rot]) =>
+    `<button type="button" data-especie="${k}" class="${estado.especie === k ? "on" : ""}" aria-pressed="${estado.especie === k}" ${k === "conilon" && !temConilon ? "disabled" : ""}>${esc(rot)}</button>`).join("")}</div>`;
+  const d = dadosMatriz(f, estado);
+  if (!d) {
+    return `<section class="pos-card pbi-fisica"><div class="pbi-topo">${segEspecie}</div>
+      <p class="muted pos-nota">${icon("info")} ${conilon ? "Upload the Position again to see Conilon by standard." : "No data by standard in this Position."}</p></section>`;
+  }
+  const { comp, ligados, meses, acumulado, grupos, totGrupo, ym, de, ate } = d;
   const opcoesMes = (sel) => ym.map((m) => `<option value="${m}" ${m === sel ? "selected" : ""}>${esc(mesLongo(`${m}-01`))}</option>`).join("");
   const classe = (v) => (Math.abs(v) < 0.5 ? "nil" : v > 0 ? "long" : "short");
-  const formula = Object.keys(NOME_COMP).filter((k) => ligados.includes(k)).map((k, i) => `${i === 0 && SINAL_COMP[k] === "+" ? "" : ` ${SINAL_COMP[k]} `}${tr(NOME_COMP[k])}`).join("").trim();
+  const formula = formulaComps(ligados);
 
   return `<section class="pos-card pbi-fisica">
     <div class="pbi-topo">
@@ -1166,6 +1179,8 @@ function matrizPorPadrao(f, estado) {
         <button type="button" class="btn btn-ghost" data-meses="-1" ${de === ate ? "disabled" : ""}>− 1 month</button>
         <button type="button" class="btn btn-ghost" data-meses="1" ${ate === ym.at(-1) ? "disabled" : ""}>+ 1 month</button>
       </span>
+      <button type="button" class="btn" id="pbiImagem" style="height:34px;padding:0 12px;margin-left:auto"
+        title="Download Arabica (top) and Conilon (bottom) as one image, with the filters on screen">${icon("image")}<span>Save image</span></button>
     </div>
     ${comp ? "" : `<p class="muted pos-nota">${icon("info")} Upload the Position again to choose the components — this data was saved before they were read separately.</p>`}
     ${conilon ? `<p class="muted pos-nota">${icon("info")} Conilon is calculated by the portal from the base sheets (the spreadsheet only builds this matrix for Arabica): purchase breakage goes to BC16, inventory in 60 kg bags, sales by EOM Ship.</p>` : ""}
@@ -1308,6 +1323,7 @@ async function painelFisica(alvo, carga, ctx) {
       rotulo: td.dataset.g, qualidades: td.dataset.qs.split(",").filter(Boolean), i: Number(td.dataset.i),
       mes: mesesMatriz()[Number(td.dataset.i)], valor: td.textContent.trim(),
     })));
+    $("#pbiImagem", alvo)?.addEventListener("click", (ev) => salvarImagemFisica(ev.currentTarget, f, estado, carga, ctx));
     $("#pbiDe", alvo)?.addEventListener("change", (e) => { estado.de = e.target.value; desenhar(); });
     $("#pbiAte", alvo)?.addEventListener("change", (e) => { estado.ate = e.target.value; desenhar(); });
     // − / + 1 mês: mexe no fim do período
@@ -1321,6 +1337,97 @@ async function painelFisica(alvo, carga, ctx) {
     }));
   };
   desenhar();
+}
+
+// Imagem da matriz por padrão: Arábica em cima e Conilon embaixo, com os filtros da tela
+// (componentes, período, grupos recolhidos). Estilos em linha e sempre no tema claro,
+// para a imagem sair igual qualquer que seja o tema de quem baixa.
+const HTML2CANVAS_URL = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+let html2canvasPromise = null;
+function carregarHtml2canvas() {
+  html2canvasPromise ??= new Promise((ok, falha) => {
+    if (window.html2canvas) return ok(window.html2canvas);
+    const s = document.createElement("script");
+    s.src = HTML2CANVAS_URL;
+    s.onload = () => ok(window.html2canvas);
+    s.onerror = () => { html2canvasPromise = null; falha(new Error("Unable to load the image generator. Check your connection.")); };
+    document.head.appendChild(s);
+  });
+  return html2canvasPromise;
+}
+
+async function salvarImagemFisica(botao, f, estado, carga, ctx) {
+  botao.disabled = true;
+  const caixa = document.createElement("div");
+  try {
+    const capturar = await carregarHtml2canvas();
+    const cor = { texto: "#1b2e22", texto2: "#5a7a69", texto3: "#8aab97", borda: "#dde8e2", brand: "#2d4a3e",
+      long: "#1e8a4c", short: "#c62828", nil: "#c9d3cd", fundoLong: "rgba(30, 138, 76, .12)", fundoShort: "rgba(198, 40, 40, .12)" };
+    const th = (txt, extra = "", attrs = "") => `<th ${attrs} style="background:${cor.brand};color:#fff;font-weight:700;text-align:left;padding:7px 10px;white-space:nowrap;border-left:1px solid rgba(255,255,255,.12);${extra}">${txt}</th>`;
+    const tdv = (v, total) => {
+      const k = Math.abs(v) < 0.5 ? "nil" : v > 0 ? "long" : "short";
+      const estilo = !total ? (k === "short" ? `color:${cor.short};` : "")
+        : k === "nil" ? `color:${cor.texto3};font-weight:700;`
+        : `color:${cor[k]};background:${k === "long" ? cor.fundoLong : cor.fundoShort};font-weight:700;`;
+      return `<td style="text-align:right;padding:6px 10px;white-space:nowrap;${estilo}">${numPbi(v)}</td>`;
+    };
+    const tabela = (especie, titulo) => {
+      const d = dadosMatriz(f, estado, especie);
+      if (!d) return `<div style="padding:14px;color:${cor.texto2}">${esc(titulo)}: no data by standard in this Position.</div>`;
+      const { meses, acumulado, grupos, totGrupo, ym, de, ate } = d;
+      const fechado = (g) => estado.recolhidos.has(g.nome);
+      const linhas = meses.map((m, i) => {
+        if (ym[i] < de || ym[i] > ate) return "";
+        let geral = 0;
+        const cels = grupos.map((g) => {
+          const t = totGrupo(g, i);
+          geral += t;
+          return `${fechado(g) ? "" : g.qualidades.map((c) => tdv(acumulado[c][i], false)).join("")}${tdv(t, true)}`;
+        }).join("");
+        return `<tr style="border-top:1px solid ${cor.borda}"><th style="text-align:left;font-weight:700;padding:6px 10px;white-space:nowrap;border-right:1px solid ${cor.borda}">${esc(mesLongo(m))}</th>${cels}${tdv(geral, true)}</tr>`;
+      }).join("");
+      return `<table style="border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums">
+        <thead>
+          <tr>${th(esc(titulo), "font-size:14px")}${grupos.map((g) => th(esc(g.nome), "font-size:14px", `colspan="${fechado(g) ? 1 : g.qualidades.length + 1}"`)).join("")}${th("Total", "font-size:14px;vertical-align:middle", `rowspan="2"`)}</tr>
+          <tr>${th("MONTH")}${grupos.map((g) => (fechado(g) ? "" : g.qualidades.map((c) => th(esc(c))).join("")) + th("Total")).join("")}</tr>
+        </thead>
+        <tbody>${linhas}</tbody>
+      </table>`;
+    };
+    const base = dadosMatriz(f, estado, "arabica") ?? dadosMatriz(f, estado, "conilon");
+    const periodo = base ? `${mesLongo(`${base.de}-01`)} to ${mesLongo(`${base.ate}-01`)}` : "";
+    const fonte = ctx.fonte === "api" ? "Digisul API" : "Spreadsheet";
+    const quadro = (html) => `<div style="background:#fff;border:1px solid ${cor.borda};border-radius:10px;overflow:hidden;margin-top:14px">${html}</div>`;
+    const leg = (k, rot) => `<span style="display:inline-flex;align-items:center;gap:5px"><i style="display:inline-block;width:11px;height:11px;background:${cor[k]}"></i>${rot}</span>`;
+
+    caixa.setAttribute("data-sem-traducao", "");
+    caixa.style.cssText = `position:fixed;left:-10000px;top:0;width:max-content;min-width:900px;padding:24px;background:#f0f4f2;color:${cor.texto};font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;line-height:1.4`;
+    caixa.innerHTML = `
+      <div style="display:flex;align-items:center;gap:14px">
+        <img src="assets/logo_brascof.png" alt="" style="height:40px">
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700;color:${cor.brand}">Physical Position · accumulated net position by standard</div>
+          <div style="font-size:12px;color:${cor.texto2}">Position as of ${esc(fmtData(carga.data_ref))} (${esc(fonte)}${carga.created_at ? `, ${esc(dataHoraBR(carga.created_at))}` : ""})
+            · ${esc(formulaComps(base?.ligados ?? []))} · ${esc(periodo)} · all figures in 60 kg bags</div>
+        </div>
+        <div style="display:inline-flex;gap:12px;font-size:12px;color:${cor.texto2}">${leg("long", "LONG")}${leg("short", "SHORT")}${leg("nil", "NIL")}</div>
+      </div>
+      ${quadro(tabela("arabica", "ARÁBICA"))}
+      ${quadro(tabela("conilon", "CONILON"))}`;
+    document.body.appendChild(caixa);
+    await Promise.all([...caixa.querySelectorAll("img")].map((i) => (i.complete ? null : new Promise((ok) => { i.onload = i.onerror = ok; }))));
+    await document.fonts?.ready;
+    const canvas = await capturar(caixa, { scale: 2, backgroundColor: "#f0f4f2", logging: false, useCORS: true });
+    const a = document.createElement("a");
+    a.download = `Physical Position ${carga.data_ref ?? ""}.png`.replace(" .png", ".png");
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+  } catch (e) {
+    toast(e.message, "erro");
+  } finally {
+    caixa.remove();
+    botao.disabled = false;
+  }
 }
 
 
