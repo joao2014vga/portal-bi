@@ -404,7 +404,7 @@ async function telaInicio() {
 
 function cardDashboard(d) {
   const sistema = ehSistema(d);
-  const st = sistema ? { cls: "neutro", texto: "Integrated system" } : ehPainelQualidade(d.link) ? { cls: "ok", texto: "Live from Digisul" } : statusAtualizacao(d);
+  const st = sistema ? { cls: "neutro", texto: "Integrated system" } : ehPainelQualidade(d.link) ? { cls: "ok", texto: "Digisul · updated daily" } : statusAtualizacao(d);
   return `
   <a class="card-dash ${d.ativo ? "" : "inativo"}" href="#/d/${d.id}" data-busca="${esc((d.titulo + " " + (d.descricao ?? "")).toLowerCase())}">
     <div class="card-dash-topo">

@@ -1476,3 +1476,44 @@ alter table public.bi_corretagem_conf add constraint bi_corretagem_conf_especie_
 alter table public.bi_corretagem_conf drop constraint if exists bi_corretagem_conf_pkey;
 alter table public.bi_corretagem_conf add primary key (mes, corretor_cod, especie);
 notify pgrst, 'reload schema';
+
+
+-- =====================================================================
+-- 25. QUALIDADE: RETRATO DIÁRIO DO DIGISUL
+-- Os painéis da Qualidade (portal:qualidade-*) não consultam o Digisul a cada
+-- abertura de tela: a brascof-api consulta uma vez por dia (6h de Brasília) e
+-- guarda aqui o resultado de cada consulta, já tratado. O botão "Refresh" do
+-- portal consulta de novo na hora e atualiza o retrato para todos.
+-- Só a brascof-api (chave service_role) lê e grava: a tabela não tem policy,
+-- e quem vê os dados nas telas é conferido pelo acesso a cada card.
+-- O segredo do agendamento é o mesmo do position-sync (seção 10).
+-- Pré-requisito: seção 10. Pode rodar de novo à vontade.
+-- =====================================================================
+create table if not exists public.bi_qualidade_cache (
+  consulta       text primary key,          -- compras | vendas | exportacao | estoque | lotes | guias | despejo | chegada
+  linhas         jsonb not null,
+  consultado_em  timestamptz not null default now()
+);
+alter table public.bi_qualidade_cache enable row level security;
+revoke all on public.bi_qualidade_cache from anon, authenticated;
+
+do $$
+begin
+  if exists (select 1 from cron.job where jobname = 'qualidade-diario') then
+    perform cron.unschedule('qualidade-diario');
+  end if;
+end $$;
+-- 9h UTC = 6h de Brasília, todos os dias
+select cron.schedule('qualidade-diario', '0 9 * * *', $job$
+  select net.http_post(
+    url := 'https://brascof-api.vercel.app/api/qualidade-diario',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret',
+      (select decrypted_secret from vault.decrypted_secrets where name = 'position_cron_secret')),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 120000);
+$job$);
+notify pgrst, 'reload schema';
+
+-- Para conferir:
+--   select consulta, jsonb_array_length(linhas) as linhas, consultado_em from public.bi_qualidade_cache order by consulta;
+--   select * from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'qualidade-diario') order by start_time desc limit 5;

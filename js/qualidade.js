@@ -260,7 +260,7 @@ export async function renderQualidade(link, alvo, ctx) {
   if (!painel) { alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Unknown quality view</h3></div>`; return; }
   const carregar = async (fresco = false) => {
     limparGraficos();
-    alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading ${esc(NOMES[view])} from Digisul…</div>`;
+    alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> ${fresco ? "Fetching the latest data from Digisul…" : `Loading ${esc(NOMES[view])}…`}</div>`;
     let dados;
     try { dados = await ctx.api.qualidade(view, fresco); }
     catch (e) {
@@ -271,8 +271,8 @@ export async function renderQualidade(link, alvo, ctx) {
     }
     alvo.innerHTML = `<div class="pos qa">
       <div class="pos-topo">
-        <div class="pos-data">${icon("clock")}<span>Live from Digisul · data as of <strong>${esc(new Date(dados.consultado_em ?? dados.gerado_em).toLocaleString(LOCALE, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))}</strong></span><span class="muted">· all volumes in 60 kg bags</span></div>
-        <div class="pos-acoes"><button class="btn" id="qaAtualizar" title="Fetch Digisul again">${icon("refresh")}<span>Refresh</span></button></div>
+        <div class="pos-data">${icon("clock")}<span>Digisul data as of <strong>${esc(new Date(dados.consultado_em ?? dados.gerado_em).toLocaleString(LOCALE, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))}</strong></span><span class="muted">· updated daily at 6:00, or now with Refresh · all volumes in 60 kg bags</span></div>
+        <div class="pos-acoes"><button class="btn" id="qaAtualizar" title="Fetch the latest data from Digisul now (updates it for everyone)">${icon("refresh")}<span>Refresh</span></button></div>
       </div>
       <div id="qaCorpo"></div></div>`;
     $("#qaAtualizar", alvo).addEventListener("click", () => carregar(true));
