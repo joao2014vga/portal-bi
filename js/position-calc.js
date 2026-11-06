@@ -357,6 +357,50 @@ const MOTIVOS = {
   i: ["New sale", "Delivered / closed", "Delivery", "Increase"],
   e: ["New lot", "Lot out", "Lot reduced", "Lot increased"],
 };
+// Família do contrato: número base, sem o sufixo de divisão do Digisul
+// (BRAS-0123/26-1 → BRAS-0123/26 · BRC-0540/26C → BRC-0540/26).
+export const familiaContrato = (k) => String(k ?? "").trim().toUpperCase().replace(/^(.+\/\d{2})(?:-\d{1,3}|-?[A-Z]{1,2})$/, "$1");
+
+// Fixação perdida: a fixação só anda para frente, então as sacas a fixar de uma família
+// não deveriam subir além do que entrou de contrato novo. Pega o contrato dividido no
+// Digisul que não levou a fixação e o contrato "desfixado".
+// perdida = Δ a fixar − máx(0, Δ sacas); alerta a partir de 5 sc.
+const TOL_FIX = 5;
+function fixacaoPerdida(atual, anterior) {
+  const perdas = [];
+  for (const tipo of ["c", "v", "i"]) {
+    const fams = new Map();
+    for (const [lista, lado] of [[anterior[tipo] ?? [], "b"], [atual[tipo] ?? [], "a"]]) {
+      for (const x of lista) {
+        const f = familiaContrato(x[0]);
+        const g = fams.get(f) ?? fams.set(f, { b: { q: 0, fx: 0 }, a: { q: 0, fx: 0 }, ct: new Map() }).get(f);
+        g[lado].q += x[4] ?? 0; g[lado].fx += x[5] ?? 0;
+        const c = g.ct.get(x[0]) ?? g.ct.set(x[0], { chave: x[0], x, antes: null, agora: null }).get(x[0]);
+        c[lado === "b" ? "antes" : "agora"] = x[5] ?? 0;
+        if (lado === "a") c.x = x;
+      }
+    }
+    for (const [familia, g] of fams) {
+      const perdida = arred((g.a.fx - g.b.fx) - Math.max(0, g.a.q - g.b.q));
+      if (perdida < TOL_FIX) continue;
+      const contratos = [...g.ct.values()].filter((c) => (c.agora ?? 0) - (c.antes ?? 0) >= TOL_FIX || (c.antes == null && c.agora > 0))
+        .map((c) => ({ chave: c.chave, antes: c.antes, agora: c.agora }));
+      const x = [...g.ct.values()].find((c) => c.agora != null)?.x ?? [...g.ct.values()][0].x;
+      perdas.push({ tipo, familia, parceiro: x[1], padrao: x[2], especie: x[3], grupo: GRUPO_POR_PADRAO[norm(x[2])] ?? null,
+        antes: arred(g.b.fx), agora: arred(g.a.fx), sacas_antes: arred(g.b.q), sacas_agora: arred(g.a.q), perdida, contratos });
+    }
+  }
+  return perdas.sort((a, b) => b.perdida - a.perdida);
+}
+
+// texto da notificação (sino); null quando não há fixação perdida
+export function textoFixacaoPerdida(alt, fmtN = (v) => v.toLocaleString("en-US", { maximumFractionDigits: 0 })) {
+  const l = alt?.fixacao_perdida ?? [];
+  if (!l.length) return null;
+  const total = l.reduce((s, p) => s + p.perdida, 0);
+  return `Fixation lost: ${fmtN(Math.round(total))} bags back to "to fix" without a new trade (${l.map((p) => `${p.familia} ${fmtN(Math.round(p.perdida))}`).join(", ")}). Check the fixation in Digisul`;
+}
+
 export function alteracoesPosition(atual, anterior, desde) {
   if (!atual || !anterior) return null;
   const itens = [];
@@ -376,7 +420,7 @@ export function alteracoesPosition(atual, anterior, desde) {
       }
     }
   }
-  return { desde, itens };
+  return { desde, itens, fixacao_perdida: fixacaoPerdida(atual, anterior) };
 }
 
 // =====================================================================
