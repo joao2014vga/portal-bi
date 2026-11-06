@@ -13,7 +13,7 @@
 import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } from "./ui.js";
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
-  prazoFixacao, alertasFixacao, textoAlertaFixacao, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
+  prazoFixacao, alertasFixacao, textoAlertaFixacao, textoFixacaoPerdida, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
   calcularPosition, basesDaGrade, ABA_CAMBIO, encadearComposicao,
 } from "./position-calc.js";
 import { t as tr, LOCALE, IDIOMA } from "./i18n.js";
@@ -305,7 +305,8 @@ function ligarTopo(alvo, ctx) {
         lida.detalhes.termm_itens = encadearComposicao(lida.detalhes.termm_itens, guardada);
       }
       // contratos vencidos ou a vencer em 15 dias viram notificação para quem vê o Open Contracts
-      await ctx.api.publicarPosition({ data_ref: lida.data_ref, resumo: lida.resumo, detalhes: lida.detalhes, nome_arquivo: file.name, alerta: textoAlertaFixacao(lida.detalhes, fmtN) });
+      await ctx.api.publicarPosition({ data_ref: lida.data_ref, resumo: lida.resumo, detalhes: lida.detalhes, nome_arquivo: file.name,
+        alerta: [textoFixacaoPerdida(lida.resumo.alteracoes, fmtN), textoAlertaFixacao(lida.detalhes, fmtN)].filter(Boolean).join(" · ") || null });
       toast(`Position of ${fmtData(lida.data_ref)} published.`);
       lida.avisos.forEach((a) => toast(a, "erro"));
       // fórmulas e futuros desta planilha passam a valer para a atualização pelo Digisul
@@ -792,6 +793,17 @@ function cardAlteracoes(resumo, filtro, rotulo) {
   }
   const listaLotes = (l) => l.map((x) => `${x.chave} (${fmtN(x.efeito)})`).join(", ");
   const celLotes = (l) => (l.length ? `<td class="num" title="${esc(listaLotes(l))}">${fmtN(soma(l))} <span class="muted">· ${l.length}</span></td>` : `<td class="num"><span class="zero">–</span></td>`);
+  // fixação perdida: sacas a fixar que subiram sem contrato novo (divisão no Digisul que não levou a fixação)
+  const perdas = (alt.fixacao_perdida ?? []).filter(passa);
+  const chavesPerdidas = new Set(perdas.flatMap((p) => p.contratos.map((c) => c.chave)));
+  const tagPerdida = (k) => (chavesPerdidas.has(k) ? ` <span class="tag tag-critico">Fixation lost</span>` : "");
+  const alertaPerdida = perdas.length ? `<div class="pos-alerta" role="alert" style="margin:4px 0 10px">${icon("alert")}
+      <div><strong>Fixation lost · ${fmtN(Math.round(perdas.reduce((s, p) => s + p.perdida, 0)))} bags</strong> — bags to fix went up without a new trade.
+        Usually a contract split in Digisul that did not carry the fixation. Check before trusting the outright.
+        ${perdas.map((p) => `<div style="margin-top:6px"><strong>${esc(p.familia)}</strong> · ${ROT_TIPO_ALT[p.tipo]} · ${esc(p.parceiro ?? "—")} · ${esc(p.padrao ?? "—")}
+          — to fix was <strong>${fmtN(p.antes)}</strong>, now <strong>${fmtN(p.agora)}</strong>${p.sacas_agora > p.sacas_antes ? ` (contract bags ${fmtN(p.sacas_antes)} → ${fmtN(p.sacas_agora)})` : ""}
+          ${p.contratos.length ? `<span style="opacity:.85">(${p.contratos.map((c) => `${esc(c.chave)}: ${fmtN(c.antes ?? 0)} → ${fmtN(c.agora ?? 0)}`).join(" · ")})</span>` : ""}</div>`).join("")}
+      </div></div>` : "";
   return `<section class="pos-card">
     <div class="pos-card-h pos-card-h-linha"><div><h2>${esc(titulo)} · ${esc(rotulo)}</h2>
       <p class="muted">${modo === "dia" ? "Contracts and lots that changed against the last position of the previous day, and the effect on the physical position (bags)."
@@ -803,11 +815,12 @@ function cardAlteracoes(resumo, filtro, rotulo) {
       ${fixs.length ? `<span>Fixations: <strong>${fmtN(fixs.reduce((s, x) => s + (x.antes - x.agora), 0))}</strong> bags <span class="muted">(${fixs.length})</span></span>` : ""}
       ${!movs.length && !fixs.length ? `<span class="muted">No changes.</span>` : ""}
     </div>
+    ${alertaPerdida}
     ${resumoAlteracoes(itens)}
     ${alteracoesAbertas && contratos.length ? `<div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
       <thead><tr><th>Type</th><th>Contract</th><th>Counterparty</th><th>Quality</th><th class="num">Before</th><th class="num">Now</th><th class="num">Physical effect</th><th>What happened</th></tr></thead>
       <tbody>${contratos.map((x) => `<tr><td>${ROT_TIPO_ALT[x.tipo]}</td><td>${esc(x.chave)}</td><td>${esc(x.parceiro ?? "—")}</td><td>${esc(x.padrao ?? "—")}</td>
-        ${celNum(x.antes)}${celNum(x.agora)}${celNum(x.efeito, { forte: true })}<td>${esc(x.motivo)}</td></tr>`).join("")}</tbody>
+        ${celNum(x.antes)}${celNum(x.agora)}${celNum(x.efeito, { forte: true })}<td>${esc(x.motivo)}${tagPerdida(x.chave)}</td></tr>`).join("")}</tbody>
     </table></div>` : ""}
     ${alteracoesAbertas && porPadrao.size ? `<div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
       <thead><tr><th>Inventory by quality</th><th class="num">Lots in</th><th class="num">Lots out</th><th class="num">Lots changed</th><th class="num">Net</th></tr></thead>
@@ -816,7 +829,7 @@ function cardAlteracoes(resumo, filtro, rotulo) {
     </table></div><p class="muted pos-nota">Hover a number to see the lots. Lot changes are usually reprocessing, blends, deliveries and shipments.</p>` : ""}
     ${alteracoesAbertas && fixs.length ? `<div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
       <thead><tr><th>Fixation</th><th>Contract</th><th>Counterparty</th><th>Quality</th><th class="num">To fix before</th><th class="num">To fix now</th><th class="num">Fixed</th></tr></thead>
-      <tbody>${fixs.map((x) => `<tr><td>${ROT_TIPO_ALT[x.tipo]}</td><td>${esc(x.chave)}</td><td>${esc(x.parceiro ?? "—")}</td><td>${esc(x.padrao ?? "—")}</td>
+      <tbody>${fixs.map((x) => `<tr><td>${ROT_TIPO_ALT[x.tipo]}</td><td>${esc(x.chave)}${tagPerdida(x.chave)}</td><td>${esc(x.parceiro ?? "—")}</td><td>${esc(x.padrao ?? "—")}</td>
         ${celNum(x.antes)}${celNum(x.agora)}${celNum(x.antes - x.agora, { forte: true })}</tr>`).join("")}</tbody>
     </table></div>` : ""}
   </section>`;
