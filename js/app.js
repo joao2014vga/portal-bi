@@ -6,6 +6,7 @@ import {
 } from "./ui.js";
 import { ehPainelPosition, renderPosition } from "./position.js";
 import { ehPainelCert, renderCert } from "./certificado.js";
+import { ehPainelQualidade, renderQualidade } from "./qualidade.js";
 import { IDIOMA, ligarTraducao } from "./i18n.js";
 
 const app = $("#app");
@@ -355,7 +356,7 @@ async function telaInicio() {
     .map((c) => ({ ...c, itens: visiveis.filter((d) => (d.categoria_id ?? null) === c.id) }))
     .filter((g) => g.itens.length);
 
-  const atrasados = visiveis.filter((d) => !ehSistema(d) && statusAtualizacao(d).cls === "atrasado").length;
+  const atrasados = visiveis.filter((d) => !ehSistema(d) && !ehPainelQualidade(d.link) && statusAtualizacao(d).cls === "atrasado").length;
 
   await shell(`
     <section class="ola">
@@ -403,7 +404,7 @@ async function telaInicio() {
 
 function cardDashboard(d) {
   const sistema = ehSistema(d);
-  const st = sistema ? { cls: "neutro", texto: "Integrated system" } : statusAtualizacao(d);
+  const st = sistema ? { cls: "neutro", texto: "Integrated system" } : ehPainelQualidade(d.link) ? { cls: "ok", texto: "Live from Digisul" } : statusAtualizacao(d);
   return `
   <a class="card-dash ${d.ativo ? "" : "inativo"}" href="#/d/${d.id}" data-busca="${esc((d.titulo + " " + (d.descricao ?? "")).toLowerCase())}">
     <div class="card-dash-topo">
@@ -489,15 +490,17 @@ async function telaDashboard(id) {
   const st = statusAtualizacao(d);
   const demo = d.link.startsWith("demo:");
   const sistema = ehSistema(d);
-  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link); // painel desenhado pelo próprio portal (Position, Certificados)
+  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link) || ehPainelQualidade(d.link); // painel desenhado pelo próprio portal (Position, Certificados, Qualidade)
   // a página do certificado desenha o próprio cabeçalho (com as abas e os botões dela)
   const cabProprio = ehPainelCert(d.link);
+  // Qualidade lê o Digisul ao vivo: a data de atualização aparece no próprio painel
+  const aoVivo = sistema || ehPainelQualidade(d.link);
   await shell(`
     <div class="visor">
       ${cabProprio ? "" : cabecalho({
         titulo: d.titulo,
-        data: !sistema && d.atualizado_em ? dataBR(d.atualizado_em) : "",
-        sub: sistema ? "" : `<span class="cab-status cab-status-${st.cls}">${icon("clock")}<span>${esc(st.texto)}</span></span>
+        data: !aoVivo && d.atualizado_em ? dataBR(d.atualizado_em) : "",
+        sub: aoVivo ? "" : `<span class="cab-status cab-status-${st.cls}">${icon("clock")}<span>${esc(st.texto)}</span></span>
           ${d.atualizado_em ? `<span>· ${esc(dataHoraBR(d.atualizado_em))} · ${esc(FREQ_LABEL[d.frequencia])}</span>` : ""}`,
         acoes: `<button class="btn" id="telaCheia">${icon("expand")}<span>Full screen</span></button>
           ${demo || nativo ? "" : `<a class="btn" href="${esc(powerBiEmIngles(d.link))}" target="_blank" rel="noopener">${icon("external")}<span>Open in new tab</span></a>`}`,
@@ -513,7 +516,7 @@ async function telaDashboard(id) {
     const el = $("#frame");
     (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   });
-  if (nativo) await (ehPainelCert(d.link) ? renderCert : renderPosition)(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), admin: !!estado.perfil?.is_admin, recarregar });
+  if (nativo) await (ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : renderPosition)(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), admin: !!estado.perfil?.is_admin, recarregar });
 }
 
 // Simula um relatório no modo demonstração
@@ -675,7 +678,7 @@ async function formDashboard(d, cats) {
       const titulo = f.titulo.value.trim();
       const link = f.link.value.trim();
       if (!titulo) throw new Error("Please enter a title.");
-      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link) && !ehPainelCert(link)) throw new Error("The link must start with https://");
+      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link) && !ehPainelCert(link) && !ehPainelQualidade(link)) throw new Error("The link must start with https://");
       const dados = {
         titulo, link,
         id: d.id,

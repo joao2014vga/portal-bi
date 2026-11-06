@@ -253,6 +253,7 @@ export function criarDemo() {
       storage.set(CHAVE_MODELO, JSON.stringify({ modelo, nome_arquivo, enviado_por: eu().nome, atualizado_em: new Date().toISOString() }));
     },
     async sincronizarPosition() { throw new Error("The Digisul update is not available in demo mode."); },
+    async qualidade() { throw new Error("The Quality views read Digisul live and are not available in demo mode."); },
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       exigeArquivos();
       db.position ??= { cargas: [], detalhe: {} };

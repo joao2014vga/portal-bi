@@ -327,6 +327,20 @@ async function criarApiSupabase() {
       if (!res.ok) throw new Error(j.error || `The update failed (${res.status}).`);
       return j;
     },
+    // painéis da Qualidade: lidos ao vivo do Digisul pelo brascof-api (fresco = sem o cache de 5 min)
+    async qualidade(view, fresco = false) {
+      const { data: { session } } = await sb.auth.getSession();
+      let res;
+      try {
+        res = await fetch(`${CONFIG.API_BRASCOF}/api/qualidade?view=${encodeURIComponent(view)}${fresco ? "&fresh=1" : ""}`,
+          { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
+      } catch {
+        throw new Error("Unable to reach the Digisul service. Please try again.");
+      }
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Digisul data could not be loaded (${res.status}).`);
+      return j;
+    },
     // grava resumo + contratos e marca os painéis como atualizados, tudo numa transação
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       const { error } = await sb.rpc("bi_position_publicar", { p_data_ref: data_ref, p_nome: nome_arquivo, p_resumo: resumo, p_detalhes: detalhes, p_alerta: alerta });
