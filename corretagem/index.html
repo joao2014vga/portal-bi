@@ -110,7 +110,8 @@ tr.ok td{background:#f1f8f3}
     <label for="mes">Reference month</label>
     <input type="month" id="mes">
     <button class="hbtn" id="btnAtualizar" type="button">↻ Refresh</button>
-    <button class="hbtn" id="btnExportar" type="button">⬇ Export Excel</button>
+    <button class="hbtn" id="btnExportar" type="button" title="All the data, one row per contract">⬇ Export data</button>
+    <button class="hbtn" id="btnXlsRel" type="button" title="Final report, same layout as the PDF">⬇ Excel report</button>
     <button class="hbtn" id="btnPdf" type="button">⬇ PDF report</button>
   </div>
 </div>
@@ -1063,39 +1064,53 @@ function carregarScript(src){
   return new Promise((ok,erro)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=()=>erro(new Error('Could not load '+src));document.head.appendChild(s);});
 }
 const fmt2=v=>Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+// textos do relatório no idioma do portal (CONFIG.IDIOMA)
+async function tradutor(){try{const m=await import('../js/i18n.js');return s=>m.t(s);}catch(e){return s=>s;}}
+// O relatório final do café aberto, montado uma vez para o PDF e para o Excel:
+// cada corretor (com os totais) e embaixo os contratos e os lançamentos manuais dele
+function montarRelatorio(t){
+  const cafe=t(ESPECIE[E.especie]);
+  const grupos=[];
+  const total={sacas:0,base:0,corretagem:0};
+  for(const c of ordenar(corretoresView(),['nome',1])){
+    const ls=linhasVis().filter(l=>String(l.corretorCod)===String(c.cod)).sort((a,b)=>a.contrato.localeCompare(b.contrato));
+    const aj=E.conf[String(c.cod)]?.ajustes||[];
+    if(!ls.length&&!aj.length)continue;
+    grupos.push({nome:c.nome,sacas:c.sacas,base:c.base,corretagem:c.esperado,
+      linhas:[...ls.map(l=>({texto:l.contrato,data:l.data,sacas:l.sacas,base:l.base,pct:l.pct,corretagem:l.corretagem})),
+        ...aj.map(a=>({texto:`${a.contrato||'—'} · ${t('Manual entry')}${a.descricao?' · '+a.descricao:''}`,corretagem:Number(a.valor)||0}))]});
+    total.sacas+=c.sacas;total.base+=c.base;total.corretagem+=c.esperado;
+  }
+  return{cafe,grupos,total:{rotulo:`${t('Total')} ${cafe}`,sacas:r2(total.sacas),base:r2(total.base),corretagem:r2(total.corretagem)},
+    titulo:`Brascof · ${t('Brokerage Statement')}`,
+    sub:`${t('Reference month')}: ${mesTexto(E.mes)}   ·   ${t('Coffee')}: ${cafe}   ·   ${t('Generated on')} ${new Date().toLocaleString('pt-BR')}`,
+    colunas:[t('Broker / contract'),t('Due / shipped'),t('Bags'),t('Total (R$)'),'%',t('Brokerage (R$)')]};
+}
 async function gerarPdf(){
   if(!E.calc)return;
   const btn=$('#btnPdf'),txt=btn.textContent;btn.disabled=true;btn.textContent='⏳ PDF...';
   try{
     if(!window.jspdf)await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
     if(!window.jspdf.jsPDF.API.autoTable)await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
-    // o PDF sai no idioma do portal (CONFIG.IDIOMA)
-    let t=s=>s;try{const m=await import('../js/i18n.js');t=s=>m.t(s);}catch(e){}
+    const t=await tradutor();
+    const R=montarRelatorio(t);
     const doc=new window.jspdf.jsPDF({unit:'pt',format:'a4'});
     const verde=[45,74,62],claro=[227,238,232];
-    const cafe=t(ESPECIE[E.especie]);
     doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(...verde);
-    doc.text(`Brascof · ${t('Brokerage Statement')}`,40,44);
+    doc.text(R.titulo,40,44);
     doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(90,122,104);
-    doc.text(`${t('Reference month')}: ${mesTexto(E.mes)}   ·   ${t('Coffee')}: ${cafe}   ·   ${t('Generated on')} ${new Date().toLocaleString('pt-BR')}`,40,60);
+    doc.text(R.sub,40,60);
 
-    // um relatório por café: corretor (com os totais) e os contratos dele embaixo
     const corpo=[];
-    const tot={sacas:0,base:0,corretagem:0};
     const fundo=v=>({content:v,styles:{fontStyle:'bold',fillColor:claro}});
-    for(const c of ordenar(corretoresView(),['nome',1])){
-      const ls=linhasVis().filter(l=>String(l.corretorCod)===String(c.cod)).sort((a,b)=>a.contrato.localeCompare(b.contrato));
-      const aj=E.conf[String(c.cod)]?.ajustes||[];
-      if(!ls.length&&!aj.length)continue;
-      corpo.push([fundo(c.nome),fundo(''),fundo(fmtN(c.sacas,0)),fundo(fmt2(c.base)),fundo(''),fundo(fmt2(c.esperado))]);
-      for(const l of ls)corpo.push([`    ${l.contrato}`,fmtData(l.data),fmtN(l.sacas),fmt2(l.base),fmtN(l.pct,3)+'%',fmt2(l.corretagem)]);
-      for(const a of aj)corpo.push([`    ${a.contrato||'—'} · ${t('Manual entry')}${a.descricao?' · '+a.descricao:''}`,'','','','',fmt2(a.valor)]);
-      tot.sacas+=c.sacas;tot.base+=c.base;tot.corretagem+=c.esperado;
+    for(const g of R.grupos){
+      corpo.push([fundo(g.nome),fundo(''),fundo(fmtN(g.sacas,0)),fundo(fmt2(g.base)),fundo(''),fundo(fmt2(g.corretagem))]);
+      for(const l of g.linhas)corpo.push([`    ${l.texto}`,l.data?fmtData(l.data):'',l.sacas!=null?fmtN(l.sacas):'',l.base!=null?fmt2(l.base):'',l.pct!=null?fmtN(l.pct,3)+'%':'',fmt2(l.corretagem)]);
     }
-    const pe=[[`${t('Total')} ${cafe}`,'',fmtN(tot.sacas,0),fmt2(tot.base),'',fmt2(tot.corretagem)]];
+    const pe=[[R.total.rotulo,'',fmtN(R.total.sacas,0),fmt2(R.total.base),'',fmt2(R.total.corretagem)]];
     doc.autoTable({
       startY:74,margin:{left:40,right:40},
-      head:[[t('Broker / contract'),t('Due / shipped'),t('Bags'),t('Total (R$)'),'%',t('Brokerage (R$)')]],
+      head:[R.colunas],
       body:corpo,foot:pe,showFoot:'lastPage',
       styles:{font:'helvetica',fontSize:8,cellPadding:3,textColor:[26,26,26],lineColor:[221,232,226],lineWidth:.5},
       headStyles:{fillColor:verde,textColor:255,fontStyle:'bold'},
@@ -1112,6 +1127,59 @@ async function gerarPdf(){
   finally{btn.disabled=false;btn.textContent=txt;}
 }
 $('#btnPdf').addEventListener('click',gerarPdf);
+
+// ── relatório final em Excel: o mesmo layout do PDF ─────────────────────
+// Corretor em negrito com fundo verde-claro e os totais; contratos recuados embaixo,
+// agrupados (dá para recolher cada corretor pelo "-" na margem, como na tabela dinâmica).
+// Números, datas e % gravados como número, para somar e filtrar no Excel.
+async function gerarExcelRelatorio(){
+  if(!E.calc)return;
+  const btn=$('#btnXlsRel'),txt=btn.textContent;btn.disabled=true;btn.textContent='⏳ Excel...';
+  try{
+    if(!window.ExcelJS)await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+    const t=await tradutor();
+    const R=montarRelatorio(t);
+    const wb=new ExcelJS.Workbook();wb.creator='Brascof BI Portal';wb.created=new Date();
+    const ws=wb.addWorksheet(`${R.cafe} ${E.mes.split('-').reverse().join('-')}`.slice(0,31),
+      // sem pageSetup: com ele o Excel recusa abrir o arquivo gerado pelo ExcelJS 4.4.0
+      {views:[{state:'frozen',ySplit:4,showGridLines:false}],properties:{outlineProperties:{summaryBelow:false}}});
+    ws.columns=[{width:58},{width:14},{width:10},{width:18},{width:9},{width:17}];
+    const VERDE='FF2D4A3E',CLARO='FFE3EEE8',RODAPE='FFF5F9F6',LINHA='FFDDE8E2';
+    const borda={top:{style:'thin',color:{argb:LINHA}},bottom:{style:'thin',color:{argb:LINHA}},left:{style:'thin',color:{argb:LINHA}},right:{style:'thin',color:{argb:LINHA}}};
+    const FMT={sacas:'#,##0',sacasDec:'#,##0',reais:'#,##0.00',pct:'0.0##%',data:'dd/mm/yyyy'};
+
+    ws.getCell('A1').value=R.titulo;ws.getCell('A1').font={bold:true,size:14,color:{argb:VERDE}};
+    ws.getCell('A2').value=R.sub;ws.getCell('A2').font={size:9,color:{argb:'FF5A7A68'}};
+    const cab=ws.getRow(4);cab.values=R.colunas;
+    cab.eachCell(c=>{c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:VERDE}};c.border=borda;c.alignment={vertical:'middle'};});
+    [3,4,5,6].forEach(i=>cab.getCell(i).alignment={horizontal:'right',vertical:'middle'});
+    ws.autoFilter={from:'A4',to:'F4'};
+
+    const dataExcel=iso=>{if(!iso)return null;const [a,m,d]=iso.slice(0,10).split('-').map(Number);return new Date(Date.UTC(a,m-1,d));};
+    const preencher=(row,{negrito=false,fundo=null}={})=>{
+      for(let i=1;i<=6;i++){const c=row.getCell(i);c.border=borda;if(negrito)c.font={bold:true};if(fundo)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:fundo}};}
+      row.getCell(2).numFmt=FMT.data;row.getCell(3).numFmt=FMT.sacasDec;row.getCell(4).numFmt=FMT.reais;row.getCell(5).numFmt=FMT.pct;row.getCell(6).numFmt=FMT.reais;
+    };
+    for(const g of R.grupos){
+      const r=ws.addRow([g.nome,null,g.sacas,g.base,null,g.corretagem]);
+      preencher(r,{negrito:true,fundo:CLARO});r.getCell(3).numFmt=FMT.sacas;
+      for(const l of g.linhas){
+        const rl=ws.addRow([l.texto,dataExcel(l.data),l.sacas??null,l.base??null,l.pct!=null?l.pct/100:null,l.corretagem]);
+        preencher(rl);rl.getCell(1).alignment={indent:2};rl.outlineLevel=1;
+      }
+    }
+    const rt=ws.addRow([R.total.rotulo,null,R.total.sacas,R.total.base,null,R.total.corretagem]);
+    preencher(rt,{negrito:true,fundo:RODAPE});rt.getCell(3).numFmt=FMT.sacas;
+    rt.eachCell(c=>c.border={...borda,top:{style:'medium',color:{argb:VERDE}}});
+
+    const buf=await wb.xlsx.writeBuffer();
+    const url=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    const a=document.createElement('a');a.href=url;a.download=`Brokerage ${E.mes} ${ESPECIE[E.especie]}.xlsx`;
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
+  }catch(e){avisar('Could not create the Excel report: '+e.message);}
+  finally{btn.disabled=false;btn.textContent=txt;}
+}
+$('#btnXlsRel').addEventListener('click',gerarExcelRelatorio);
 
 // ── início ──────────────────────────────────────────────────────────────
 const mesUrl=new URLSearchParams(location.search).get('mes');

@@ -669,6 +669,9 @@ const PT = {
   "Contracts in this month": "Contratos do mês", "+ Add entry": "+ Adicionar lançamento", "Export this broker": "Exportar este corretor",
   "Contracts checked": "Contratos conferidos", "Not saved yet.": "Ainda não salvo.", "Check all": "Marcar todos",
   "Tick each contract as you check it against the statement": "Marque cada contrato conforme for conferindo com o espelho",
+  "⬇ Export data": "⬇ Exportar dados", "⬇ Excel report": "⬇ Relatório Excel", "⏳ Excel...": "⏳ Excel...",
+  "All the data, one row per contract": "Todos os dados, uma linha por contrato",
+  "Final report, same layout as the PDF": "Relatório final, no mesmo layout do PDF",
   "Coffee not in Digisul": "Café não está no Digisul",
   "Digisul has no coffee for this contract (e.g. cancelled): it is shown under the broker's main coffee this month":
     "O Digisul não tem o café deste contrato (ex.: cancelado): ele aparece no café principal do corretor neste mês",
