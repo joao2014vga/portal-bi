@@ -419,7 +419,7 @@ async function novaOperacaoFuturos(ctx) {
   modal({
     titulo: "New futures or FX trade",
     botao: "Save and recalculate",
-    largura: "modal-lg",
+    largura: "modal-xl",
     corpo: `<p class="muted"><span>Paste the broker confirmation e-mail and click “Read e-mail”.</span>
         <span>Check the fields, fill in Notes, Book and Alloc, and save: the trade joins the futures used by the Digisul update.</span>
         <span>Also paste the row in the spreadsheet's OpenFutures (“Copy row”).</span></p>
@@ -542,6 +542,12 @@ async function novaOperacaoFuturos(ctx) {
         catch { toast(tr("Could not copy — select the row and copy it by hand."), "erro"); }
       });
       atualizar();
+      // botões logo abaixo do formulário; as listas vêm depois, com rolagem própria
+      const listas = document.createElement("div");
+      listas.className = "modal-b fut-listas";
+      listas.append($("#futDoPortal", f), $("#futHistorico", f));
+      $(".modal-f", f).classList.add("fut-acoes");
+      $(".modal-f", f).after(listas);
       listarDoPortal($("#futDoPortal", f), futuros, cambios, ctx);
       listarHistorico($("#futHistorico", f), ctx);
     },
@@ -594,14 +600,14 @@ function listarDoPortal(alvo, futuros, cambios, ctx) {
   const lancada = (x) => `<td>${esc(dataHoraBR(x._portal))}</td>`;
   const lixo = (tipo, i) => `<td><button type="button" class="btn-icon" data-desfazer="${tipo}:${i}" title="${esc(tr("Remove"))}" aria-label="${esc(tr("Remove"))}">${icon("trash")}</button></td>`;
   alvo.innerHTML = `${fut.length ? `<h3 class="pos-comp-h">Futures entered in the portal <span class="muted">· ${fut.length}</span></h3>
-    <div class="tabela-wrap"><table class="tabela tabela-num">
+    <div class="tabela-wrap fut-rolagem"><table class="tabela tabela-num">
       <thead><tr><th>Entered</th><th>Trade No.</th><th>Date</th><th>Exchange</th><th>Type</th><th>Month</th><th class="num">Lots</th><th class="num">Price</th><th>Notes</th><th>Alloc</th><th></th></tr></thead>
       <tbody>${fut.map((x, i) => `<tr>${lancada(x)}<td>${esc(x["Trade No."])}</td><td>${esc(fmtData(isoDeSerial(x.Data)))}</td><td>${esc(x.Bolsa)}</td><td>${esc(x.Tipo)}</td>
         <td>${esc(fmtMes(isoDeSerial(x["Mes/Ano"])))}</td><td class="num">${fmtLotes(x.Lotes)}</td><td class="num">${fmtN(x.Valor, 3)}</td><td>${esc(x.Notas ?? "—")}</td><td>${esc(x.Alloc ?? "—")}</td>
         ${lixo("f", i)}</tr>`).join("")}</tbody>
     </table></div>` : ""}
     ${cx.length ? `<h3 class="pos-comp-h">FX entered in the portal <span class="muted">· ${cx.length}</span></h3>
-    <div class="tabela-wrap"><table class="tabela tabela-num">
+    <div class="tabela-wrap fut-rolagem"><table class="tabela tabela-num">
       <thead><tr><th>Entered</th><th>Trade No.</th><th>Date</th><th class="num">Rate</th><th class="num">BRL</th><th>Fixing</th><th>Maturity</th><th>Notes</th><th>Contract</th><th></th></tr></thead>
       <tbody>${cx.map((x, i) => `<tr>${lancada(x)}<td>${esc(x["Trade No."] ?? "—")}</td><td>${esc(fmtData(isoDeSerial(x.Date)))}</td><td class="num">${fmtN(x["Rate USD/BRL"], 4)}</td>
         <td class="num">${fmtN(x["Equivalent BRL"], 2)}</td><td>${esc(fmtData(isoDeSerial(x["Fixing Date"])))}</td><td>${esc(fmtData(isoDeSerial(x["Maturity Date"])))}</td>
@@ -634,8 +640,8 @@ async function listarHistorico(alvo, ctx) {
   try { hist = await ctx.api.positionLancamentos?.(); } catch (e) { alvo.innerHTML = `<p class="muted pos-nota">${esc(e.message)}</p>`; return; }
   if (hist == null) { alvo.innerHTML = `<p class="muted pos-nota">${icon("info")} <span>${esc(tr("Trade history is not set up yet: run section 20 of schema.sql in Supabase."))}</span></p>`; return; }
   if (!hist.length) {
-    alvo.innerHTML = `<h3 class="pos-comp-h">Trade history</h3>
-      <p class="muted pos-nota">${icon("info")} <span>${esc(tr("No trades recorded yet. Every trade saved here from now on stays in this history, even after it goes into the spreadsheet or is removed."))}</span></p>`;
+    alvo.innerHTML = `<details class="fut-hist"><summary class="pos-comp-h">Trade history</summary>
+      <p class="muted pos-nota">${icon("info")} <span>${esc(tr("No trades recorded yet. Every trade saved here from now on stays in this history, even after it goes into the spreadsheet or is removed."))}</span></p></details>`;
     return;
   }
   const resumo = (h) => {
@@ -644,14 +650,15 @@ async function listarHistorico(alvo, ctx) {
       ? `${d.Tipo ?? ""} ${fmtLotes(d.Lotes)} ${tr("lots")} · ${fmtMes(isoDeSerial(d["Mes/Ano"]))} · ${fmtN(d.Valor, 3)}${d.Notas ? ` · ${d.Notas}` : ""}${d.Alloc ? ` · ${d.Alloc}` : ""}`
       : `R$ ${fmtN(d["Equivalent BRL"], 2)} · ${fmtN(d["Rate USD/BRL"], 4)}${d.Contract ? ` · ${d.Contract}` : ""}`;
   };
-  alvo.innerHTML = `<h3 class="pos-comp-h">Trade history <span class="muted">· ${hist.length === 100 ? tr("last 100") : hist.length}</span></h3>
-    <div class="tabela-wrap"><table class="tabela">
+  // recolhido: abre no "+" quando precisar consultar
+  alvo.innerHTML = `<details class="fut-hist"><summary class="pos-comp-h">Trade history <span class="muted">· ${hist.length === 100 ? tr("last 100") : hist.length}</span></summary>
+    <div class="tabela-wrap fut-rolagem"><table class="tabela">
       <thead><tr><th>When</th><th>Action</th><th>Kind</th><th>Trade No.</th><th>Trade</th><th>By</th><th>Saved as</th></tr></thead>
       <tbody>${hist.map((h) => `<tr><td>${esc(dataHoraBR(h.created_at))}</td>
         <td><span class="pill${{ removido: " pill-critico", na_planilha: " pill-ok" }[h.acao] ?? ""}">${esc(tr(ACAO_LANCAMENTO[h.acao] ?? h.acao))}</span></td>
         <td>${esc(tr(h.tipo === "futuro" ? "Futures" : "FX"))}</td><td>${esc(h.trade_no ?? "—")}</td><td>${esc(resumo(h))}</td>
         <td>${esc(h.autor ?? "—")}</td><td>${esc(h.arquivo ?? "—")}</td></tr>`).join("")}</tbody>
-    </table></div>`;
+    </table></div></details>`;
 }
 
 // ---------------------------------------------------------------- Overview
