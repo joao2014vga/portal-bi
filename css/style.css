@@ -715,6 +715,15 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 @media (max-width: 720px) { .fut-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .fut-linha { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
 .fut-linha code { font-size: 12px; background: var(--sup-2); border: 1px solid var(--borda); border-radius: 6px; padding: 4px 8px; overflow-wrap: anywhere; }
+/* New futures trade: botões logo abaixo do formulário; listas com rolagem própria e histórico recolhido */
+.modal-f.fut-acoes { border-radius: 0; border-bottom: 1px solid var(--borda); }
+.fut-listas { gap: 6px; padding-top: 4px; }
+.fut-rolagem { max-height: 340px; overflow: auto; }
+.fut-rolagem thead th { position: sticky; top: 0; z-index: 1; }
+.fut-hist > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; user-select: none; }
+.fut-hist > summary::-webkit-details-marker { display: none; }
+.fut-hist > summary::before { content: "+"; display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid var(--borda); border-radius: 6px; font-weight: 600; color: var(--texto-2); }
+.fut-hist[open] > summary::before { content: "\2212"; }
 
 /* ===================================================================== Qualidade (js/qualidade.js) */
 .qa #qaCorpo { margin-top: 14px; }
