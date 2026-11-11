@@ -672,6 +672,22 @@ async function painelOverview(alvo, carga, ctx) {
     ctx.gerente ? ctx.api.positionUltima(ctx.fonte === "api" ? "planilha" : "api").catch(() => null) : null,
     ctx.gerente ? ctx.api.positionModeloInfo().catch(() => null) : null,
   ]);
+  // planilha × API na mesma data: por padrão, a versão da API do dia da planilha
+  // (a API guarda a última atualização de cada dia); o seletor troca o dia da API
+  const cmp = { pl: null, ap: null, dia: null, datas: [], cache: new Map() };
+  const versaoApi = async (dia) => {
+    if (!dia) return null;
+    if (!cmp.cache.has(dia)) cmp.cache.set(dia, await ctx.api.positionVersaoDia?.("api", dia).catch(() => null) ?? null);
+    return cmp.cache.get(dia);
+  };
+  if (ctx.gerente) {
+    cmp.pl = ctx.fonte === "api" ? outra : carga;
+    const apUltima = ctx.fonte === "api" ? carga : outra;
+    if (apUltima) cmp.cache.set(apUltima.data_ref, apUltima);
+    cmp.datas = (await ctx.api.positionDatas?.("api").catch(() => null)) ?? (apUltima ? [apUltima.data_ref] : []);
+    cmp.dia = cmp.pl && cmp.datas.includes(cmp.pl.data_ref) ? cmp.pl.data_ref : apUltima?.data_ref ?? null;
+    cmp.ap = await versaoApi(cmp.dia);
+  }
 
   const desenhar = async () => {
     limparGraficos();
@@ -736,10 +752,11 @@ async function painelOverview(alvo, carga, ctx) {
       </section>
     </div>
     ${cardAlteracoes(carga.resumo, FILTRO_GRUPO_ALT[grupo], NOME_GRUPO[grupo])}
-    ${ctx.gerente ? cardComparacao(grupo, carga, outra, modeloInfo, ctx) : ""}`;
+    ${ctx.gerente ? cardComparacao(grupo, cmp, modeloInfo, ctx) : ""}`;
 
     $$("[data-grupo]", alvo).forEach((el) => el.addEventListener("click", () => { grupo = el.dataset.grupo; desenhar(); }));
     $("#posOficial", alvo)?.addEventListener("click", () => trocarFonteOficial(ctx));
+    $("#cmpDia", alvo)?.addEventListener("change", async (e) => { cmp.dia = e.target.value; cmp.ap = await versaoApi(cmp.dia); desenhar(); });
     ligarAlteracoes(alvo, desenhar);
     // detalhamento das compras e vendas: abre/fecha por grupo ou tudo de uma vez
     $$("[data-abrir]", alvo).forEach((el) => el.addEventListener("click", () => {
@@ -920,16 +937,23 @@ const FILTRO_GRUPO_ALT = { arabica: { especie: "A" }, robusta: { especie: "C" },
 const LINHAS_COMPARACAO = [["purchases", "Purchases"], ["inventory", "Inventory"], ["exp_sales", "Exp sales"], ["int_sales", "Int sales"],
   ["futures", "Futures"], ["net_diff", "Net diff position"], ["net_outright", "Net outright"]];
 
-function cardComparacao(grupo, carga, outra, info, ctx) {
-  const [pl, ap] = ctx.fonte === "api" ? [outra, carga] : [carga, outra];
+// cmp: { pl: planilha, ap: versão da API do dia escolhido, dia, datas: dias com versão da API }
+function cardComparacao(grupo, cmp, info, ctx) {
+  const { pl, ap, dia, datas } = cmp;
   const total = (c, k) => c?.resumo?.termm?.[grupo]?.total?.[k] ?? null;
-  const quando = (c) => (c ? `${fmtData(c.data_ref)} · ${tempoRelativo(c.created_at)}` : "—");
   const outraFonte = ctx.oficial === "api" ? "planilha" : "api";
+  const seletor = datas.length ? `<label class="pos-cmp-dia"><span class="muted">Digisul API on</span>
+      <select id="cmpDia" aria-label="Digisul API day">${datas.map((d) => `<option value="${d}" ${d === dia ? "selected" : ""}>${esc(fmtData(d))}${pl && d === pl.data_ref ? " · spreadsheet date" : ""}</option>`).join("")}</select></label>` : "";
+  const datasDiferentes = pl && ap && pl.data_ref !== ap.data_ref;
   return `<section class="pos-card">
-    <div class="pos-card-h"><h2>Spreadsheet × Digisul API · ${NOME_GRUPO[grupo]}</h2>
-      <p class="muted">Check while both sources run in parallel. Differences come from what changed in Digisul between the spreadsheet extraction and the API update.</p></div>
+    <div class="pos-card-h pos-card-h-linha"><div><h2>Spreadsheet × Digisul API · ${NOME_GRUPO[grupo]}</h2>
+      <p class="muted">Compares the spreadsheet with the Digisul API of the same day (the API keeps its last update of each day). Pick another day to compare.</p></div>
+      <div class="pos-acoes">${seletor}</div></div>
+    ${datasDiferentes ? `<p class="pos-nota pos-cmp-aviso">${icon("alert")} <span>Different dates: spreadsheet of <strong>${esc(fmtData(pl.data_ref))}</strong>, API of <strong>${esc(fmtData(ap.data_ref))}</strong>.
+      The difference includes everything that changed in Digisul in between${datas.includes(pl.data_ref) ? "." : " — there is no API version for the spreadsheet date."}</span></p>` : ""}
     ${pl && ap ? `<div class="tabela-wrap"><table class="tabela tabela-num">
-      <thead><tr><th></th><th>Spreadsheet <span class="muted">${esc(quando(pl))}</span></th><th>Digisul API <span class="muted">${esc(quando(ap))}</span></th><th>Difference</th></tr></thead>
+      <thead><tr><th></th><th>Spreadsheet <span class="muted">${esc(fmtData(pl.data_ref))} · uploaded ${esc(dataHoraBR(pl.created_at))}</span></th>
+        <th>Digisul API <span class="muted">${esc(fmtData(ap.data_ref))} · updated ${esc(dataHoraBR(ap.created_at))}</span></th><th>Difference</th></tr></thead>
       <tbody>${LINHAS_COMPARACAO.map(([k, rot]) => {
         const a = total(pl, k), b = total(ap, k);
         return `<tr><td>${rot}</td>${celNum(a)}${celNum(b)}${celNum(a != null && b != null ? arred(b - a) : null)}</tr>`;
