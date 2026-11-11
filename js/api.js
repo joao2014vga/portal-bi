@@ -212,10 +212,12 @@ async function criarApiSupabase() {
     // fonte: "planilha" (upload) ou "api" (sincronização com o Digisul). Sem a seção 9
     // do schema ainda não existe a coluna "fonte" e tudo é planilha.
     // última publicação da fonte (null = nenhuma ainda)
-    async positionUltima(fonte = "planilha") {
+    // com data_ref: a última versão daquele dia (Position de um dia anterior)
+    async positionUltima(fonte = "planilha", data_ref = null) {
       // o resumo vem por partes: a "pegada" dos contratos (usada só na comparação) fica no banco
       const consulta = (comFonte) => {
         let q = sb.from("bi_position_cargas").select(`id, data_ref, nome_arquivo, enviado_por, created_at, ${PARTES_RESUMO}`);
+        if (data_ref) q = q.eq("data_ref", data_ref);
         if (comFonte) q = q.eq("fonte", fonte);
         return q.order("data_ref", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
       };
