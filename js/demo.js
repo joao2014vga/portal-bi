@@ -34,6 +34,7 @@ function seed() {
       { id: 44, categoria_id: 4, titulo: "Export Sales", descricao: "Shipped volume, revenue and sale diff, crop over crop, by client and quality.", link: "portal:position-sales", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 4 },
       { id: 45, categoria_id: 4, titulo: "Purchases", descricao: "Purchased volume, value and purchase diff, crop over crop, by supplier and quality.", link: "portal:position-purchases", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 5 },
       { id: 46, categoria_id: 4, titulo: "Dashboard Commercial", descricao: "Export sales: contracts, bags, average diffs, bags per client and what is left to ship.", link: "portal:position-commercial", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 7 },
+      { id: 47, categoria_id: 4, titulo: "Price List", descricao: "Diffs by client, edited here and shared as an image or PDF on WhatsApp, e-mail or Teams.", link: "portal:precos-europe", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "manual", ativo: true, ordem: 8 },
       { id: 32, categoria_id: 3, titulo: "Logística de Entregas", descricao: "OTIF, prazo médio e ocorrências por transportadora.", link: "demo:logistica", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "semanal", ativo: true, ordem: 2 },
     ],
     acessos: [
@@ -269,6 +270,17 @@ export function criarDemo() {
         ouvintesNotif.forEach((cb) => cb(structuredClone(n)));
       }
       salvar();
+    },
+
+    // price list
+    async precos(chave) { return structuredClone(db.precos?.[chave] ?? null); },
+    async salvarPrecos(chave, dados) {
+      const agora = new Date().toISOString();
+      (db.precos ??= {})[chave] = { dados, atualizado_em: agora, atualizado_por: eu().nome };
+      const d = db.dashboards.find((x) => x.link === `portal:precos-${chave}`);
+      if (d) d.atualizado_em = agora;
+      salvar();
+      return structuredClone(db.precos[chave]);
     },
 
     // certificados: a base só vem da sincronização com o Digisul (sem dados no modo demonstração)

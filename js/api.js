@@ -59,6 +59,11 @@ function erroCert(msg = "") {
   if (/row-level security|permission denied/i.test(msg)) return "Only administrators and file managers can change the certificate list.";
   return traduzErro(msg);
 }
+function erroPrecos(msg = "") {
+  if (/bi_precos|schema cache|does not exist/i.test(msg)) return "The price list is not set up yet: run section 26 of supabase/schema.sql in the Supabase SQL Editor.";
+  if (/row-level security|permission denied/i.test(msg)) return "Your user cannot change this price list. Ask the administrator for access to it.";
+  return traduzErro(msg);
+}
 
 // =====================================================================
 // IMPLEMENTAÇÃO SUPABASE
@@ -436,6 +441,21 @@ async function criarApiSupabase() {
         if (/bi_cert_historico|schema cache|does not exist/i.test(error.message)) throw new Error("The certificate history is not set up yet: run section 13 of supabase/schema.sql in the Supabase SQL Editor.");
         throw new Error(erroCert(error.message));
       }
+      return data;
+    },
+
+    // ----------------------------------------------------------- price list (portal:precos-<chave>)
+    // null = lista ainda não salva (a tela começa do modelo)
+    async precos(chave) {
+      const { data, error } = await sb.from("bi_precos").select("dados, atualizado_em, atualizado_por").eq("chave", chave).maybeSingle();
+      if (error) throw new Error(erroPrecos(error.message));
+      return data;
+    },
+    // quem salvou e quando vêm do banco (gatilho), não do navegador
+    async salvarPrecos(chave, dados) {
+      const { data, error } = await sb.from("bi_precos").upsert({ chave, dados }, { onConflict: "chave" })
+        .select("dados, atualizado_em, atualizado_por").single();
+      if (error) throw new Error(erroPrecos(error.message));
       return data;
     },
 

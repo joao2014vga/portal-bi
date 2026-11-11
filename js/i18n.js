@@ -711,8 +711,8 @@ const PT = {
   "Not checked yet.": "Ainda não conferido.", "Entry added — save to confirm.": "Lançamento adicionado — salve para confirmar.",
   "Saving...": "Salvando...", "Saved ✓": "Salvo ✓", "Loading Digisul data...": "Carregando dados do Digisul...",
   "Cancelled with commission (washout)": "Cancelado com comissão (washout)",
-  "The brokerage table is not set up yet: run section 18 of supabase/schema.sql in the Supabase SQL Editor.":
-    "A tabela da corretagem ainda não foi criada: rode a seção 18 do supabase/schema.sql no SQL Editor do Supabase.",
+  "The brokerage table is not set up yet: run section 26 of supabase/schema.sql in the Supabase SQL Editor.":
+    "A tabela da corretagem ainda não foi criada: rode a seção 26 do supabase/schema.sql no SQL Editor do Supabase.",
   "You do not have access to the Brokerage Statement.": "Você não tem acesso ao Espelho de Corretagem.",
   "Difference = statement amount − (calculated brokerage + manual entries).": "Diferença = valor do espelho − (corretagem calculada + lançamentos manuais).",
   "Broker and rate come from the Digisul brokerage queries (brascof_pesq_corretagem_compras / _vendas). A contract with two brokers gives one line per broker.":
@@ -752,6 +752,33 @@ const PT = {
     "“+ Incluir contrato” (aba Contratos) traz para este mês um contrato que vence em outro, com os dados do Digisul. No mês do próprio contrato aparece então a marca “Também em”, para não ser pago em dobro.",
   "“⇄ Broker” moves a contract to another broker's list in this month (e.g. a broker with more than one brokerage firm). The rate and the amount stay as in Digisul.":
     "“⇄ Corretor” passa um contrato para a lista de outro corretor neste mês (ex.: corretor com mais de uma corretora). A % e o valor continuam os do Digisul.",
+
+  // ---------------------------------------------------------------- price list (a folha e a imagem ficam em inglês)
+  "Price List": "Lista de preços", "Price list": "Lista de preços", "Loading prices…": "Carregando preços…", "Price list unavailable": "Lista de preços indisponível",
+  "Copy text": "Copiar texto", "Copy image": "Copiar imagem", "Save PDF": "Salvar PDF", "Not saved yet": "Ainda não salva",
+  "Copy as text, ready to paste on WhatsApp": "Copiar como texto, pronto para colar no WhatsApp",
+  "Copy the image to paste on WhatsApp Web, Teams or e-mail": "Copiar a imagem para colar no WhatsApp Web, Teams ou e-mail",
+  "Download as an image (PNG)": "Baixar como imagem (PNG)", "Download as PDF": "Baixar como PDF",
+  "Click any text to edit it. Diff: -22, +5 or Level. Enter jumps to the next diff.": "Clique em qualquer texto para editar. Dif: -22, +5 ou Level. Enter vai para o próximo dif.",
+  "New list: adjust it and click Save.": "Lista nova: ajuste e clique em Salvar.", "Unsaved changes": "Alterações não salvas",
+  "Discard": "Descartar", "All changes saved": "Tudo salvo", "Discard changes?": "Descartar alterações?",
+  "The list goes back to the last saved version.": "A lista volta para a última versão salva.", "Prices saved.": "Preços salvos.",
+  "Your unsaved changes were restored.": "Suas alterações não salvas foram recuperadas.",
+  "Grade": "Padrão", "Title": "Título",
+  "Period (e.g. January to June)": "Período (ex.: January to June)", "Country / group (optional)": "País / grupo (opcional)",
+  "Note (optional), e.g. diffs in US¢/lb vs ICE": "Observação (opcional), ex.: diffs in US¢/lb vs ICE",
+  "Add client": "Incluir cliente", "Add country / group": "Incluir país / grupo", "Move up": "Subir", "Move down": "Descer",
+  "Remove client": "Tirar cliente", "Move group up": "Subir grupo", "Move group down": "Descer grupo", "Remove group": "Tirar grupo",
+  "Remove group?": "Tirar o grupo?",
+  "Text copied: paste it on WhatsApp, Teams or e-mail.": "Texto copiado: cole no WhatsApp, Teams ou e-mail.",
+  "Image copied: paste it (Ctrl+V) on WhatsApp Web, Teams or e-mail.": "Imagem copiada: cole (Ctrl+V) no WhatsApp Web, Teams ou e-mail.",
+  "This browser cannot copy images. Use Save image.": "Este navegador não copia imagens. Use Salvar imagem.",
+  "Remember to click Save so everyone sees the new prices.": "Lembre de clicar em Salvar para todos verem os preços novos.",
+  "The list is empty: add at least one client.": "A lista está vazia: inclua pelo menos um cliente.",
+  "The price list is not set up yet: run section 26 of supabase/schema.sql in the Supabase SQL Editor.":
+    "A lista de preços ainda não está configurada: rode a seção 26 do supabase/schema.sql no SQL Editor do Supabase.",
+  "Your user cannot change this price list. Ask the administrator for access to it.": "Seu usuário não pode alterar esta lista de preços. Peça acesso ao administrador.",
+  "Diffs by client, edited here and shared as an image or PDF on WhatsApp, e-mail or Teams.": "Diffs por cliente, editados aqui e enviados como imagem ou PDF no WhatsApp, e-mail ou Teams.",
 };
 
 // Tempo relativo produzido por ui.tempoRelativo

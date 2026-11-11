@@ -7,6 +7,7 @@ import {
 import { ehPainelPosition, renderPosition } from "./position.js";
 import { ehPainelCert, renderCert } from "./certificado.js";
 import { ehPainelQualidade, renderQualidade } from "./qualidade.js";
+import { ehPainelPrecos, renderPrecos } from "./precos.js";
 import { IDIOMA, ligarTraducao } from "./i18n.js";
 
 const app = $("#app");
@@ -490,9 +491,10 @@ async function telaDashboard(id) {
   const st = statusAtualizacao(d);
   const demo = d.link.startsWith("demo:");
   const sistema = ehSistema(d);
-  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link) || ehPainelQualidade(d.link); // painel desenhado pelo próprio portal (Position, Certificados, Qualidade)
-  // a página do certificado desenha o próprio cabeçalho (com as abas e os botões dela)
-  const cabProprio = ehPainelCert(d.link);
+  // painel desenhado pelo próprio portal (Position, Certificados, Qualidade, Price list)
+  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link) || ehPainelQualidade(d.link) || ehPainelPrecos(d.link);
+  // o certificado e a Price list desenham o próprio cabeçalho (com as abas e os botões deles)
+  const cabProprio = ehPainelCert(d.link) || ehPainelPrecos(d.link);
   // Qualidade lê o Digisul ao vivo: a data de atualização aparece no próprio painel
   const aoVivo = sistema || ehPainelQualidade(d.link);
   await shell(`
@@ -516,7 +518,10 @@ async function telaDashboard(id) {
     const el = $("#frame");
     (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   });
-  if (nativo) await (ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : renderPosition)(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), admin: !!estado.perfil?.is_admin, recarregar });
+  if (nativo) {
+    const render = ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : ehPainelPrecos(d.link) ? renderPrecos : renderPosition;
+    await render(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), admin: !!estado.perfil?.is_admin, recarregar, titulo: d.titulo });
+  }
 }
 
 // Simula um relatório no modo demonstração

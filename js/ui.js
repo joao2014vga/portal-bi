@@ -40,6 +40,9 @@ const P = {
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
   link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>',
+  up: '<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>',
+  down: '<path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
 };
 export const icon = (name, cls = "") =>
   `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] ?? ""}</svg>`;
@@ -196,6 +199,23 @@ export const storage = {
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* sem storage */ } },
   del(k) { try { localStorage.removeItem(k); } catch { /* sem storage */ } },
 };
+
+// Biblioteca de fora (html2canvas, jsPDF…) carregada só quando alguém usa;
+// devolve window[global]. Falhou: tenta de novo no próximo clique.
+const scripts = new Map();
+export function carregarScript(url, global) {
+  if (!scripts.has(url)) {
+    scripts.set(url, new Promise((ok, falha) => {
+      if (window[global]) return ok(window[global]);
+      const s = document.createElement("script");
+      s.src = url;
+      s.onload = () => ok(window[global]);
+      s.onerror = () => { scripts.delete(url); s.remove(); falha(new Error("Unable to load the image generator. Check your connection.")); };
+      document.head.appendChild(s);
+    }));
+  }
+  return scripts.get(url);
+}
 
 // Cabeçalho das páginas (fora a inicial, que tem a barra do portal): faixa verde com
 // a volta, a logo, o título, a data num selo, a linha de apoio (HTML), os botões à

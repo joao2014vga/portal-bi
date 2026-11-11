@@ -769,3 +769,89 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-historico { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -4px 0 14px; padding: 10px 14px; border-radius: 10px;
   background: var(--alerta-bg); color: var(--alerta); font-size: 13.5px; }
 .pos-historico .link { color: inherit; text-decoration: underline; font-size: 13.5px; margin-left: auto; }
+
+/* ---------------------------------------------------------------- Price list ("Prices updated")
+   A folha na tela tem a mesma cara da imagem enviada: faixa verde com a logo,
+   países em cartões e o dif em destaque. Todo texto é um campo editável. */
+.precos-barra { max-width: 820px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap; font-size: 13px; }
+.precos-barra .ic { width: 15px; height: 15px; }
+.precos-pendente, .precos-ok { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.precos-pendente { color: var(--alerta); }
+.precos-ok { color: var(--ok); }
+.precos-estado .link { margin-left: 8px; }
+
+.precos-folha { max-width: 820px; margin: 0 auto; border: 1px solid var(--borda); border-radius: 14px; overflow: hidden; box-shadow: var(--sombra-2); background: var(--bg); }
+.precos-folha input.precos-in {
+  width: 100%; height: auto; min-width: 0; padding: 5px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: inherit; font: inherit; text-overflow: ellipsis;
+}
+.precos-folha input.precos-in:hover { border-color: var(--borda); }
+.precos-folha input.precos-in:focus { border-color: var(--brand); background: var(--sup); box-shadow: 0 0 0 3px var(--brand-claro); outline: none; }
+.precos-folha input.precos-in::placeholder { color: var(--texto-3); font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+.precos-topo { display: flex; align-items: center; gap: 18px; padding: 22px 28px; background: #1d4a3d; color: #fff; }
+.precos-logo { width: 70px; height: 70px; border-radius: 50%; background: #fff; display: grid; place-items: center; flex: none; }
+.precos-logo img { width: 64px; height: 64px; object-fit: contain; border-radius: 50%; }
+.precos-tit { flex: 1; min-width: 0; display: grid; gap: 2px; margin-left: -8px; }
+.precos-topo input.precos-in:hover { border-color: rgba(255,255,255,.35); }
+.precos-topo input.precos-in:focus { border-color: #fff; background: rgba(255,255,255,.1); box-shadow: none; }
+.precos-topo input.precos-in::placeholder { color: rgba(255,255,255,.5); }
+.precos-folha input.precos-h1 { font-size: 28px; font-weight: 700; line-height: 1.2; }
+.precos-folha input.precos-periodo { font-size: 16px; color: rgba(255,255,255,.85); }
+.precos-data { border: 1.5px solid rgba(255,255,255,.75); border-radius: 999px; padding: 4px 14px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+
+.precos-corpo { padding: 18px 28px 8px; }
+.precos-linha, .precos-colunas {
+  display: grid; align-items: center; gap: 4px 6px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.4fr) 92px 108px 92px;
+  grid-template-areas: "cli qual pad dif ctrl";
+}
+.precos-colunas { padding: 0 13px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--texto-3); }
+.precos-colunas span { padding: 0 9px; }
+.precos-colunas span:nth-child(3) { text-align: center; }
+.precos-colunas span:nth-child(4) { text-align: right; }
+
+.precos-grupo { background: var(--sup); border: 1px solid var(--borda); border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
+.precos-grupo-h { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--brand-claro); border-bottom: 1px solid var(--borda); }
+.precos-folha input.precos-pais { font-size: 13px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); }
+.precos-linha { padding: 4px 12px; border-top: 1px solid var(--borda); }
+.precos-linha:first-child { border-top: 0; }
+.precos-linha.mudou { background: color-mix(in srgb, var(--alerta-bg) 75%, transparent); }
+.precos-folha input.precos-cli { grid-area: cli; font-weight: 600; }
+.precos-folha input.precos-qual { grid-area: qual; color: var(--texto-2); }
+.precos-folha input.precos-pad { grid-area: pad; text-align: center; font-weight: 600; color: var(--brand); background: var(--brand-claro); border-radius: 999px; }
+.precos-dif-box { grid-area: dif; display: flex; flex-direction: column; align-items: flex-end; }
+.precos-folha input.precos-dif {
+  text-align: right; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--brand-escuro);
+  background: var(--sup-2); border: 1px dashed var(--borda);
+}
+.precos-antes { font-size: 11px; font-weight: 500; color: var(--alerta); padding-right: 8px; white-space: nowrap; }
+.precos-antes:empty { display: none; }
+
+.precos-ctrl { grid-area: ctrl; display: flex; justify-content: flex-end; gap: 2px; opacity: 0; transition: opacity .12s; }
+.precos-grupo-h .precos-ctrl { flex: none; }
+.precos-linha:hover .precos-ctrl, .precos-linha:focus-within .precos-ctrl,
+.precos-grupo-h:hover .precos-ctrl, .precos-grupo-h:focus-within .precos-ctrl { opacity: 1; }
+@media (hover: none) { .precos-ctrl { opacity: 1; } }
+.precos-ctrl .btn-icon { width: 28px; height: 28px; }
+.precos-ctrl .ic { width: 15px; height: 15px; }
+.precos-add { margin: 6px 21px 10px; }
+.precos-add .ic { width: 14px; height: 14px; }
+.precos-add-grupo { width: 100%; justify-content: center; border-style: dashed; margin-bottom: 8px; color: var(--texto-2); }
+
+.precos-rodape { display: flex; align-items: center; gap: 16px; padding: 4px 28px 18px 20px; font-size: 12.5px; color: var(--texto-2); }
+.precos-nota { flex: 1; }
+.precos-marca { white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .precos .cab-acoes .btn span { display: none; }
+  .precos-topo { padding: 16px; gap: 12px; flex-wrap: wrap; }
+  .precos-logo { width: 52px; height: 52px; }
+  .precos-logo img { width: 48px; height: 48px; }
+  .precos-tit { flex-basis: calc(100% - 64px); }
+  .precos-folha input.precos-h1 { font-size: 22px; }
+  .precos-corpo { padding: 12px 12px 4px; }
+  .precos-colunas { display: none; }
+  .precos-linha { grid-template-columns: minmax(0, 1fr) 84px 96px; grid-template-areas: "cli cli ctrl" "qual pad dif"; padding: 8px 10px; }
+  .precos-rodape { padding: 4px 12px 14px 4px; flex-wrap: wrap; }
+}

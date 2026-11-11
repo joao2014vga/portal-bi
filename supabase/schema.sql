@@ -1517,3 +1517,62 @@ notify pgrst, 'reload schema';
 -- Para conferir:
 --   select consulta, jsonb_array_length(linhas) as linhas, consultado_em from public.bi_qualidade_cache order by consulta;
 --   select * from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'qualidade-diario') order by start_time desc limit 5;
+
+-- ---------------------------------------------------------------------
+-- 26. PRICE LIST ("Prices updated")
+-- Diffs por cliente editados no portal e mandados no grupo interno como
+-- imagem ou PDF. Cada card com link 'portal:precos-<chave>' é uma lista
+-- (ex.: portal:precos-europe); a lista inteira fica num jsonb:
+--   { titulo, periodo, nota, grupos: [{ nome, linhas: [{ cliente, qualidade, padrao, dif }] }] }
+-- Vê e edita quem tem acesso ao card (ADM vê tudo). Salvar marca a data do
+-- card, e quem tem acesso recebe o aviso no sininho.
+-- ---------------------------------------------------------------------
+create table if not exists public.bi_precos (
+  chave          text primary key,
+  dados          jsonb not null,
+  atualizado_em  timestamptz not null default now(),
+  atualizado_por text,
+  updated_by     uuid default auth.uid() references public.bi_perfis (id) on delete set null
+);
+
+-- quem salvou e quando: sempre o usuário logado (não vem do navegador);
+-- e a data do card da lista avança (gera o aviso "… was updated")
+create or replace function public.bi_precos_salvo()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  new.updated_by := auth.uid();
+  new.atualizado_por := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  new.atualizado_em := now();
+  update public.bi_dashboards set atualizado_em = now() where link = 'portal:precos-' || new.chave;
+  return new;
+end;
+$$;
+drop trigger if exists bi_precos_salvo on public.bi_precos;
+create trigger bi_precos_salvo before insert or update on public.bi_precos
+  for each row execute function public.bi_precos_salvo();
+
+alter table public.bi_precos enable row level security;
+drop policy if exists bi_precos_select on public.bi_precos;
+create policy bi_precos_select on public.bi_precos for select to authenticated
+  using (public.bi_ve_painel('portal:precos-' || chave));
+drop policy if exists bi_precos_insert on public.bi_precos;
+create policy bi_precos_insert on public.bi_precos for insert to authenticated
+  with check (public.bi_ve_painel('portal:precos-' || chave));
+drop policy if exists bi_precos_update on public.bi_precos;
+create policy bi_precos_update on public.bi_precos for update to authenticated
+  using (public.bi_ve_painel('portal:precos-' || chave))
+  with check (public.bi_ve_painel('portal:precos-' || chave));
+
+-- Card "Price List" na mesma categoria do Dashboard Commercial (ou na
+-- primeira categoria, se ele não existir). Depois é só liberar o acesso
+-- em Administração → Usuários. Outra lista: crie um card com link
+-- portal:precos-<nome> (ex.: portal:precos-usa).
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select coalesce(
+         (select categoria_id from public.bi_dashboards where link = 'portal:position-commercial'),
+         (select id from public.bi_categorias order by ordem, id limit 1)),
+       'Price List', 'Diffs by client, edited here and shared as an image or PDF on WhatsApp, e-mail or Teams.',
+       'portal:precos-europe', 'manual', true, 8
+where not exists (select 1 from public.bi_dashboards d where d.link = 'portal:precos-europe');
