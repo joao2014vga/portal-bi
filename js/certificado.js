@@ -227,6 +227,51 @@ export async function renderCert(link, alvo, ctx) {
   const desmarcados = new Set(hist.produtores.filter((x) => x.bloqueado).map((x) => x.nome));
   const editar = ctx.gerente && vinculos !== null;
 
+  // Contratos atrás de um número do Long / short: compras do mês (pelo vencimento),
+  // vendas do mês (pelo embarque) ou as compras da planilha que formam o estoque inicial.
+  // yms "*" = todos os meses (rodapé)
+  const abrirContratosMes = (col, yms) => {
+    const doMes = (r) => yms === "*" || r._mes === yms;
+    const quando = yms && yms !== "*" ? fmtMes(yms + "-01") : "all months";
+    const dataCurta = (iso) => (iso ? fmtData(iso.slice(0, 10)) : "—");
+    const tabela = (cab, linhas, total, colTotal) => `<div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+        <thead><tr>${cab.map(([t, n]) => `<th${n ? ' class="num"' : ""}>${esc(t)}</th>`).join("")}</tr></thead>
+        <tbody>${linhas.length ? linhas.join("") : `<tr><td colspan="${cab.length}" class="vazio-td">No contracts.</td></tr>`}</tbody>
+        ${linhas.length ? `<tfoot><tr class="total"><th scope="row" colspan="${colTotal}">Total</th>${total}</tr></tfoot>` : ""}
+      </table></div>`;
+    const resumo = (n, sacas) => `<div class="pos-alt-resumo"><span><span>Contracts</span>: <strong>${fmtN(n)}</strong></span>
+      <span><span>Bags</span>: <strong class="pos-alt-ef">${fmtN(sacas)}</strong></span></div>`;
+    let titulo, corpo;
+    if (col === "compra") {
+      const lista = cc.filter(doMes).sort((a, b) => String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")) || (b._sacas ?? 0) - (a._sacas ?? 0));
+      titulo = `${cert.codigo} purchases · ${quando}`;
+      corpo = resumo(lista.length, soma(lista, "_sacas")) + tabela(
+        [["Contract"], ["Supplier"], ["City"], ["Quality"], ["Due date"], ["Bags", true], ["Source"]],
+        lista.map((r) => `<tr><td>${esc(r.contrato)}</td><td>${esc(r.fornecedor ?? "—")}</td><td>${esc(r.cidade ?? "—")}</td>
+          <td>${esc(r.padrao ?? "—")}</td><td>${esc(dataCurta(r.vencimento))}</td>${num(r._sacas ?? 0, true)}<td>${origem(r)}</td></tr>`),
+        `${num(soma(lista, "_sacas"), true)}<td></td>`, 5);
+    } else if (col === "venda") {
+      const lista = vc.filter(doMes).sort((a, b) => String(a.embarque ?? "").localeCompare(String(b.embarque ?? "")) || (b._sacas ?? 0) - (a._sacas ?? 0));
+      titulo = `${cert.codigo} export sales · ${quando}`;
+      corpo = resumo(lista.length, soma(lista, "_sacas")) + tabela(
+        [["Contract"], ["Client (alert)"], ["Importer"], ["Quality"], ["Shipment"], ["Bags", true], ["From BRC", true], ["Source"]],
+        lista.map((r) => `<tr><td>${esc(r.contrato)}</td><td title="${esc(r.alertas ?? "")}">${esc(r._cliente ?? "—")}</td><td>${esc(r.importador ?? "—")}</td>
+          <td>${esc(r.padrao ?? "—")}</td><td>${esc(r._mes ? fmtMes(r._mes + "-01") : "—")}</td>${num(r._sacas ?? 0, true)}${num(r._vinculado ?? 0)}<td>${origem(r)}</td></tr>`),
+        `${num(soma(lista, "_sacas"), true)}${num(soma(lista, "_vinculado"))}<td></td>`, 5);
+    } else {
+      const lista = hist.linhas.filter((h) => h._inicial >= 0.5).sort((a, b) => b._inicial - a._inicial);
+      titulo = `Opening stock · end of ${fimHistorico ?? ""}`;
+      corpo = `<p class="muted pos-nota">Leftover of the BRC purchases in the history spreadsheet that were due before the control started${cert.bloqueado ? ` (without ${esc(cert.bloqueado.nome)})` : ""}.</p>`
+        + resumo(lista.length, soma(lista, "_inicial")) + tabela(
+        [["BRC contract"], ["Producer"], ["Farm"], ["Due date"], ["Bags", true], ["Used", true], ["Leftover", true]],
+        lista.map((h) => `<tr><td>${esc(h.compra)}</td><td>${esc(h.fornecedor ?? "—")}</td><td>${esc(h.fazenda ?? "—")}</td>
+          <td>${esc(dataCurta(h.vencimento))}</td>${num(Number(h.sacas) || 0)}${num(Number(h.usado) || 0)}${num(h._inicial, true)}</tr>`),
+        `${num(soma(lista.map((h) => ({ s: Number(h.sacas) || 0 })), "s"))}${num(soma(lista.map((h) => ({ u: Number(h.usado) || 0 })), "u"))}${num(soma(lista, "_inicial"), true)}`, 4);
+    }
+    modal({ titulo, largura: "modal-lg cert-modal-largo", corpo });
+    $$(".modal").at(-1)?.classList.add("pos");
+  };
+
   // Exportações do certificado (as com CP ou pela regra da Starbucks, inclusive as
   // embarcadas antes do controle e as excluídas à mão), com as compras BRC de onde
   // saem as sacas
@@ -264,6 +309,10 @@ export async function renderCert(link, alvo, ctx) {
     const necAntes = iNec > 0 ? Math.max(0, -meses[iNec - 1].acumulado) : Math.max(0, -inicial);
     const lMes = meses.find((l) => l.ym === mes);
 
+    // número que abre os contratos dele (só quando há algo atrás)
+    const clic = (td, col, yms, title = "Click to see the contracts") => (td.includes('class="zero"') ? td
+      : td.replace('<td class="num', `<td data-col="${col}" data-yms="${yms}" title="${esc(title)}" class="pos-cel-clic num`));
+
     const corpoPosicao = () => `
       <div class="pos-kpis">
         ${cert.inicio ? kpi("Opening stock", fmtN(inicial), `end of <span>${esc(fimHistorico)}</span>${cert.bloqueado && hist.excluido ? ` · excl. <span>${esc(cert.bloqueado.nome)}</span>` : ""}`, "", "inicial") : ""}
@@ -277,7 +326,7 @@ export async function renderCert(link, alvo, ctx) {
 
       <div class="pos-card">
         <div class="pos-card-h pos-card-h-linha"><div><h2>Long / short by month</h2>
-          <p class="muted">Each month starts with what is left from the previous one, adds the purchases (by due month) and takes out the export sales (by shipment month). A negative end means bags short; “To buy in the month” is only the new shortfall of that month. Click a month to see the total to buy up to it.</p></div>
+          <p class="muted">Each month starts with what is left from the previous one, adds the purchases (by due month) and takes out the export sales (by shipment month). A negative end means bags short; “To buy in the month” is only the new shortfall of that month. Click a month to see the total to buy up to it, or a number to see its contracts.</p></div>
           ${lMes ? `<div class="cert-mes-acoes"><strong>${esc(fmtMes(mes + "-01"))}</strong>
             ${lMes.nc ? `<button type="button" class="btn" data-ver-mes="produtor" title="Open the purchases of this month">Purchases (${lMes.nc})</button>` : ""}
             ${lMes.nv ? `<button type="button" class="btn" data-ver-mes="exportacoes" title="Open the export sales of this month">Export sales (${lMes.nv})</button>` : ""}
@@ -291,10 +340,10 @@ export async function renderCert(link, alvo, ctx) {
             <th class="num" title="Bags that this month adds to the shortfall: buy them to cover its shipments">To buy in the month</th></tr></thead>
           <tbody>${meses.length ? meses.map((l, i) => `<tr class="clicavel ${l.ym === mes ? "linha-sel" : ""}" data-mes="${l.ym}" ${l.ym === atual ? `title="Current month"` : ""}>
             <td>${l.ym === atual ? "<strong>" : ""}${esc(fmtMes(l.ym + "-01"))}${l.ym === atual ? "</strong> <span class=\"muted\">· today</span>" : ""}</td>
-            ${i === 0 && inicial ? num(l.abertura).replace("<td ", `<td title="${esc(`Opening stock · end of ${fimHistorico ?? ""}`)}" `) : num(l.abertura)}${num(l.compras)}${num(-l.vendas)}${num(l.acumulado, true)}
+            ${i === 0 && inicial ? clic(num(l.abertura), "inicial", "", `Opening stock · end of ${fimHistorico ?? ""} · click to see the purchases`) : num(l.abertura)}${clic(num(l.compras), "compra", l.ym)}${clic(num(-l.vendas), "venda", l.ym)}${num(l.acumulado, true)}
             <td class="num ${l.comprar >= 0.5 ? "cert-falta forte" : ""}">${l.comprar >= 0.5 ? esc(fmtN(l.comprar)) : `<span class="zero">–</span>`}</td></tr>`).join("")
             : `<tr><td colspan="6" class="vazio-td">No ${esc(cert.codigo)} contracts yet.</td></tr>`}</tbody>
-          ${meses.length ? `<tfoot><tr><td>Total</td>${num(inicial)}${num(soma(meses, "compras"))}${num(-soma(meses, "vendas"))}${num(saldoFinal, true)}<td></td></tr></tfoot>` : ""}
+          ${meses.length ? `<tfoot><tr><td>Total</td>${clic(num(inicial), "inicial", "")}${clic(num(soma(meses, "compras")), "compra", "*")}${clic(num(-soma(meses, "vendas")), "venda", "*")}${num(saldoFinal, true)}<td></td></tr></tfoot>` : ""}
         </table></div>
       </div>`;
 
@@ -347,6 +396,11 @@ export async function renderCert(link, alvo, ctx) {
     $("#certLimparMes", alvo)?.addEventListener("click", () => { mes = ""; desenhar(); });
     // mês clicado: o "To buy" passa a ser até ele; os contratos do mês abrem pelos botões
     $$("[data-mes]", alvo).forEach((tr) => tr.addEventListener("click", () => { mes = mes === tr.dataset.mes ? "" : tr.dataset.mes; desenhar(); }));
+    // número da tabela: abre os contratos atrás dele (sem marcar o mês)
+    $$(".pos-cel-clic[data-col]", alvo).forEach((td) => td.addEventListener("click", (e) => {
+      e.stopPropagation();
+      abrirContratosMes(td.dataset.col, td.dataset.yms);
+    }));
     $$("[data-ver-mes]", alvo).forEach((b) => b.addEventListener("click", () => {
       irPara(b.dataset.verMes); busca = "";
       if (aba === "produtor") { venceDe = mes; venceAte = mes; mes = ""; } else filtroExp = "posicao";
