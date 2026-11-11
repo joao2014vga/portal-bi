@@ -192,16 +192,28 @@ const guardarFonteVista = (f) => { try { sessionStorage.setItem(CHAVE_FONTE, f);
 const NOME_FONTE = { planilha: "Spreadsheet", api: "Digisul API" };
 // Painéis em que a oficial é sempre o Digisul, qualquer que seja a de bi_config
 const PAINEIS_SO_API = new Set(["portal:position-commercial", "portal:position-physical"]);
+// Painéis que mudam com a data escolhida no topo: só usam o resumo, que cada versão guarda.
+// Os demais (contratos, vendas, compras…) vêm do detalhe, que existe só para a última versão.
+const PAINEIS_COM_DATA = new Set(["portal:position-overview", "portal:position-physical"]);
+const CHAVE_DATA = "bi-position-data";
+const dataVista = () => { try { return sessionStorage.getItem(CHAVE_DATA); } catch { return null; } };
+const guardarDataVista = (d) => { try { if (d) sessionStorage.setItem(CHAVE_DATA, d); else sessionStorage.removeItem(CHAVE_DATA); } catch { /* fica a última */ } };
 
 export async function renderPosition(link, alvo, ctx) {
   limparGraficos();
   vigiarNegativos(alvo);
   alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading Position…</div>`;
-  let carga, oficial, fonte;
+  let carga, oficial, fonte, datas = [];
   try {
     oficial = PAINEIS_SO_API.has(link) ? "api" : await ctx.api.positionFonte();
     fonte = (ctx.gerente && fonteVista()) || oficial;
     carga = await ctx.api.positionUltima(fonte);
+    // data escolhida no topo: a última versão da fonte naquele dia (sem dia escolhido, a mais recente)
+    if (carga && PAINEIS_COM_DATA.has(link)) {
+      datas = (await ctx.api.positionDatas?.(fonte).catch(() => null)) ?? [];
+      const pedida = dataVista();
+      if (pedida && pedida !== carga.data_ref && datas.includes(pedida)) carga = (await ctx.api.positionUltima(fonte, pedida)) ?? carga;
+    }
   } catch (e) {
     alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Position data is not available</h3><p>${esc(e.message)}</p></div>`;
     return;
@@ -212,7 +224,8 @@ export async function renderPosition(link, alvo, ctx) {
     // dados que só existem pela API (logística), qualquer que seja a fonte na tela
     positionDetalheApi: (tipos) => ctx.api.positionDetalhe(tipos, "api"),
   };
-  const c = { ...ctx, api, fonte, oficial };
+  // historico: a tela mostra um dia que não é o mais recente (sem a composição dos números)
+  const c = { ...ctx, api, fonte, oficial, datas, historico: !!carga && datas.length > 0 && carga.data_ref !== datas[0] };
   const topo = barraTopo(carga, c);
   if (!carga) {
     alvo.innerHTML = `<div class="pos">${topo}<div class="vazio">${icon("chart")}<h3>${fonte === "api" ? "No Digisul update yet" : "No Position uploaded yet"}</h3>
@@ -238,9 +251,13 @@ function barraTopo(carga, ctx) {
   const quando = !carga ? "" : api
     ? `updated from Digisul ${tempoRelativo(carga.created_at)}${carga.enviado_por === "Manual" ? " (manual)" : ""}`
     : `uploaded ${tempoRelativo(carga.created_at)}${carga.enviado_por ? ` by ${carga.enviado_por}` : ""}`;
+  // dia da Position: com mais de uma versão, vira um seletor (Overview e Physical Position)
+  const dia = carga && ctx.datas?.length > 1
+    ? `<select id="posDia" class="pos-dia" aria-label="Position date">${ctx.datas.map((d, i) => `<option value="${d}" ${d === carga.data_ref ? "selected" : ""}>${esc(fmtData(d))}${i === 0 ? " · latest" : ""}</option>`).join("")}</select>`
+    : carga ? `<strong>${esc(fmtData(carga.data_ref))}</strong>` : "";
   return `<div class="pos-topo">
     <div class="pos-data">${icon("clock")}${carga
-      ? `<span>Position as of <strong>${esc(fmtData(carga.data_ref))}</strong> · ${esc(quando)}</span>`
+      ? `<span>Position as of ${dia} · ${esc(quando)}</span>`
       : `<span>${api ? "No Digisul update yet" : "No Position uploaded yet"}</span>`}<span class="muted">· all figures in 60 kg bags</span></div>
     ${ctx.gerente ? `<div class="pos-acoes">
       ${segmentos("posFonte", Object.entries(NOME_FONTE).map(([k, n]) => [k, k === ctx.oficial ? `${n} · official` : n]), ctx.fonte)}
@@ -248,11 +265,17 @@ function barraTopo(carga, ctx) {
       <button class="btn" id="posFuturo" title="Paste the broker confirmation e-mail">${icon("plus")}<span>New futures trade</span></button>
       <button class="btn btn-primary" id="posUpload">${icon("upload")}<span>Upload Position</span></button>
     </div>` : ""}
-  </div>`;
+  </div>
+  ${ctx.historico ? `<div class="pos-historico">${icon("clock")}<span>You are viewing the Position of <strong>${esc(fmtData(carga.data_ref))}</strong>, not the latest (${esc(fmtData(ctx.datas[0]))}).
+    Clicking a number to see its contracts only works on the latest Position.</span>
+    <button type="button" class="link" id="posDiaUltima">Back to the latest</button></div>` : ""}`;
 }
 
 function ligarTopo(alvo, ctx) {
   ligarSegmentos(alvo, "posFonte", (f) => { guardarFonteVista(f); ctx.recarregar(); });
+  // dia da Position (a mais recente não fica guardada: amanhã a tela abre no dia novo)
+  $("#posDia", alvo)?.addEventListener("change", (e) => { guardarDataVista(e.target.value === ctx.datas[0] ? null : e.target.value); ctx.recarregar(); });
+  $("#posDiaUltima", alvo)?.addEventListener("click", () => { guardarDataVista(null); ctx.recarregar(); });
   $("#posSync", alvo)?.addEventListener("click", async (ev) => {
     const b = ev.currentTarget;
     b.disabled = true;
@@ -672,21 +695,19 @@ async function painelOverview(alvo, carga, ctx) {
     ctx.gerente ? ctx.api.positionUltima(ctx.fonte === "api" ? "planilha" : "api").catch(() => null) : null,
     ctx.gerente ? ctx.api.positionModeloInfo().catch(() => null) : null,
   ]);
-  // planilha × API na mesma data: por padrão, a versão da API do dia da planilha
-  // (a API guarda a última atualização de cada dia); o seletor troca o dia da API
-  const cmp = { pl: null, ap: null, dia: null, datas: [], cache: new Map() };
-  const versaoApi = async (dia) => {
-    if (!dia) return null;
-    if (!cmp.cache.has(dia)) cmp.cache.set(dia, await ctx.api.positionVersaoDia?.("api", dia).catch(() => null) ?? null);
-    return cmp.cache.get(dia);
-  };
+  // planilha × API no dia da tela (a data do topo): a outra fonte entra com a versão do
+  // mesmo dia; sem versão nesse dia, com a mais recente (e o quadro avisa as datas diferentes)
+  const cmp = { pl: null, ap: null, outraDatas: [] };
   if (ctx.gerente) {
-    cmp.pl = ctx.fonte === "api" ? outra : carga;
-    const apUltima = ctx.fonte === "api" ? carga : outra;
-    if (apUltima) cmp.cache.set(apUltima.data_ref, apUltima);
-    cmp.datas = (await ctx.api.positionDatas?.("api").catch(() => null)) ?? (apUltima ? [apUltima.data_ref] : []);
-    cmp.dia = cmp.pl && cmp.datas.includes(cmp.pl.data_ref) ? cmp.pl.data_ref : apUltima?.data_ref ?? null;
-    cmp.ap = await versaoApi(cmp.dia);
+    const nomeOutra = ctx.fonte === "api" ? "planilha" : "api";
+    const [doDia, outraDatas] = await Promise.all([
+      outra && outra.data_ref !== carga.data_ref ? ctx.api.positionVersaoDia?.(nomeOutra, carga.data_ref).catch(() => null) : outra,
+      ctx.api.positionDatas?.(nomeOutra).catch(() => null),
+    ]);
+    const daOutra = doDia ?? outra;
+    [cmp.pl, cmp.ap] = ctx.fonte === "api" ? [daOutra, carga] : [carga, daOutra];
+    cmp.outraDatas = outraDatas ?? [];
+    cmp.nomeOutra = nomeOutra;
   }
 
   const desenhar = async () => {
@@ -756,7 +777,6 @@ async function painelOverview(alvo, carga, ctx) {
 
     $$("[data-grupo]", alvo).forEach((el) => el.addEventListener("click", () => { grupo = el.dataset.grupo; desenhar(); }));
     $("#posOficial", alvo)?.addEventListener("click", () => trocarFonteOficial(ctx));
-    $("#cmpDia", alvo)?.addEventListener("change", async (e) => { cmp.dia = e.target.value; cmp.ap = await versaoApi(cmp.dia); desenhar(); });
     ligarAlteracoes(alvo, desenhar);
     // detalhamento das compras e vendas: abre/fecha por grupo ou tudo de uma vez
     $$("[data-abrir]", alvo).forEach((el) => el.addEventListener("click", () => {
@@ -937,20 +957,20 @@ const FILTRO_GRUPO_ALT = { arabica: { especie: "A" }, robusta: { especie: "C" },
 const LINHAS_COMPARACAO = [["purchases", "Purchases"], ["inventory", "Inventory"], ["exp_sales", "Exp sales"], ["int_sales", "Int sales"],
   ["futures", "Futures"], ["net_diff", "Net diff position"], ["net_outright", "Net outright"]];
 
-// cmp: { pl: planilha, ap: versão da API do dia escolhido, dia, datas: dias com versão da API }
+// cmp: { pl: planilha, ap: API (do dia da tela quando a outra fonte tem esse dia), outraDatas, nomeOutra }
 function cardComparacao(grupo, cmp, info, ctx) {
-  const { pl, ap, dia, datas } = cmp;
+  const { pl, ap } = cmp;
   const total = (c, k) => c?.resumo?.termm?.[grupo]?.total?.[k] ?? null;
   const outraFonte = ctx.oficial === "api" ? "planilha" : "api";
-  const seletor = datas.length ? `<label class="pos-cmp-dia"><span class="muted">Digisul API on</span>
-      <select id="cmpDia" aria-label="Digisul API day">${datas.map((d) => `<option value="${d}" ${d === dia ? "selected" : ""}>${esc(fmtData(d))}${pl && d === pl.data_ref ? " · spreadsheet date" : ""}</option>`).join("")}</select></label>` : "";
   const datasDiferentes = pl && ap && pl.data_ref !== ap.data_ref;
+  // dia mais recente que as duas fontes têm: é o que dá para comparar escolhendo no topo
+  const comum = (ctx.datas ?? []).find((d) => cmp.outraDatas.includes(d));
   return `<section class="pos-card">
-    <div class="pos-card-h pos-card-h-linha"><div><h2>Spreadsheet × Digisul API · ${NOME_GRUPO[grupo]}</h2>
-      <p class="muted">Compares the spreadsheet with the Digisul API of the same day (the API keeps its last update of each day). Pick another day to compare.</p></div>
-      <div class="pos-acoes">${seletor}</div></div>
-    ${datasDiferentes ? `<p class="pos-nota pos-cmp-aviso">${icon("alert")} <span>Different dates: spreadsheet of <strong>${esc(fmtData(pl.data_ref))}</strong>, API of <strong>${esc(fmtData(ap.data_ref))}</strong>.
-      The difference includes everything that changed in Digisul in between${datas.includes(pl.data_ref) ? "." : " — there is no API version for the spreadsheet date."}</span></p>` : ""}
+    <div class="pos-card-h"><h2>Spreadsheet × Digisul API · ${NOME_GRUPO[grupo]}</h2>
+      <p class="muted">Compares both sources on the date chosen at the top (the API keeps its last update of each day).</p></div>
+    ${datasDiferentes ? `<p class="pos-nota pos-cmp-aviso">${icon("alert")} <span>Different dates: spreadsheet of <strong>${esc(fmtData(pl.data_ref))}</strong>, API of <strong>${esc(fmtData(ap.data_ref))}</strong> —
+      the difference includes everything that changed in Digisul in between.
+      ${comum ? `Pick <strong>${esc(fmtData(comum))}</strong> at the top to compare the same day.` : `${esc(NOME_FONTE[cmp.nomeOutra])} has no version for ${esc(fmtData(ctx.fonte === "api" ? ap.data_ref : pl.data_ref))}.`}</span></p>` : ""}
     ${pl && ap ? `<div class="tabela-wrap"><table class="tabela tabela-num">
       <thead><tr><th></th><th>Spreadsheet <span class="muted">${esc(fmtData(pl.data_ref))} · uploaded ${esc(dataHoraBR(pl.created_at))}</span></th>
         <th>Digisul API <span class="muted">${esc(fmtData(ap.data_ref))} · updated ${esc(dataHoraBR(ap.created_at))}</span></th><th>Difference</th></tr></thead>
@@ -1037,6 +1057,7 @@ const TIPOS_TERMM = [["c", "Purchases", "Contract", "Supplier"], ["v", "Export s
 let composicaoTermMCache = null;
 
 async function abrirComposicaoTermM(ctx, grupo, col, mes, valor) {
+  if (ctx.historico) { toast(tr("The contracts behind each number are only kept for the latest Position."), "erro"); return; }
   try {
     composicaoTermMCache ??= ctx.api.positionDetalhe(["termm_itens"]).then((d) => d.termm_itens ?? null);
     const ti = await composicaoTermMCache;
@@ -1261,6 +1282,7 @@ let composicaoCache = null;
 
 async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor }) {
   if (!ctx?.api?.positionDetalhe) return;
+  if (ctx.historico) { toast(tr("The contracts behind each number are only kept for the latest Position."), "erro"); return; }
   try {
     composicaoCache ??= ctx.api.positionDetalhe(["fisica_itens"]).then((d) => d.fisica_itens ?? null);
     const fi = await composicaoCache;
