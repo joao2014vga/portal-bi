@@ -142,8 +142,11 @@ function posicaoMensal(compras, vendas, inicial = 0, inicio = null) {
     const ym = `${y}-${String(m).padStart(2, "0")}`;
     const l = meses.get(ym) ?? { ym, compras: 0, vendas: 0, nc: 0, nv: 0 };
     l.saldo = l.compras - l.vendas;
+    l.abertura = acum;
     acum += l.saldo;
     l.acumulado = acum;
+    // compra do mês: quanto a falta cresce neste mês (o mês em que as compras diminuem a falta não pede compra)
+    l.comprar = Math.max(0, Math.max(0, -acum) - Math.max(0, -l.abertura));
     lista.push(l);
     if (ym >= fim) break;
     if (++m > 12) { m = 1; y++; }
@@ -274,20 +277,24 @@ export async function renderCert(link, alvo, ctx) {
 
       <div class="pos-card">
         <div class="pos-card-h pos-card-h-linha"><div><h2>Long / short by month</h2>
-          <p class="muted">Purchases by due month · export sales by shipment month · running balance. Click a month to see what to buy up to it.</p></div>
+          <p class="muted">Each month starts with what is left from the previous one, adds the purchases (by due month) and takes out the export sales (by shipment month). A negative end means bags short; “To buy in the month” is only the new shortfall of that month. Click a month to see the total to buy up to it.</p></div>
           ${lMes ? `<div class="cert-mes-acoes"><strong>${esc(fmtMes(mes + "-01"))}</strong>
             ${lMes.nc ? `<button type="button" class="btn" data-ver-mes="produtor" title="Open the purchases of this month">Purchases (${lMes.nc})</button>` : ""}
             ${lMes.nv ? `<button type="button" class="btn" data-ver-mes="exportacoes" title="Open the export sales of this month">Export sales (${lMes.nv})</button>` : ""}
             <button type="button" class="link" id="certLimparMes">${icon("x")}Clear month</button></div>` : ""}</div>
         <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
-          <thead><tr><th>Month</th><th class="num">Purchases</th><th class="num">Sales</th><th class="num">Net</th><th class="num">Running balance</th></tr></thead>
-          <tbody>${inicial ? `<tr class="cert-abertura" title="Leftover of the purchases in the history spreadsheet due before the control starts"><td>Opening stock <span class="muted">· end of <span>${esc(fimHistorico)}</span></span></td>
-            <td></td><td></td><td></td>${num(inicial, true)}</tr>` : ""}
-            ${meses.length ? meses.map((l) => `<tr class="clicavel ${l.ym === mes ? "linha-sel" : ""}" data-mes="${l.ym}" ${l.ym === atual ? `title="Current month"` : ""}>
+          <thead><tr><th>Month</th>
+            <th class="num" title="What is left from the previous month (the first month starts with the opening stock). Negative = already short">Start of month</th>
+            <th class="num" title="CP purchases due in the month">Purchases</th>
+            <th class="num" title="CP export sales shipped in the month">Sales</th>
+            <th class="num" title="Start of month + purchases − sales. Negative = bags short up to this month">End of month</th>
+            <th class="num" title="Bags that this month adds to the shortfall: buy them to cover its shipments">To buy in the month</th></tr></thead>
+          <tbody>${meses.length ? meses.map((l, i) => `<tr class="clicavel ${l.ym === mes ? "linha-sel" : ""}" data-mes="${l.ym}" ${l.ym === atual ? `title="Current month"` : ""}>
             <td>${l.ym === atual ? "<strong>" : ""}${esc(fmtMes(l.ym + "-01"))}${l.ym === atual ? "</strong> <span class=\"muted\">· today</span>" : ""}</td>
-            ${num(l.compras)}${num(-l.vendas)}${num(l.saldo)}${num(l.acumulado, true)}</tr>`).join("")
-            : `<tr><td colspan="5" class="vazio-td">No ${esc(cert.codigo)} contracts yet.</td></tr>`}</tbody>
-          ${meses.length ? `<tfoot><tr><td>Total</td>${num(soma(meses, "compras"))}${num(-soma(meses, "vendas"))}${num(saldoFinal - inicial)}${num(saldoFinal, true)}</tr></tfoot>` : ""}
+            ${i === 0 && inicial ? num(l.abertura).replace("<td ", `<td title="${esc(`Opening stock · end of ${fimHistorico ?? ""}`)}" `) : num(l.abertura)}${num(l.compras)}${num(-l.vendas)}${num(l.acumulado, true)}
+            <td class="num ${l.comprar >= 0.5 ? "cert-falta forte" : ""}">${l.comprar >= 0.5 ? esc(fmtN(l.comprar)) : `<span class="zero">–</span>`}</td></tr>`).join("")
+            : `<tr><td colspan="6" class="vazio-td">No ${esc(cert.codigo)} contracts yet.</td></tr>`}</tbody>
+          ${meses.length ? `<tfoot><tr><td>Total</td>${num(inicial)}${num(soma(meses, "compras"))}${num(-soma(meses, "vendas"))}${num(saldoFinal, true)}<td></td></tr></tfoot>` : ""}
         </table></div>
       </div>`;
 
@@ -933,10 +940,9 @@ async function exportarExcel(botao, { cert, hist, meses, inicial, fimHistorico, 
         [T("Total"), p.reduce((s, x) => s + x.n, 0), n(soma(p, "sacas")), n(soma(p, "usado")), n(soma(p, "estoque")), n(soma(p, "futuro")), n(inicial), ""]],
       [40, 10, 12, 12, 14, 12, 14, 10]);
 
-    const posicao = aba(["Month", "Purchases", "Sales", "Net", "Running balance"],
-      [...(inicial ? [[`${T("Opening stock")} (${fimHistorico ?? ""})`, null, null, null, n(inicial)]] : []),
-        ...meses.map((l) => [fmtMes(`${l.ym}-01`), n(l.compras), n(-l.vendas), n(l.saldo), n(l.acumulado)])],
-      [24, 12, 12, 12, 16]);
+    const posicao = aba(["Month", "Start of month", "Purchases", "Sales", "End of month", "To buy in the month"],
+      meses.map((l) => [fmtMes(`${l.ym}-01`), n(l.abertura), n(l.compras), n(-l.vendas), n(l.acumulado), l.comprar >= 0.5 ? n(l.comprar) : null]),
+      [24, 14, 12, 12, 14, 18]);
     for (const ws of [compras, vinculos, produtores, posicao]) {
       for (const [ref, c] of Object.entries(ws)) if (ref[0] !== "!" && c.t === "n" && !/^[A-Z]+1$/.test(ref)) c.z ??= "#,##0;(#,##0)";
     }
@@ -1004,7 +1010,8 @@ async function salvarImagem(botao, d) {
     const th = (t, dir = true) => `<th style="text-align:${dir ? "right" : "left"};padding:8px 14px;font-size:11.5px;font-weight:600;color:${cor.texto2};text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid ${cor.borda}">${t}</th>`;
     const linhas = d.meses.map((l) => `<tr style="border-top:1px solid ${cor.borda};${l.ym === d.atual ? `background:${cor.claro};` : ""}">
       <td style="padding:7px 14px">${l.ym === d.atual ? `<strong>${mesEn(l.ym)}</strong> <span style="color:${cor.texto2}">· today</span>` : mesEn(l.ym)}</td>
-      ${td(l.compras)}${td(-l.vendas)}${td(l.saldo)}${td(l.acumulado, true)}</tr>`).join("");
+      ${td(l.abertura)}${td(l.compras)}${td(-l.vendas)}${td(l.acumulado, true)}
+      <td style="text-align:right;padding:7px 14px;font-weight:700;color:${l.comprar >= 0.5 ? cor.alerta : cor.texto3}">${l.comprar >= 0.5 ? n(l.comprar) : "–"}</td></tr>`).join("");
 
     caixa.setAttribute("data-sem-traducao", "");
     caixa.style.cssText = `position:fixed;left:-10000px;top:0;width:920px;padding:24px;background:#f0f4f2;color:${cor.texto};font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13.5px;line-height:1.45`;
@@ -1019,13 +1026,12 @@ async function salvarImagem(botao, d) {
       <div style="display:flex;gap:10px;margin-bottom:16px">${cards}</div>
       <div style="background:#fff;border:1px solid ${cor.borda};border-radius:10px;overflow:hidden">
         <div style="padding:12px 14px 8px"><div style="font-size:15px;font-weight:700">Long / short by month</div>
-          <div style="font-size:11.5px;color:${cor.texto2}">Purchases by due month · export sales by shipment month · running balance</div></div>
+          <div style="font-size:11.5px;color:${cor.texto2}">Each month starts with what is left from the previous one · purchases by due month · export sales by shipment month · negative end = bags short · to buy in the month = new shortfall of that month</div></div>
         <table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">
-          <thead><tr>${th("Month", false)}${th("Purchases")}${th("Sales")}${th("Net")}${th("Running balance")}</tr></thead>
-          <tbody>${d.inicial ? `<tr style="background:#f7faf8"><td style="padding:7px 14px;font-style:italic">Opening stock <span style="color:${cor.texto2}">· end of ${fim}</span></td>
-            <td></td><td></td><td></td>${td(d.inicial, true)}</tr>` : ""}${linhas}</tbody>
+          <thead><tr>${th("Month", false)}${th("Start of month")}${th("Purchases")}${th("Sales")}${th("End of month")}${th("To buy in the month")}</tr></thead>
+          <tbody>${linhas}</tbody>
           ${d.meses.length ? `<tfoot><tr style="border-top:2px solid ${cor.borda};font-weight:700;background:#f7faf8"><td style="padding:8px 14px">Total</td>
-            ${td(soma(d.meses, "compras"), true)}${td(-soma(d.meses, "vendas"), true)}${td(d.saldoFinal - d.inicial, true)}${td(d.saldoFinal, true)}</tr></tfoot>` : ""}
+            ${td(d.inicial, true)}${td(soma(d.meses, "compras"), true)}${td(-soma(d.meses, "vendas"), true)}${td(d.saldoFinal, true)}<td></td></tr></tfoot>` : ""}
         </table>
       </div>`;
     document.body.appendChild(caixa);
