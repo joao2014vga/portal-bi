@@ -760,3 +760,9 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .qa-mapa td, .qa-mapa th { padding: 7px 10px; text-align: center; }
 .qa-mapa td:first-child { font-weight: 600; text-align: left; }
 .qa-mapa td.qa-diag { font-weight: 600; outline: 1px solid color-mix(in srgb, var(--serie-1) 45%, transparent); outline-offset: -1px; }
+
+/* Position · Spreadsheet × Digisul API: dia da API e aviso de datas diferentes */
+.pos-cmp-dia { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; }
+.pos-cmp-dia select { height: 34px; padding: 0 28px 0 10px; font-size: 13px; }
+.pos-cmp-aviso { color: var(--alerta); margin: 0 0 10px; }
+.pos-cmp-aviso .ic { color: var(--alerta); }
