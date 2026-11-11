@@ -839,7 +839,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .precos-add .ic { width: 14px; height: 14px; }
 .precos-add-grupo { width: 100%; justify-content: center; border-style: dashed; margin-bottom: 8px; color: var(--texto-2); }
 
-.precos-rodape { display: flex; align-items: center; gap: 16px; padding: 4px 28px 18px 20px; font-size: 12.5px; color: var(--texto-2); }
+.precos-rodape { display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 4px 28px 18px 20px; font-size: 12.5px; color: var(--texto-2); }
 .precos-nota { flex: 1; }
 .precos-marca { white-space: nowrap; }
 
@@ -854,4 +854,23 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
   .precos-colunas { display: none; }
   .precos-linha { grid-template-columns: minmax(0, 1fr) 84px 96px; grid-template-areas: "cli cli ctrl" "qual pad dif"; padding: 8px 10px; }
   .precos-rodape { padding: 4px 12px 14px 4px; flex-wrap: wrap; }
+}
+
+/* Price list: extras (EUDR, RFA…) e observações */
+.precos-secao { font-size: 13px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); padding: 5px 9px; }
+.precos-secao-dica { font-size: 12px; color: var(--texto-3); }
+.precos-extra { grid-template-areas: "cli cli val val ctrl"; }
+.precos-val-box { grid-area: val; }
+.precos-folha input.precos-val { font-size: 15px; }
+.precos-notas { margin-bottom: 8px; }
+.precos-folha textarea.precos-nota {
+  width: 100%; height: auto; min-height: 0; padding: 10px 14px; resize: none; overflow: hidden;
+  border: 1px solid var(--borda); border-left: 4px solid #1d4a3d; border-radius: 10px;
+  background: var(--sup); color: var(--texto); font: 500 14px/1.6 var(--fonte);
+}
+.precos-folha textarea.precos-nota:focus { border-color: var(--brand); border-left-color: #1d4a3d; box-shadow: 0 0 0 3px var(--brand-claro); outline: none; }
+.precos-folha textarea.precos-nota::placeholder { color: var(--texto-3); font-weight: 400; }
+@media (max-width: 640px) {
+  .precos-extra { grid-template-areas: "cli cli ctrl" "val val val"; }
+  .precos-secao-dica { display: none; }
 }

@@ -1523,7 +1523,8 @@ notify pgrst, 'reload schema';
 -- Diffs por cliente editados no portal e mandados no grupo interno como
 -- imagem ou PDF. Cada card com link 'portal:precos-<chave>' é uma lista
 -- (ex.: portal:precos-europe); a lista inteira fica num jsonb:
---   { titulo, periodo, nota, grupos: [{ nome, linhas: [{ cliente, qualidade, padrao, dif }] }] }
+--   { titulo, periodo, grupos: [{ nome, linhas: [{ cliente, qualidade, padrao, dif }] }],
+--     extras: [{ nome, valor }], nota }   (extras: EUDR, RFA…; nota: observações, uma por linha)
 -- Vê e edita quem tem acesso ao card (ADM vê tudo). Salvar marca a data do
 -- card, e quem tem acesso recebe o aviso no sininho.
 -- ---------------------------------------------------------------------

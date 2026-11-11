@@ -22,53 +22,67 @@ const FONTE = `Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`;
 
 const CAMPOS = ["cliente", "qualidade", "padrao", "dif"];
 const linhaNova = (cliente = "", qualidade = "", padrao = "", dif = "") => ({ cliente, qualidade, padrao, dif });
+// extras: custos e prêmios somados ao preço (ex.: EUDR 2 cents, RFA 5 cents)
+const extraNovo = (nome = "", valor = "") => ({ nome, valor });
 
 // ponto de partida de uma lista nova: o exemplo que o comercial manda hoje
 const MODELO = () => ({
   titulo: "Prices updated",
   periodo: "January to June",
-  nota: "",
   grupos: [
     { nome: "Germany", linhas: [
-      linhaNova("Melitta", "fine", "BC5", "-22"),
-      linhaNova("Dallmayr", "good", "BC5+", "-23"),
-      linhaNova("Darboven", "good", "BC6-", "-30"),
-      linhaNova("Coffeein", "good", "BC5", "-23"),
-      linhaNova("Westhoff", "fine", "BC6", "-30"),
-      linhaNova("LIDL", "fine", "BC6-", "-32"),
-      linhaNova("LIDL", "grinders 12up", "", "-75"),
+      linhaNova("Melitta", "fine", "BC5", "-25"),
+      linhaNova("Dallmayr", "good", "BC5+", "-18"),
+      linhaNova("Darboven", "good", "BC6-", "-35"),
+      linhaNova("Coffeein", "good", "BC5", "-25"),
+      linhaNova("Westhoff", "fine", "BC6", "-35"),
+      linhaNova("LIDL", "fine", "BC6-", "-35"),
+      linhaNova("LIDL", "grinders 12up", "", "-65"),
     ] },
     { nome: "", linhas: [
-      linhaNova("JDE", "Primeiro", "BC5", "-23"),
-      linhaNova("JJ", "quality", "BC5", "-23"),
+      linhaNova("JDE", "Primeiro", "BC5", "-25"),
+      linhaNova("JJ", "quality", "BC5", "-25"),
+      linhaNova("Lavazza", "", "LA3", ""),
+      linhaNova("Lavazza", "", "LA6", ""),
     ] },
     { nome: "", linhas: [
-      linhaNova("Mother Parker", "", "BC3", "Level"),
-      linhaNova("Gavin", "", "BC3", "Level"),
+      linhaNova("Mother Parker", "", "BC3", "+2"),
+      linhaNova("Gavin", "", "BC3", "+2"),
+      linhaNova("Folger", "", "C", "-60"),
+      linhaNova("Folger", "", "B", "-35"),
     ] },
   ],
+  extras: [extraNovo("EUDR", "2 cents"), extraNovo("RFA", "5 cents")],
+  nota: "Please add the uplift (financial costs, packages and certified)\nVolume to be confirmed",
 });
 
 // garante o formato (dado antigo ou editado à mão no banco não quebra a tela)
 function normalizar(d) {
   const s = (v) => (v == null ? "" : String(v));
   return {
-    titulo: s(d?.titulo), periodo: s(d?.periodo), nota: s(d?.nota),
+    titulo: s(d?.titulo), periodo: s(d?.periodo),
     grupos: (Array.isArray(d?.grupos) ? d.grupos : []).map((g) => ({
       nome: s(g?.nome),
       linhas: (Array.isArray(g?.linhas) ? g.linhas : []).map((l) => linhaNova(s(l?.cliente), s(l?.qualidade), s(l?.padrao), s(l?.dif))),
     })),
+    extras: (Array.isArray(d?.extras) ? d.extras : []).map((x) => extraNovo(s(x?.nome), s(x?.valor))),
+    nota: s(d?.nota),
   };
 }
+
+// observações: uma por linha, sem espaços sobrando nem linhas em branco repetidas
+const linhasNota = (v) => v.split(/\r?\n/).map((x) => x.trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 
 // o que vai para o banco e para a imagem: sem espaços sobrando, sem linhas e grupos vazios
 function limpo(d) {
   const t = (v) => v.trim();
   return {
-    titulo: t(d.titulo), periodo: t(d.periodo), nota: t(d.nota),
+    titulo: t(d.titulo), periodo: t(d.periodo),
     grupos: d.grupos
       .map((g) => ({ nome: t(g.nome), linhas: g.linhas.map((l) => linhaNova(t(l.cliente), t(l.qualidade), t(l.padrao), fmtDif(l.dif))).filter((l) => CAMPOS.some((c) => l[c])) }))
       .filter((g) => g.nome || g.linhas.length),
+    extras: d.extras.map((x) => extraNovo(t(x.nome), t(x.valor))).filter((x) => x.nome || x.valor),
+    nota: linhasNota(d.nota),
   };
 }
 
@@ -100,11 +114,14 @@ function texto(d) {
     l.push("");
     if (g.nome) l.push(`*${g.nome}*`);
     for (const r of g.linhas) {
-      const quem = [r.cliente, r.qualidade].filter(Boolean).join(" ");
-      const preco = [r.padrao, r.dif].filter(Boolean).join(" ");
-      l.push(quem && preco ? `${quem} = ${preco}` : quem || preco);
+      // como circula: "Melitta fine = BC5 -25", mas sem qualidade o padrão vai antes: "Folger C = -60"
+      const quem = [r.cliente, r.qualidade || r.padrao].filter(Boolean).join(" ");
+      const preco = [r.qualidade ? r.padrao : "", r.dif].filter(Boolean).join(" ");
+      // sem dif (preço ainda em aberto) fica "Lavazza LA3 =", como já circula
+      l.push(quem ? `${quem} = ${preco}`.trimEnd() : preco);
     }
   }
+  if (d.extras.length) l.push("", ...d.extras.map((x) => [x.nome, x.valor].filter(Boolean).join(" ")));
   if (d.nota) l.push("", d.nota);
   return l.join("\n");
 }
@@ -155,13 +172,17 @@ export async function renderPrecos(link, alvo, ctx) {
     salvo?.grupos.forEach((g) => g.linhas.forEach((l) => m.set(chaveLinha(g, l), fmtDif(l.dif))));
     return m;
   };
-  // "was -22" ao lado do dif alterado (só na tela; a imagem sai limpa)
-  const antes = (mapa, g, l) => {
+  // "was -22" ao lado do valor alterado (só na tela; a imagem sai limpa)
+  const rotuloAntes = (v, atual, preenchido) => {
     if (!salvo) return null;
-    const v = mapa.get(chaveLinha(g, l));
-    if (v === undefined) return l.cliente.trim() || l.dif.trim() ? "new" : null;
-    return v === fmtDif(l.dif) ? null : `was ${v || "–"}`;
+    if (v === undefined) return preenchido ? "new" : null;
+    return v === atual ? null : `was ${v || "–"}`;
   };
+  const antes = (mapa, g, l) => rotuloAntes(mapa.get(chaveLinha(g, l)), fmtDif(l.dif), !!(l.cliente.trim() || l.dif.trim()));
+  const extrasAnteriores = () => new Map((salvo?.extras ?? []).map((x) => [x.nome.trim().toLowerCase(), x.valor.trim()]));
+  const antesExtra = (mapa, x) => rotuloAntes(mapa.get(x.nome.trim().toLowerCase()), x.valor.trim(), !!(x.nome.trim() || x.valor.trim()));
+  // a caixa de observações cresce com o texto
+  const ajustarAltura = (ta) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
 
   const inp = (attrs, valor, ph, cls) => `<input class="precos-in ${cls}" ${attrs} value="${esc(valor)}" placeholder="${esc(ph)}" aria-label="${esc(ph)}" autocomplete="off" spellcheck="false">`;
 
@@ -196,6 +217,28 @@ export async function renderPrecos(link, alvo, ctx) {
     <button type="button" class="link precos-add" data-add-linha>${icon("plus")}Add client</button>
   </section>`;
 
+  const htmlExtra = (mapa, x, ei) => {
+    const a = antesExtra(mapa, x);
+    return `<div class="precos-linha precos-extra ${a ? "mudou" : ""}" data-ei="${ei}">
+      ${inp(`data-x="nome"`, x.nome, "Extra (e.g. EUDR)", "precos-cli")}
+      <span class="precos-dif-box precos-val-box">
+        ${inp(`data-x="valor"`, x.valor, "Value (e.g. 2 cents)", "precos-dif precos-val")}
+        <small class="precos-antes">${a ? esc(a) : ""}</small>
+      </span>
+      <span class="precos-ctrl">
+        <button type="button" class="btn-icon" data-mover-extra="-1" title="Move up" aria-label="Move up" ${ei === 0 ? "disabled" : ""}>${icon("up")}</button>
+        <button type="button" class="btn-icon" data-mover-extra="1" title="Move down" aria-label="Move down" ${ei === dados.extras.length - 1 ? "disabled" : ""}>${icon("down")}</button>
+        <button type="button" class="btn-icon perigo" data-tirar-extra title="Remove extra" aria-label="Remove extra">${icon("trash")}</button>
+      </span>
+    </div>`;
+  };
+
+  const htmlExtras = () => `<section class="precos-grupo precos-extras">
+    <div class="precos-grupo-h"><span class="precos-secao">Extras</span><span class="precos-secao-dica">EUDR, RFA, certification… on top of the diff</span></div>
+    <div class="precos-linhas">${dados.extras.map((x, ei) => htmlExtra(extrasAnteriores(), x, ei)).join("")}</div>
+    <button type="button" class="link precos-add" data-add-extra>${icon("plus")}Add extra</button>
+  </section>`;
+
   const desenhar = (foco = null) => {
     const rolagem = alvo.scrollTop;
     const mapa = anteriores();
@@ -228,13 +271,16 @@ export async function renderPrecos(link, alvo, ctx) {
           <div class="precos-colunas" aria-hidden="true"><span>Client</span><span>Quality</span><span>Grade</span><span>Diff</span><span></span></div>
           ${dados.grupos.map((g, gi) => htmlGrupo(mapa, g, gi)).join("")}
           <button type="button" class="btn btn-ghost precos-add-grupo" data-add-grupo>${icon("plus")}<span>Add country / group</span></button>
+          ${htmlExtras()}
+          <div class="precos-notas">
+            <textarea class="precos-in precos-nota" data-campo="nota" rows="2" spellcheck="false" aria-label="Notes"
+              placeholder="Notes (optional), one per line, e.g. Volume to be confirmed">${esc(dados.nota)}</textarea>
+          </div>
         </div>
-        <footer class="precos-rodape">
-          ${inp(`data-campo="nota"`, dados.nota, "Note (optional), e.g. diffs in US¢/lb vs ICE", "precos-nota")}
-          <span class="precos-marca">Brascof · internal use</span>
-        </footer>
+        <footer class="precos-rodape"><span class="precos-marca">Brascof · internal use</span></footer>
       </article>
     </div>`;
+    ajustarAltura($(".precos-nota", alvo));
     alvo.scrollTop = rolagem;
     ligarAcoes(); // os botões do cabeçalho são novos a cada desenho
     atualizarEstado();
@@ -285,8 +331,17 @@ export async function renderPrecos(link, alvo, ctx) {
   alvo.addEventListener("input", (e) => {
     const el = e.target.closest(".precos-in");
     if (!el) return;
-    if (el.dataset.campo) dados[el.dataset.campo] = el.value;
-    else {
+    if (el.dataset.campo) {
+      dados[el.dataset.campo] = el.value;
+      if (el.matches("textarea")) ajustarAltura(el);
+    } else if (el.dataset.x) {
+      const ei = Number(el.closest("[data-ei]").dataset.ei);
+      dados.extras[ei][el.dataset.x] = el.value;
+      const linhaEl = el.closest(".precos-linha");
+      const a = antesExtra(extrasAnteriores(), dados.extras[ei]);
+      linhaEl.classList.toggle("mudou", !!a);
+      $(".precos-antes", linhaEl).textContent = a ?? "";
+    } else {
       const { gi, li } = posicao(el);
       if (li == null) dados.grupos[gi][el.dataset.c] = el.value;
       else {
@@ -304,7 +359,7 @@ export async function renderPrecos(link, alvo, ctx) {
 
   // dif no padrão ao sair do campo (5 → +5, 0 → Level)
   alvo.addEventListener("change", (e) => {
-    const el = e.target.closest(".precos-dif");
+    const el = e.target.closest(".precos-dif:not(.precos-val)"); // o valor dos extras fica como foi digitado
     if (!el) return;
     const v = fmtDif(el.value);
     if (v === el.value) return;
@@ -313,9 +368,9 @@ export async function renderPrecos(link, alvo, ctx) {
   });
 
   // Enter: no dif vai para o próximo dif (atualizar a lista toda de cima a baixo);
-  // nos outros campos, para o campo seguinte
+  // nos outros campos, para o campo seguinte; nas observações, Enter quebra a linha
   alvo.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" || !e.target.matches(".precos-in")) return;
+    if (e.key !== "Enter" || !e.target.matches("input.precos-in")) return;
     e.preventDefault();
     const lista = $$(e.target.matches(".precos-dif") ? ".precos-dif" : ".precos-in", alvo);
     const prox = lista[lista.indexOf(e.target) + 1];
@@ -333,7 +388,17 @@ export async function renderPrecos(link, alvo, ctx) {
       desenhar(`.precos-grupo[data-gi="${gi}"] .precos-linha:last-child .precos-cli`);
     } else if (b.matches("[data-add-grupo]")) {
       dados.grupos.push({ nome: "", linhas: [linhaNova()] });
-      desenhar(`.precos-grupo:last-of-type .precos-pais`);
+      desenhar(`.precos-grupo[data-gi="${dados.grupos.length - 1}"] .precos-pais`);
+    } else if (b.matches("[data-add-extra]")) {
+      dados.extras.push(extraNovo());
+      desenhar(`.precos-extra:last-child .precos-cli`);
+    } else if (b.matches("[data-mover-extra]")) {
+      const ei = Number(b.closest("[data-ei]").dataset.ei);
+      mover(dados.extras, ei, Number(b.dataset.moverExtra));
+      desenhar();
+    } else if (b.matches("[data-tirar-extra]")) {
+      dados.extras.splice(Number(b.closest("[data-ei]").dataset.ei), 1);
+      desenhar();
     } else if (b.matches("[data-mover-linha]")) {
       mover(dados.grupos[gi].linhas, li, Number(b.dataset.moverLinha));
       desenhar();
@@ -428,10 +493,21 @@ function montarImagem(d) {
       </div>
       <div style="border:1.5px solid rgba(255,255,255,.75);border-radius:999px;padding:4px 14px;font-size:14px;font-weight:600;color:#fff;white-space:nowrap">${esc(dataCurta(new Date().toISOString()))}</div>
     </div>
-    <div style="padding:20px 28px 6px">${d.grupos.map(grupo).join("")}</div>
-    <div style="padding:2px 30px 20px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;font-size:12.5px;color:${COR.texto2}">
-      <span>${esc(d.nota)}</span><span style="white-space:nowrap">Brascof · internal use</span>
-    </div>`;
+    <div style="padding:20px 28px 6px">
+      ${d.grupos.map(grupo).join("")}
+      ${d.extras.length ? `<div style="background:#fff;border:1px solid ${COR.borda};border-radius:12px;margin-bottom:14px;overflow:hidden">
+        <div style="padding:11px 20px;background:${COR.claro};border-bottom:1px solid ${COR.borda};font-size:13px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:${COR.brand}">Extras</div>
+        <table style="width:100%;border-collapse:collapse">${d.extras.map((x, i) => {
+          const borda = i ? `border-top:1px solid ${COR.borda};` : "";
+          return `<tr><td style="${borda}padding:11px 20px;font-weight:600">${esc(x.nome)}</td>
+            <td style="${borda}padding:11px 20px;text-align:right;font-weight:700;font-size:16px;color:${COR.faixa};white-space:nowrap">${esc(x.valor) || "–"}</td></tr>`;
+        }).join("")}</table>
+      </div>` : ""}
+      ${d.nota ? `<div style="background:#fff;border:1px solid ${COR.borda};border-left:4px solid ${COR.faixa};border-radius:10px;padding:12px 18px;margin-bottom:14px">
+        ${d.nota.split("\n").map((t) => (t ? `<div style="padding:2px 0;font-weight:500">${esc(t)}</div>` : `<div style="height:8px"></div>`)).join("")}
+      </div>` : ""}
+    </div>
+    <div style="padding:0 30px 18px;text-align:right;font-size:12.5px;color:${COR.texto2}">Brascof · internal use</div>`;
   return caixa;
 }
 
