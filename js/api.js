@@ -227,6 +227,21 @@ async function criarApiSupabase() {
       if (error) throw new Error(erroPosition(error.message));
       return montarCarga(data);
     },
+    // comparação planilha × API por data: a última versão da fonte naquele dia (só TermM e KPIs)
+    async positionVersaoDia(fonte, data_ref) {
+      const { data, error } = await sb.from("bi_position_cargas")
+        .select("id, data_ref, nome_arquivo, created_at, r_termm:resumo->termm, r_kpis:resumo->kpis")
+        .eq("fonte", fonte).eq("data_ref", data_ref).order("id", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(erroPosition(error.message));
+      return montarCarga(data);
+    },
+    // dias que têm versão da fonte, do mais recente para o mais antigo
+    async positionDatas(fonte) {
+      const { data, error } = await sb.from("bi_position_cargas").select("data_ref").eq("fonte", fonte)
+        .order("data_ref", { ascending: false }).limit(500);
+      if (error) throw new Error(erroPosition(error.message));
+      return [...new Set(data.map((c) => c.data_ref))];
+    },
     // pegada da última versão de um dia anterior (null = não há);
     // sem data_ref: a versão mais recente, de qualquer dia ("desde a última atualização")
     async positionPegadaAnterior(fonte, data_ref = null) {
