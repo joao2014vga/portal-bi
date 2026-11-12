@@ -223,7 +223,8 @@ export function foraDaMatriz(gAba, meses, padroes = null) {
       if (vazia(r)) continue;
       const [dt, m, saldo, ctr, parc, padrao, esp, expBags] = ix.map((i) => (i < 0 ? null : r[i]));
       let sacas = num(saldo) ?? 0;
-      if (sacas < 0.5 || !String(ctr ?? "").trim()) continue; // só contrato aberto
+      // só contrato aberto; menos de 5 sc é resíduo de peso (mesma tolerância do "o que mudou")
+      if (sacas < 5 || !String(ctr ?? "").trim()) continue;
       const especie = norm(esp).startsWith("CONILON") ? "C" : norm(esp).startsWith("AR") ? "A" : null;
       if (!especie) continue;
       // data em branco vira 0 (ou 31, o EOMONTH do zero) na planilha
@@ -237,7 +238,7 @@ export function foraDaMatriz(gAba, meses, padroes = null) {
         else if (!ladoExp.has(p) && norm(parc) !== FORNECEDOR_PROPRIO) {
           // compra: só a parte exportável se perde (a quebra vai para o Low Grades Code)
           const perdida = num(expBags) ?? 0;
-          if (perdida >= 0.5) { motivo = validos.has(p) ? "parte_exp" : "padrao_fora"; sacas = perdida; }
+          if (perdida >= 5) { motivo = validos.has(p) ? "parte_exp" : "padrao_fora"; sacas = perdida; }
         }
       }
       if (!motivo) continue;
