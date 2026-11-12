@@ -1279,13 +1279,23 @@ const COMPONENTES_FIS = ["inventory", "purchases", "exp_sales", "domestic_sales"
 const ROT_COMP_FIS = ["Inventory", "Purchases", "Export Sales", "Domestic Sales"];
 const ROT_ID_FIS = { e: ["Lot", "Warehouse"], c: ["Contract", "Supplier"], v: ["Contract", "Importer"], i: ["Contract", "Client"] };
 let composicaoCache = null;
+// peneira de cada lote (Inventory "Peneiras") e contrato (Purchases/ExpSales/IntSales "Peneira"),
+// por tipo do item da composição: { e: Map(lote → peneiras), c|v|i: Map(contrato → peneira) }
+let peneirasCache = null;
+const ABA_PENEIRA = { e: ["inventory", "lote", "peneiras"], c: ["purchases", "contrato", "peneira"], v: ["expsales", "contrato", "peneira"], i: ["intsales", "contrato", "peneira"] };
+// "13/16(70.00%),17/18(15.00%)" → "13/16 (70%), 17/18 (15%)"
+const fmtPeneira = (s) => (s ? String(s).replace(/\.00%/g, "%").replace(/\s*\(/g, " (").replace(/,\s*/g, ", ") : "—");
 
 async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor }) {
   if (!ctx?.api?.positionDetalhe) return;
   if (ctx.historico) { toast(tr("The contracts behind each number are only kept for the latest Position."), "erro"); return; }
   try {
     composicaoCache ??= ctx.api.positionDetalhe(["fisica_itens"]).then((d) => d.fisica_itens ?? null);
-    const fi = await composicaoCache;
+    peneirasCache ??= ctx.api.positionDetalhe(Object.values(ABA_PENEIRA).map(([t]) => t)).then((d) => Object.fromEntries(
+      Object.entries(ABA_PENEIRA).map(([tipo, [t, k, campo]]) => [tipo, new Map((d[t] ?? []).filter((r) => r[campo]).map((r) => [r[k], r[campo]]))]),
+    )).catch(() => ({}));
+    const [fi, peneiras] = await Promise.all([composicaoCache, peneirasCache]);
+    const peneiraDe = (l) => peneiras[l.tipo]?.get(l.chave) ?? null;
     const dados = fi?.[estado.especie === "conilon" ? "conilon" : "arabica"];
     if (!dados) throw new Error("Upload the Position again (or update from Digisul) to see what makes up each number.");
     const ligados = estado.comps.size ? COMPS_FISICA.map(([k]) => k).filter((k) => estado.comps.has(k)) : COMPS_FISICA.map(([k]) => k);
@@ -1322,10 +1332,11 @@ async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor 
           ? `<p class="muted pos-nota">${icon("info")} Sum of the lines: ${fmtN(Math.round(total))} bags.</p>` : ""}
         ${secoes.map((s) => {
           const [rotChave, rotParc] = ROT_ID_FIS[s.linhas[0].tipo];
+          const comPeneira = s.linhas.some((l) => peneiraDe(l));
           return `<h3 class="pos-comp-h">${tr(ROT_COMP_FIS[s.c])} <span class="muted">· ${s.linhas.length} · ${fmtN(Math.round(s.total))} bags</span></h3>
           <div class="tabela-wrap"><table class="tabela tabela-num">
-            <thead><tr><th>${rotChave}</th><th>${rotParc}</th>${variasQ ? "<th>Quality</th>" : ""}${s.c ? "<th>Month</th>" : ""}<th class="num">Bags</th></tr></thead>
-            <tbody>${s.linhas.map((l) => `<tr><td>${esc(l.chave ?? "—")}</td><td>${esc(l.parceiro ?? "—")}</td>${variasQ ? `<td>${esc(l.padrao)}</td>` : ""}${s.c ? `<td>${esc(mesesTxt(l))}</td>` : ""}${celNum(l.v)}</tr>`).join("")}</tbody>
+            <thead><tr><th>${rotChave}</th><th>${rotParc}</th>${variasQ ? "<th>Quality</th>" : ""}${comPeneira ? "<th>Sieve</th>" : ""}${s.c ? "<th>Month</th>" : ""}<th class="num">Bags</th></tr></thead>
+            <tbody>${s.linhas.map((l) => `<tr><td>${esc(l.chave ?? "—")}</td><td>${esc(l.parceiro ?? "—")}</td>${variasQ ? `<td>${esc(l.padrao)}</td>` : ""}${comPeneira ? `<td class="pos-peneira">${esc(fmtPeneira(peneiraDe(l)))}</td>` : ""}${s.c ? `<td>${esc(mesesTxt(l))}</td>` : ""}${celNum(l.v)}</tr>`).join("")}</tbody>
           </table></div>`;
         }).join("") || `<p class="muted">No contracts or lots in this cell.</p>`}`,
     });
@@ -1333,7 +1344,7 @@ async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor 
     const m = $$(".modal").at(-1);
     if (m) { m.classList.add("pos"); marcarNegativos(m); }
   } catch (e) {
-    composicaoCache = null;
+    composicaoCache = null; peneirasCache = null;
     toast(e.message, "erro");
   }
 }
@@ -1372,7 +1383,7 @@ function alertaForaMatriz(todos, especie) {
 }
 
 async function painelFisica(alvo, carga, ctx) {
-  composicaoCache = null;
+  composicaoCache = null; peneirasCache = null;
   const f = carga.resumo.fisica;
   const grupos = ["exportable", "lowgrade"].filter((k) => f[k]);
   let grupo = grupos[0];
