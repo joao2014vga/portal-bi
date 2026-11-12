@@ -953,4 +953,4 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-fora-lista .tabela-wrap { margin-top: 8px; max-height: 320px; overflow: auto; }
 
 /* Physical Position: peneira na composição de cada número */
-.pos-peneira { white-space: normal; min-width: 160px; font-size: 12.5px; color: var(--texto-2); }
+.tabela td.pos-peneira { white-space: normal; text-align: left; min-width: 220px; font-size: 12.5px; color: var(--texto-2); }
