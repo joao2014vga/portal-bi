@@ -254,10 +254,10 @@ export async function renderCert(link, alvo, ctx) {
       const lista = vc.filter(doMes).sort((a, b) => String(a.embarque ?? "").localeCompare(String(b.embarque ?? "")) || (b._sacas ?? 0) - (a._sacas ?? 0));
       titulo = `${cert.codigo} export sales · ${quando}`;
       corpo = resumo(lista.length, soma(lista, "_sacas")) + tabela(
-        [["Contract"], ["Client (alert)"], ["Importer"], ["Quality"], ["Shipment"], ["Bags", true], ["From BRC", true], ["Source"]],
+        [["Contract"], ["Client (alert)"], ["Importer"], ["Grade"], ["Quality"], ["Shipment"], ["Bags", true], ["From BRC", true], ["Source"]],
         lista.map((r) => `<tr><td>${esc(r.contrato)}</td><td title="${esc(r.alertas ?? "")}">${esc(r._cliente ?? "—")}</td><td>${esc(r.importador ?? "—")}</td>
-          <td>${esc(r.padrao ?? "—")}</td><td>${esc(r._mes ? fmtMes(r._mes + "-01") : "—")}</td>${num(r._sacas ?? 0, true)}${num(r._vinculado ?? 0)}<td>${origem(r)}</td></tr>`),
-        `${num(soma(lista, "_sacas"), true)}${num(soma(lista, "_vinculado"))}<td></td>`, 5);
+          <td>${esc(r.padrao ?? "—")}</td><td class="cert-qual">${esc(r.qualidade ?? "—")}</td><td>${esc(r._mes ? fmtMes(r._mes + "-01") : "—")}</td>${num(r._sacas ?? 0, true)}${num(r._vinculado ?? 0)}<td>${origem(r)}</td></tr>`),
+        `${num(soma(lista, "_sacas"), true)}${num(soma(lista, "_vinculado"))}<td></td>`, 6);
     } else {
       const lista = hist.linhas.filter((h) => h._inicial >= 0.5).sort((a, b) => b._inicial - a._inicial);
       titulo = `Opening stock · end of ${fimHistorico ?? ""}`;

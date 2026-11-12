@@ -474,7 +474,8 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .cert-inc-campos { display: grid; grid-template-columns: 180px 1fr; gap: 12px; }
 .cert-lista { max-height: 340px; margin: 10px 0; }
 .cert-lista th:not(.num) { text-align: left; }
-.modal.cert-modal-largo { max-width: min(1000px, 96vw); }
+.modal.cert-modal-largo { max-width: min(1200px, 96vw); }
+.tabela-num td.cert-qual { white-space: normal; min-width: 200px; max-width: 320px; }
 .cert-lista.cert-lista-alta { max-height: min(60vh, 560px); }
 #vinTotal { font-size: 14px; }
 .cert-falta { color: var(--alerta); }
