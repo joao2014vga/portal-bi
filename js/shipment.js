@@ -157,6 +157,57 @@ const COLS = [
   ["qualidade", "Description", "t"], ["oic", "ICO", "t"], ["dead_cafe", "Coffee deadline", "d"], ["destino", "Destination", "t"],
   ["booking", "Booking", "t"], ["armador", "Carrier", "t"], ["navio", "Vessel", "t"], ["emissao", "Issued", "d"], ["containers", "Containers", "n"],
 ];
+// Balão do cabeçalho: o que é cada coluna (frases inteiras, para o dicionário PT achar)
+const DICAS = {
+  cliente: "Client of the export contract, from Digisul.",
+  contrato: "Export contract (BRAS) in Digisul.",
+  referencia: "The client's own reference for the contract.",
+  sacas: "Bags in the contract.",
+  peso: "Contract weight in kg.",
+  padrao: "Quality standard of the contract (BC3, BC5…). The Check column compares it with the service order.",
+  peneira: "Screen size of the contract.",
+  guia: "Editable. Service order (R-xxx) that prepares the coffee, or the purchase contract (BRC) when it comes straight from a purchase. SEM GUIA, OK and COMPRA BANCO are also accepted.",
+  obs: "Editable. Free notes for the team, such as the supplier when the order is a BRC.",
+  local_ed: "Editable. Warehouse where the coffee is. When Digisul knows it (order warehouse or stuffing place), the Use button fills it in.",
+  prev_carga: "Expected loading date in Digisul. Rows whose date has passed are highlighted.",
+  embarque: "Shipment month of the contract.",
+  safras: "Crop year of the coffee.",
+  local: "Stuffing place registered in Digisul.",
+  certificador: "Certification of the contract.",
+  diferencial: "Price differential of the contract.",
+  status_amostra: "Sample status in Digisul.",
+  envio_amostra: "Date the sample was sent.",
+  qualidade: "Quality description of the contract.",
+  oic: "ICO mark of the contract.",
+  dead_cafe: "Coffee deadline registered in Digisul.",
+  destino: "Destination port.",
+  booking: "Booking number.",
+  armador: "Shipping line.",
+  navio: "Vessel.",
+  emissao: "Date the contract was issued.",
+  containers: "Number of containers.",
+};
+// [classe da etiqueta, rótulo, explicação]
+const DICA_CHECK = [
+  ["shp-ok", "OK", "The order or BRC purchase exists in Digisul and nothing differs."],
+  ["tag-critico", "Not found", "The order typed does not exist in Digisul. Usually a typo."],
+  ["tag-alerta", "Different quality", "The quality of the order, of the lot it produced or of the BRC purchase differs from the contract."],
+  ["tag-alerta", "Short of bags", "The order is closed and produced fewer bags than the contracts using it need."],
+  ["tag-alerta", "Different warehouse", "The warehouse typed matches neither the order's warehouse nor the stuffing place in Digisul."],
+  ["tag-alerta", "No order near loading", "Loading is within 7 days and there is still no order. Red when the date has already passed."],
+  ["tag-info", "Info only", "For example, a BRC contract not found among purchases. Not counted as a problem."],
+];
+function htmlDica(k) {
+  const rot = COLS.find(([c]) => c === k)?.[1] ?? "";
+  if (k === "_check") {
+    return `<div class="shp-dica-t">${esc(rot)}</div>
+      <p>Compares the service order typed with Digisul.</p>
+      <ul>${DICA_CHECK.map(([cls, nome, txt]) => `<li><span class="tag ${cls}">${esc(nome)}</span><span>${esc(txt)}</span></li>`).join("")}</ul>
+      <p class="shp-dica-p">Hover a tag in the table to read the full message.</p>`;
+  }
+  return DICAS[k] ? `<div class="shp-dica-t">${esc(rot)}</div><p>${esc(DICAS[k])}</p>` : "";
+}
+
 const CAMPO = { guia: "guia", obs: "obs", local_ed: "local" };
 const NUM = new Set(["n", "n2"]);
 const ehData = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ""));
@@ -277,6 +328,7 @@ export async function renderShipment(link, alvo, ctx) {
     $("#shpArquivo", alvo).addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importar(f); });
     const ao = (id, k, guardar = true) => $(id, alvo).addEventListener("change", (e) => { filtros[k] = e.target.value; if (guardar) guardarFiltros(); if (k === "filial") filtros.cliente = ""; k === "filial" ? desenhar() : desenharTabela(); });
     ao("#shpFilial", "filial"); ao("#shpAte", "ate"); ao("#shpSit", "situacao"); ao("#shpCli", "cliente", false);
+    ligarDicas();
     // card clicado = mesmo filtro do "Service order"; clicar de novo (ou no total) mostra tudo
     $("#shpKpis", alvo).addEventListener("click", (e) => {
       const b = e.target.closest("[data-sit]");
@@ -288,6 +340,48 @@ export async function renderShipment(link, alvo, ctx) {
     });
     let tmp;
     $("#shpBusca", alvo).addEventListener("input", (e) => { clearTimeout(tmp); tmp = setTimeout(() => { filtros.busca = e.target.value; desenharTabela(); }, 250); });
+  }
+
+  // balão ao passar o mouse (ou focar) no nome da coluna; fica no body para não ser cortado pela rolagem
+  function ligarDicas() {
+    const caixa = $("#shpTabela", alvo);
+    let balao = document.getElementById("shpDica");
+    if (!balao) {
+      balao = document.createElement("div");
+      balao.id = "shpDica";
+      balao.className = "shp-dica";
+      balao.setAttribute("role", "tooltip");
+      document.body.appendChild(balao);
+    }
+    const esconder = () => { balao.classList.remove("on"); };
+    const mostrar = (th) => {
+      const html = htmlDica(th.dataset.dica);
+      if (!html || !th.isConnected) return esconder();
+      balao.innerHTML = html;
+      balao.classList.toggle("larga", th.dataset.dica === "_check");
+      balao.classList.add("on");
+      const r = th.getBoundingClientRect(), b = balao.getBoundingClientRect();
+      const meio = r.left + r.width / 2;
+      const x = Math.max(8, Math.min(meio - b.width / 2, innerWidth - b.width - 8));
+      // embaixo do nome; se não couber, em cima; se nem assim, do lado com mais espaço, sem sair da tela
+      const livreBaixo = innerHeight - r.bottom - 18, livreCima = r.top - 18;
+      const embaixo = b.height <= livreBaixo || (b.height > livreCima && livreBaixo >= livreCima);
+      let y = embaixo ? r.bottom + 10 : r.top - 10 - b.height;
+      const cabe = y >= 8 && y + b.height <= innerHeight - 8;
+      if (!cabe) y = Math.max(8, Math.min(y, innerHeight - b.height - 8));
+      balao.style.left = `${x}px`;
+      balao.style.top = `${y}px`;
+      balao.style.setProperty("--seta", `${Math.max(14, Math.min(meio - x, b.width - 14))}px`);
+      balao.classList.toggle("acima", !embaixo);
+      balao.classList.toggle("sem-seta", !cabe);
+    };
+    caixa.addEventListener("mouseover", (e) => { const th = e.target.closest("th[data-dica]"); if (th) mostrar(th); });
+    caixa.addEventListener("mouseout", (e) => { const th = e.target.closest("th[data-dica]"); if (th && !th.contains(e.relatedTarget)) esconder(); });
+    caixa.addEventListener("focusin", (e) => { const th = e.target.closest("th[data-dica]"); if (th) mostrar(th); });
+    caixa.addEventListener("focusout", esconder);
+    caixa.addEventListener("scroll", esconder);
+    caixa.addEventListener("keydown", (e) => { if (e.key === "Escape") esconder(); });
+    esconder();
   }
 
   // sugestões ao digitar: guias abertas (e as recentes) e os armazéns conhecidos
@@ -343,7 +437,7 @@ export async function renderShipment(link, alvo, ctx) {
 
     if (!visiveis.length) { $("#shpTabela", alvo).innerHTML = `<p class="muted qa-vazio">Nothing for this selection.</p>`; return; }
     $("#shpTabela", alvo).innerHTML = `<table class="shp-tab"><thead><tr>${COLS.map(([k, rot, tipo]) =>
-      `<th class="${NUM.has(tipo) ? "num" : ""} ${tipo === "ed" ? "shp-ed-h" : ""} shp-c-${k}">${esc(rot)}</th>`).join("")}</tr></thead>
+      `<th class="${NUM.has(tipo) ? "num" : ""} ${tipo === "ed" ? "shp-ed-h" : ""} shp-c-${k}" data-dica="${k}" tabindex="0"><span class="shp-th">${esc(rot)}</span></th>`).join("")}</tr></thead>
       <tbody>${visiveis.map(linhaHtml).join("")}</tbody>
       <tfoot><tr>${COLS.map(([k], i) => `<td class="${k === "sacas" || k === "peso" || k === "containers" ? "num" : ""} shp-c-${k}">${i === 0 ? "Total" : ["sacas", "peso", "containers"].includes(k) ? esc(fmtN(visiveis.reduce((s, x) => s + (x.r[k] ?? 0), 0))) : ""}</td>`).join("")}</tr></tfoot></table>`;
   }

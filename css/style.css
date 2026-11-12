@@ -878,6 +878,28 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 /* ---------------------------------------------------------------- Shipment (programação de embarque) */
 .shp .pos-kpis { margin-bottom: 14px; }
 .shp .pos-kpi.on { border-color: var(--brand); }
+.shp-tab th[data-dica] { cursor: help; }
+.shp-tab th[data-dica]:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.shp-th { border-bottom: 1px dotted currentColor; }
+.shp-dica {
+  position: fixed; z-index: 1000; display: none; max-width: 340px; padding: 10px 12px;
+  background: var(--sup); color: var(--texto); border: 1px solid var(--borda); border-radius: 10px; box-shadow: var(--sombra-2);
+  font-size: 12.5px; line-height: 1.45; pointer-events: none;
+}
+.shp-dica.on { display: block; }
+.shp-dica::before {
+  content: ""; position: absolute; top: -6px; left: var(--seta, 20px); width: 10px; height: 10px; margin-left: -5px;
+  background: inherit; border-left: 1px solid var(--borda); border-top: 1px solid var(--borda); transform: rotate(45deg);
+}
+.shp-dica.acima::before { top: auto; bottom: -6px; transform: rotate(225deg); }
+.shp-dica.sem-seta::before { display: none; }
+.shp-dica.larga { max-width: min(470px, calc(100vw - 16px)); }
+.shp-dica-t { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--texto-3); margin-bottom: 4px; }
+.shp-dica p { margin: 0; }
+.shp-dica ul { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 7px; }
+.shp-dica li { display: grid; grid-template-columns: 118px 1fr; gap: 8px; align-items: start; }
+.shp-dica li .tag { justify-content: center; white-space: nowrap; }
+.shp-dica-p { color: var(--texto-3); font-size: 12px; }
 .shp > .nota { border-radius: 10px; margin-bottom: 12px; }
 .shp-card { padding: 0; overflow: hidden; }
 .shp-rolagem { overflow: auto; max-height: calc(100vh - 300px); min-height: 240px; }
