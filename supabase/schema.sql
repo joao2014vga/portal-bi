@@ -1577,3 +1577,66 @@ select coalesce(
        'Price List', 'Diffs by client, edited here and shared as an image or PDF on WhatsApp, e-mail or Teams.',
        'portal:precos-europe', 'manual', true, 8
 where not exists (select 1 from public.bi_dashboards d where d.link = 'portal:precos-europe');
+
+-- ---------------------------------------------------------------------
+-- 27. SHIPMENT (programação de embarque)
+-- A tela portal:shipment mostra as exportações ainda não embarcadas com os
+-- dados do Digisul (retrato diário da seção 25) e três campos que o time
+-- preenche à mão, porque o Digisul não liga guia a contrato BRAS:
+--   guia  "R-667", "BRC-0006/26", "OK", "SEM GUIA", "COMPRA BANCO"...
+--   obs   texto livre
+--   local armazém onde o café está / vai ser preparado
+-- Uma linha por contrato. Vê e edita quem tem acesso ao card.
+-- Pré-requisito: seções 1 a 3 (bi_ve_painel). Pode rodar de novo à vontade.
+-- ---------------------------------------------------------------------
+create table if not exists public.bi_shipment (
+  contrato       text primary key,
+  guia           text,
+  obs            text,
+  local          text,
+  atualizado_em  timestamptz not null default now(),
+  atualizado_por text,
+  updated_by     uuid default auth.uid() references public.bi_perfis (id) on delete set null
+);
+
+-- quem alterou e quando: sempre o usuário logado (não vem do navegador)
+create or replace function public.bi_shipment_salvo()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  new.updated_by := auth.uid();
+  new.atualizado_por := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  new.atualizado_em := now();
+  return new;
+end;
+$$;
+drop trigger if exists bi_shipment_salvo on public.bi_shipment;
+create trigger bi_shipment_salvo before insert or update on public.bi_shipment
+  for each row execute function public.bi_shipment_salvo();
+
+alter table public.bi_shipment enable row level security;
+drop policy if exists bi_shipment_select on public.bi_shipment;
+create policy bi_shipment_select on public.bi_shipment for select to authenticated
+  using (public.bi_ve_painel('portal:shipment'));
+drop policy if exists bi_shipment_insert on public.bi_shipment;
+create policy bi_shipment_insert on public.bi_shipment for insert to authenticated
+  with check (public.bi_ve_painel('portal:shipment'));
+drop policy if exists bi_shipment_update on public.bi_shipment;
+create policy bi_shipment_update on public.bi_shipment for update to authenticated
+  using (public.bi_ve_painel('portal:shipment'))
+  with check (public.bi_ve_painel('portal:shipment'));
+
+-- Card "Shipment" na mesma categoria do Export Shipments da Qualidade (ou na
+-- primeira categoria). Depois é só liberar o acesso em Administração → Usuários.
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select coalesce(
+         (select categoria_id from public.bi_dashboards where link = 'portal:qualidade-exports'),
+         (select id from public.bi_categorias order by ordem, id limit 1)),
+       'Shipment', 'Export contracts to ship, with the service order, notes and warehouse filled in by the team and checked against Digisul.',
+       'portal:shipment', 'diaria', true, 9
+where not exists (select 1 from public.bi_dashboards d where d.link = 'portal:shipment');
+notify pgrst, 'reload schema';
+
+-- Para conferir:
+--   select count(*), max(atualizado_em) from public.bi_shipment;

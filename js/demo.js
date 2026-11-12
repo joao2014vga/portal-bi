@@ -272,6 +272,16 @@ export function criarDemo() {
       salvar();
     },
 
+    // shipment: os dados vêm do Digisul (indisponível na demonstração); as edições ficam no navegador
+    async shipmentEdicoes() { return structuredClone(Object.values(db.shipment ?? {})); },
+    async salvarShipment(linhas) {
+      const agora = new Date().toISOString();
+      const salvas = [].concat(linhas).map(({ contrato, guia = null, obs = null, local = null }) =>
+        ((db.shipment ??= {})[contrato] = { contrato, guia, obs, local, atualizado_em: agora, atualizado_por: eu().nome }));
+      salvar();
+      return structuredClone(salvas);
+    },
+
     // price list
     async precos(chave) { return structuredClone(db.precos?.[chave] ?? null); },
     async salvarPrecos(chave, dados) {

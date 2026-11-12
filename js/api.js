@@ -59,6 +59,11 @@ function erroCert(msg = "") {
   if (/row-level security|permission denied/i.test(msg)) return "Only administrators and file managers can change the certificate list.";
   return traduzErro(msg);
 }
+function erroShipment(msg = "") {
+  if (/bi_shipment|schema cache|does not exist/i.test(msg)) return "The shipment table is not set up yet: run section 27 of supabase/schema.sql in the Supabase SQL Editor.";
+  if (/row-level security|permission denied/i.test(msg)) return "Your user cannot change the shipment schedule. Ask the administrator for access to it.";
+  return traduzErro(msg);
+}
 function erroPrecos(msg = "") {
   if (/bi_precos|schema cache|does not exist/i.test(msg)) return "The price list is not set up yet: run section 26 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/row-level security|permission denied/i.test(msg)) return "Your user cannot change this price list. Ask the administrator for access to it.";
@@ -456,6 +461,22 @@ async function criarApiSupabase() {
       const { data, error } = await sb.from("bi_precos").upsert({ chave, dados }, { onConflict: "chave" })
         .select("dados, atualizado_em, atualizado_por").single();
       if (error) throw new Error(erroPrecos(error.message));
+      return data;
+    },
+
+    // ----------------------------------------------------------- shipment (portal:shipment)
+    // guia / obs / local digitados pelo time, um registro por contrato
+    async shipmentEdicoes() {
+      const { data, error } = await sb.from("bi_shipment").select("contrato, guia, obs, local, atualizado_em, atualizado_por");
+      if (error) throw new Error(erroShipment(error.message));
+      return data;
+    },
+    // quem salvou e quando vêm do banco (gatilho); aceita um registro ou uma lista (importação)
+    async salvarShipment(linhas) {
+      const lista = [].concat(linhas).map(({ contrato, guia = null, obs = null, local = null }) => ({ contrato, guia, obs, local }));
+      const { data, error } = await sb.from("bi_shipment").upsert(lista, { onConflict: "contrato" })
+        .select("contrato, guia, obs, local, atualizado_em, atualizado_por");
+      if (error) throw new Error(erroShipment(error.message));
       return data;
     },
 

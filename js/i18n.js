@@ -791,6 +791,38 @@ const PT = {
     "A lista de preços ainda não está configurada: rode a seção 26 do supabase/schema.sql no SQL Editor do Supabase.",
   "Your user cannot change this price list. Ask the administrator for access to it.": "Seu usuário não pode alterar esta lista de preços. Peça acesso ao administrador.",
   "Diffs by client, edited here and shared as an image or PDF on WhatsApp, e-mail or Teams.": "Diffs por cliente, editados aqui e enviados como imagem ou PDF no WhatsApp, e-mail ou Teams.",
+
+  // ---------------------------------------------------------------- shipment (programação de embarque)
+  "Loading the shipment schedule…": "Carregando a programação de embarque…", "Fetching the latest data from Digisul…": "Buscando os dados mais recentes do Digisul…",
+  "Digisul data is not available": "Dados do Digisul indisponíveis", "Try again": "Tentar de novo", "Digisul data as of": "Dados do Digisul de",
+  "· updated daily at 6:00, or now with Refresh · Order, Notes and Warehouse are saved for everyone as you type":
+    "· atualizado todo dia às 6h, ou agora pelo Atualizar · Guia, Obs e Local são salvos para todos enquanto você digita",
+  "Bring Order, Notes and Warehouse from the Shipment spreadsheet (.xlsx)": "Trazer Guia, Obs e Local da planilha Shipment (.xlsx)",
+  "Excel": "Excel", "Download what is on screen as an Excel file": "Baixar o que está na tela em Excel", "Refresh": "Atualizar",
+  "Fetch the latest data from Digisul now (updates it for everyone)": "Buscar agora os dados do Digisul (atualiza para todos)",
+  "Contract, client, order or notes": "Contrato, cliente, guia ou obs", "Up to next month": "Até o mês que vem", "Next 3 months": "Próximos 3 meses",
+  "All to ship": "Tudo a embarcar", "Service order": "Guia", "No order yet": "Sem guia", "With alerts": "Com alerta",
+  "Client ref.": "Referência", "Weight (kg)": "Peso (kg)", "Check": "Conferência", "Exp. loading": "Prev. carga", "Stuffing place": "Local de estufagem",
+  "Differential": "Diferencial", "Sample": "Status amostra", "Sample sent": "Envio amostra", "ICO": "OIC", "Coffee deadline": "Dead café",
+  "Destination": "Destino", "Booking": "Booking", "Carrier": "Armador", "Nothing for this selection.": "Nada nesta seleção.",
+  "Contracts to ship": "Contratos a embarcar", "Loading within 7 days, no order": "Carregam em até 7 dias sem guia", "Checks to look at": "Conferências a olhar",
+  "Closed": "Fechada", "Open": "Aberta", "open": "aberta", "closed": "fechada", "lot": "lote", "Use the warehouse from Digisul": "Usar o local do Digisul",
+  "Order {g} not found in Digisul": "Guia {g} não encontrada no Digisul", "Order is {a}, contract is {b}": "Guia é {a}, contrato é {b}",
+  "Lot {l} is {a}, contract is {b}": "Lote {l} é {a}, contrato é {b}", "Order gave {a} bags; contracts on it need {b}": "Guia rendeu {a} sc; os contratos nela pedem {b}",
+  "Purchase {c} not found in Digisul": "Compra {c} não encontrada no Digisul", "Purchase is {a}, contract is {b}": "Compra é {a}, contrato é {b}",
+  "Warehouse differs from Digisul ({x})": "Local diferente do Digisul ({x})", "Loading date passed and no order": "Previsão de carga passou e sem guia",
+  "Loads today and no order": "Carrega hoje e sem guia", "Loads in {n} days and no order": "Carrega em {n} dias e sem guia",
+  "Changed by {p} {q}": "Alterado por {p} {q}", "Nothing to import: the spreadsheet matches what is saved.": "Nada a importar: a planilha está igual ao que já está salvo.",
+  "{n} contracts will get the Order, Notes and Warehouse from the spreadsheet, replacing what is saved for them.":
+    "{n} contratos vão receber Guia, Obs e Local da planilha, no lugar do que está salvo para eles.",
+  "{n} of them are not in the list to ship (already shipped or renamed in Digisul).": "{n} deles não estão na lista a embarcar (já embarcados ou renomeados no Digisul).",
+  "Import": "Importar", "{n} contracts imported.": "{n} contratos importados.",
+  "No sheet with the Contrato and GUIA columns was found in this file.": "Nenhuma aba com as colunas Contrato e GUIA neste arquivo.",
+  "The shipment table is not set up yet: run section 27 of supabase/schema.sql in the Supabase SQL Editor.":
+    "A tabela do Shipment ainda não foi criada: rode a seção 27 do supabase/schema.sql no SQL Editor do Supabase.",
+  "Your user cannot change the shipment schedule. Ask the administrator for access to it.": "Seu usuário não pode alterar a programação de embarque. Peça acesso ao administrador.",
+  "Export contracts to ship, with the service order, notes and warehouse filled in by the team and checked against Digisul.":
+    "Contratos de exportação a embarcar, com guia, obs e local preenchidos pelo time e conferidos com o Digisul.",
 };
 
 // Tempo relativo produzido por ui.tempoRelativo
