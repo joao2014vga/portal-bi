@@ -251,13 +251,8 @@ export async function renderCert(link, alvo, ctx) {
           <td>${esc(r.padrao ?? "—")}</td><td>${esc(dataCurta(r.vencimento))}</td>${num(r._sacas ?? 0, true)}<td>${origem(r)}</td></tr>`),
         `${num(soma(lista, "_sacas"), true)}<td></td>`, 5);
     } else if (col === "venda") {
-      const lista = vc.filter(doMes).sort((a, b) => String(a.embarque ?? "").localeCompare(String(b.embarque ?? "")) || (b._sacas ?? 0) - (a._sacas ?? 0));
-      titulo = `${cert.codigo} export sales · ${quando}`;
-      corpo = resumo(lista.length, soma(lista, "_sacas")) + tabela(
-        [["Contract"], ["Client (alert)"], ["Importer"], ["Grade"], ["Quality"], ["Shipment"], ["Bags", true], ["From BRC", true], ["Source"]],
-        lista.map((r) => `<tr><td>${esc(r.contrato)}</td><td title="${esc(r.alertas ?? "")}">${esc(r._cliente ?? "—")}</td><td>${esc(r.importador ?? "—")}</td>
-          <td>${esc(r.padrao ?? "—")}</td><td class="cert-qual">${esc(r.qualidade ?? "—")}</td><td>${esc(r._mes ? fmtMes(r._mes + "-01") : "—")}</td>${num(r._sacas ?? 0, true)}${num(r._vinculado ?? 0)}<td>${origem(r)}</td></tr>`),
-        `${num(soma(lista, "_sacas"), true)}${num(soma(lista, "_vinculado"))}<td></td>`, 6);
+      abrirVendasMeses(yms, resumo, tabela);
+      return;
     } else {
       const lista = hist.linhas.filter((h) => h._inicial >= 0.5).sort((a, b) => b._inicial - a._inicial);
       titulo = `Opening stock · end of ${fimHistorico ?? ""}`;
@@ -270,6 +265,67 @@ export async function renderCert(link, alvo, ctx) {
     }
     modal({ titulo, largura: "modal-lg cert-modal-largo", corpo });
     $$(".modal").at(-1)?.classList.add("pos");
+  };
+
+  // Vendas de exportação por mês de embarque: começa no mês clicado (ou em todos, pelo
+  // rodapé) e dá para marcar outros meses; com mais de um, cada mês ganha uma linha
+  // com o nome e o subtotal. "Save image" baixa o que está marcado, em inglês.
+  const abrirVendasMeses = (yms, resumo, tabela) => {
+    const mesesV = [...new Set(vc.map((r) => r._mes ?? ""))].sort();
+    const sel = new Set(yms === "*" ? mesesV : [yms ?? ""]);
+    const rotMes = (ym) => (ym ? fmtMes(ym + "-01") : "No date");
+    const grupos = () => mesesV.filter((m) => sel.has(m)).map((ym) => ({
+      ym, linhas: vc.filter((r) => (r._mes ?? "") === ym)
+        .sort((a, b) => String(a.embarque ?? "").localeCompare(String(b.embarque ?? "")) || (b._sacas ?? 0) - (a._sacas ?? 0)),
+    }));
+    const tituloSel = (gs, mes) => `${cert.codigo} export sales · ${!gs.length ? "no month"
+      : gs.length === mesesV.length && gs.length > 1 ? "all months" : gs.map((g) => (g.ym ? mes(g.ym) : "No date")).join(", ")}`;
+    const conteudo = (gs) => {
+      const todas = gs.flatMap((g) => g.linhas);
+      const varios = gs.length > 1;
+      const linhas = gs.flatMap((g) => [
+        ...(varios ? [`<tr class="cert-mes-grupo"><td colspan="6"><strong>${esc(rotMes(g.ym))}</strong> · ${fmtN(g.linhas.length)} <span>${g.linhas.length === 1 ? "contract" : "contracts"}</span></td>
+          ${num(soma(g.linhas, "_sacas"), true)}${num(soma(g.linhas, "_vinculado"))}<td></td></tr>`] : []),
+        ...g.linhas.map((r) => `<tr><td>${esc(r.contrato)}</td><td title="${esc(r.alertas ?? "")}">${esc(r._cliente ?? "—")}</td><td>${esc(r.importador ?? "—")}</td>
+          <td>${esc(r.padrao ?? "—")}</td><td class="cert-qual">${esc(r.qualidade ?? "—")}</td><td>${esc(rotMes(r._mes))}</td>${num(r._sacas ?? 0, true)}${num(r._vinculado ?? 0)}<td>${origem(r)}</td></tr>`),
+      ]);
+      return resumo(todas.length, soma(todas, "_sacas")) + tabela(
+        [["Contract"], ["Client (alert)"], ["Importer"], ["Grade"], ["Quality"], ["Shipment"], ["Bags", true], ["From BRC", true], ["Source"]],
+        linhas, `${num(soma(todas, "_sacas"), true)}${num(soma(todas, "_vinculado"))}<td></td>`, 6);
+    };
+    const botoesMes = () => `<button type="button" data-ym="*" class="${sel.size === mesesV.length ? "on" : ""}">All</button>${mesesV.map((m) =>
+      `<button type="button" data-ym="${esc(m)}" class="${sel.has(m) ? "on" : ""}" aria-pressed="${sel.has(m)}">${esc(rotMes(m))}</button>`).join("")}`;
+    const gs0 = grupos();
+    const { form } = modal({
+      titulo: tituloSel(gs0, (ym) => fmtMes(ym + "-01")),
+      largura: "modal-lg cert-modal-largo",
+      corpo: `<div class="cert-vm-barra">
+          <span class="muted">Shipment months</span>
+          <div class="seg" id="certVmMeses" role="group" aria-label="Shipment months">${botoesMes()}</div>
+          <button type="button" class="btn" id="certVmImagem" title="Download the selected months as an image, in English">${icon("image")}<span>Save image</span></button>
+        </div>
+        <div id="certVmCorpo">${conteudo(gs0)}</div>`,
+    });
+    form.classList.add("pos");
+    const redesenhar = () => {
+      const gs = grupos();
+      $("h2", form).textContent = tituloSel(gs, (ym) => fmtMes(ym + "-01"));
+      $("#certVmMeses", form).innerHTML = botoesMes();
+      $("#certVmCorpo", form).innerHTML = conteudo(gs);
+      $("#certVmImagem", form).disabled = !gs.some((g) => g.linhas.length);
+    };
+    $("#certVmMeses", form).addEventListener("click", (e) => {
+      const b = e.target.closest("[data-ym]");
+      if (!b) return;
+      const ym = b.dataset.ym;
+      if (ym === "*") { if (sel.size === mesesV.length) sel.clear(); else mesesV.forEach((m) => sel.add(m)); }
+      else if (!sel.delete(ym)) sel.add(ym);
+      redesenhar();
+    });
+    $("#certVmImagem", form).addEventListener("click", (ev) => {
+      const gs = grupos();
+      salvarImagemVendas(ev.currentTarget, { cert, atualizado: base.atualizado_em, grupos: gs, titulo: tituloSel(gs, mesEn) });
+    });
   };
 
   // Exportações do certificado (as com CP ou pela regra da Starbucks, inclusive as
@@ -1030,13 +1086,85 @@ function carregarHtml2canvas() {
   return html2canvasPromise;
 }
 
+const MES_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const mesEn = (ym) => `${MES_EN[Number(ym.slice(5, 7)) - 1]}-${ym.slice(2, 4)}`;
+const COR_IMG = { texto: "#1b2e22", texto2: "#5a7a69", texto3: "#8aab97", borda: "#dde8e2", brand: "#2d4a3e", claro: "#e8f0ec", neg: "#c4291c", alerta: "#a35a00" };
+const quandoEn = (iso) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
+
+// Caixa fora da tela → PNG baixado (logo e fontes carregados antes da captura)
+async function baixarCaixa(caixa, nome) {
+  const capturar = await carregarHtml2canvas();
+  document.body.appendChild(caixa);
+  await Promise.all([...caixa.querySelectorAll("img")].map((i) => (i.complete ? null : new Promise((ok) => { i.onload = i.onerror = ok; }))));
+  await document.fonts?.ready;
+  const canvas = await capturar(caixa, { scale: 2, backgroundColor: "#f0f4f2", logging: false, useCORS: true });
+  const a = document.createElement("a");
+  a.download = nome;
+  a.href = canvas.toDataURL("image/png");
+  a.click();
+}
+
+// Imagem das vendas de exportação dos meses marcados no modal: um bloco por mês
+// (nome, contratos e subtotal) e o total geral; em inglês e no tema claro
+async function salvarImagemVendas(botao, d) {
+  botao.disabled = true;
+  const caixa = document.createElement("div");
+  try {
+    const cor = COR_IMG;
+    const n = (v) => Math.round(Number(v) || 0).toLocaleString("en-US");
+    const vazio = `<span style="color:${cor.texto3}">–</span>`;
+    const cel = (v, forte = false) => `<td style="text-align:right;padding:7px 12px;white-space:nowrap;${forte ? "font-weight:700;" : ""}">${Math.abs(v) < 0.5 ? vazio : n(v)}</td>`;
+    const txt = (v, extra = "") => `<td style="padding:7px 12px;${extra}">${esc(v ?? "—")}</td>`;
+    const th = (t, dir = false) => `<th style="text-align:${dir ? "right" : "left"};padding:8px 12px;font-size:11px;font-weight:600;color:${cor.texto2};text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid ${cor.borda};white-space:nowrap">${t}</th>`;
+    const varios = d.grupos.length > 1;
+    const todas = d.grupos.flatMap((g) => g.linhas);
+    const rot = (ym) => (ym ? mesEn(ym) : "No date");
+    const corpo = d.grupos.map((g) => `${varios ? `<tr style="background:${cor.claro};border-top:1px solid ${cor.borda}">
+        <td colspan="6" style="padding:8px 12px;font-weight:700;color:${cor.brand}">${esc(rot(g.ym))} <span style="font-weight:400;color:${cor.texto2}">· ${g.linhas.length} contract${g.linhas.length === 1 ? "" : "s"}</span></td>
+        ${cel(soma(g.linhas, "_sacas"), true)}${cel(soma(g.linhas, "_vinculado"), true)}</tr>` : ""}
+      ${g.linhas.map((r) => `<tr style="border-top:1px solid ${cor.borda}">
+        ${txt(r.contrato, "white-space:nowrap")}${txt(r._cliente)}${txt(r.importador)}${txt(r.padrao, "white-space:nowrap")}
+        ${txt(r.qualidade, "font-size:11.5px;width:300px")}${txt(rot(r._mes), "white-space:nowrap")}${cel(r._sacas ?? 0, true)}${cel(r._vinculado ?? 0)}</tr>`).join("")}`).join("");
+    const resumoMeses = varios ? d.grupos.map((g) => `<span><strong>${esc(rot(g.ym))}</strong> ${n(soma(g.linhas, "_sacas"))}</span>`).join("") : "";
+
+    caixa.setAttribute("data-sem-traducao", "");
+    caixa.style.cssText = `position:fixed;left:-10000px;top:0;width:1100px;padding:24px;background:#f0f4f2;color:${cor.texto};font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;line-height:1.4`;
+    caixa.innerHTML = `
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+        <img src="assets/logo_brascof.png" alt="" style="height:40px">
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700;color:${cor.brand}">${esc(d.cert.nome)} (${esc(d.cert.codigo)}) · Export sales</div>
+          <div style="font-size:12px;color:${cor.texto2}">${esc(d.titulo.replace(/^.*?·\s*/, "Shipment "))} · Digisul data as of ${esc(quandoEn(d.atualizado))} · all figures in 60 kg bags</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 22px;margin-bottom:12px;font-size:13.5px;color:${cor.texto2}">
+        <span>Contracts: <strong style="color:${cor.texto}">${todas.length}</strong></span>
+        <span>Bags: <strong style="color:${cor.texto}">${n(soma(todas, "_sacas"))}</strong></span>
+        ${resumoMeses}
+      </div>
+      <div style="background:#fff;border:1px solid ${cor.borda};border-radius:10px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">
+          <thead><tr>${th("Contract")}${th("Client (alert)")}${th("Importer")}${th("Grade")}${th("Quality")}${th("Shipment")}${th("Bags", true)}${th("From BRC", true)}</tr></thead>
+          <tbody>${corpo}</tbody>
+          <tfoot><tr style="border-top:2px solid ${cor.borda};font-weight:700;background:#f7faf8"><td colspan="6" style="padding:8px 12px">Total</td>
+            ${cel(soma(todas, "_sacas"), true)}${cel(soma(todas, "_vinculado"), true)}</tr></tfoot>
+        </table>
+      </div>`;
+    const meses = d.grupos.map((g) => rot(g.ym));
+    await baixarCaixa(caixa, `${d.cert.codigo} Export sales ${meses.length > 3 ? `${meses[0]} to ${meses.at(-1)}` : meses.join(" ")} ${hojeIso()}.png`);
+  } catch (e) {
+    toast(e.message, "erro");
+  } finally {
+    caixa.remove();
+    botao.disabled = false;
+  }
+}
+
 async function salvarImagem(botao, d) {
   botao.disabled = true;
   const caixa = document.createElement("div");
   try {
     const capturar = await carregarHtml2canvas();
-    const MES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const mesEn = (ym) => `${MES[Number(ym.slice(5, 7)) - 1]}-${ym.slice(2, 4)}`;
     const n = (v) => {
       const txt = Math.round(Math.abs(Number(v) || 0)).toLocaleString("en-US");
       return v < 0 && txt !== "0" ? `(${txt})` : txt;

@@ -476,6 +476,11 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .cert-lista th:not(.num) { text-align: left; }
 .modal.cert-modal-largo { max-width: min(1200px, 96vw); }
 .tabela-num td.cert-qual { white-space: normal; min-width: 200px; max-width: 320px; }
+.cert-vm-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.cert-vm-barra .btn { margin-left: auto; }
+.cert-vm-barra .seg button.on { background: var(--brand); color: #fff; }
+.tabela tr.cert-mes-grupo td { background: var(--sup-2); color: var(--brand); border-top: 1px solid var(--borda); }
+.tabela tr.cert-mes-grupo td span { color: var(--texto-2); }
 .cert-lista.cert-lista-alta { max-height: min(60vh, 560px); }
 #vinTotal { font-size: 14px; }
 .cert-falta { color: var(--alerta); }
