@@ -221,9 +221,6 @@ export async function renderShipment(link, alvo, ctx) {
       .filter((r) => !lim || !r.embarque || r.embarque.slice(0, 7) <= lim)
       .filter((r) => !filtros.cliente || r.cliente === filtros.cliente)
       .map((r) => ({ r, a: analisar(r, edicoes.get(r.contrato), ix, { hoje: dados.hoje, uso }) }))
-      .filter(({ a }) => !filtros.situacao
-        || (filtros.situacao === "none" && (a.tipo === "vazio" || a.tipo === "sem"))
-        || (filtros.situacao === "alert" && a.avisos.some((x) => x.nivel !== "info")))
       .filter(({ r }) => {
         if (!q) return true;
         const e = edicoes.get(r.contrato) ?? {};
@@ -232,6 +229,12 @@ export async function renderShipment(link, alvo, ctx) {
       // como na planilha: pela previsão de carga (sem data no fim), depois o contrato
       .sort((x, y) => (x.r.prev_carga ?? "9999").localeCompare(y.r.prev_carga ?? "9999") || x.r.contrato.localeCompare(y.r.contrato, LOCALE, { numeric: true }));
   }
+  // situação de cada linha: é o que o filtro "Service order" e os cards de cima escolhem
+  const SITUACOES = {
+    none: ({ a }) => a.tipo === "vazio" || a.tipo === "sem",
+    week: (x) => SITUACOES.none(x) && !!x.r.prev_carga && x.r.prev_carga <= somarDias(dados.hoje, 7),
+    alert: ({ a }) => a.avisos.some((v) => v.nivel !== "info"),
+  };
 
   // ---------------------------------------------------------------- desenho
   function desenhar() {
@@ -255,7 +258,7 @@ export async function renderShipment(link, alvo, ctx) {
         <label class="busca sm">${icon("search")}<input type="search" id="shpBusca" placeholder="Contract, client, order or notes" value="${esc(filtros.busca)}" aria-label="Search"></label>
         <label class="qa-fil"><span>Branch</span><select id="shpFilial">${opt("", "All", filtros.filial)}${filiais.map((f) => opt(f, f, filtros.filial)).join("")}</select></label>
         <label class="qa-fil"><span>Shipment</span><select id="shpAte">${opt("next", "Up to next month", filtros.ate)}${opt("3", "Next 3 months", filtros.ate)}${opt("all", "All to ship", filtros.ate)}</select></label>
-        <label class="qa-fil"><span>Service order</span><select id="shpSit">${opt("", "All", filtros.situacao)}${opt("none", "No order yet", filtros.situacao)}${opt("alert", "With alerts", filtros.situacao)}</select></label>
+        <label class="qa-fil"><span>Service order</span><select id="shpSit">${opt("", "All", filtros.situacao)}${opt("none", "No order yet", filtros.situacao)}${opt("week", "Loading within 7 days, no order", filtros.situacao)}${opt("alert", "With alerts", filtros.situacao)}</select></label>
         <label class="qa-fil"><span>Client</span><select id="shpCli">${opt("", "All", filtros.cliente)}${clientes.map((c) => opt(c, c, filtros.cliente)).join("")}</select></label>
       </div>
       <div class="pos-kpis" id="shpKpis"></div>
@@ -274,6 +277,15 @@ export async function renderShipment(link, alvo, ctx) {
     $("#shpArquivo", alvo).addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importar(f); });
     const ao = (id, k, guardar = true) => $(id, alvo).addEventListener("change", (e) => { filtros[k] = e.target.value; if (guardar) guardarFiltros(); if (k === "filial") filtros.cliente = ""; k === "filial" ? desenhar() : desenharTabela(); });
     ao("#shpFilial", "filial"); ao("#shpAte", "ate"); ao("#shpSit", "situacao"); ao("#shpCli", "cliente", false);
+    // card clicado = mesmo filtro do "Service order"; clicar de novo (ou no total) mostra tudo
+    $("#shpKpis", alvo).addEventListener("click", (e) => {
+      const b = e.target.closest("[data-sit]");
+      if (!b) return;
+      filtros.situacao = b.dataset.sit === filtros.situacao ? "" : b.dataset.sit;
+      $("#shpSit", alvo).value = filtros.situacao;
+      guardarFiltros();
+      desenharTabela();
+    });
     let tmp;
     $("#shpBusca", alvo).addEventListener("input", (e) => { clearTimeout(tmp); tmp = setTimeout(() => { filtros.busca = e.target.value; desenharTabela(); }, 250); });
   }
@@ -309,17 +321,25 @@ export async function renderShipment(link, alvo, ctx) {
 
   let visiveis = [];
   function desenharTabela() {
-    visiveis = linhasFiltradas();
-    const sacas = visiveis.reduce((s, x) => s + (x.r.sacas ?? 0), 0);
-    const semGuia = visiveis.filter((x) => x.a.tipo === "vazio" || x.a.tipo === "sem");
-    const comAviso = visiveis.filter((x) => x.a.avisos.some((v) => v.nivel !== "info"));
-    const semana = semGuia.filter((x) => x.r.prev_carga && x.r.prev_carga <= somarDias(dados.hoje, 7));
-    const kpi = (tit, v, s, tom = "") => `<div class="pos-kpi pos-kpi-est ${tom ? `pos-kpi-${tom}` : ""}"><div class="pos-kpi-t">${tom ? icon("alert") : ""}${esc(tit)}</div><div class="pos-kpi-v">${v}</div><div class="pos-kpi-s">${s}</div></div>`;
+    // os cards contam sobre os demais filtros; o card escolhido só recorta a tabela
+    const base = linhasFiltradas();
+    const sit = SITUACOES[filtros.situacao];
+    visiveis = sit ? base.filter(sit) : base;
+    const sacasDe = (l) => l.reduce((s, x) => s + (x.r.sacas ?? 0), 0);
+    const semGuia = base.filter(SITUACOES.none);
+    const semana = base.filter(SITUACOES.week);
+    const comAviso = base.filter(SITUACOES.alert);
+    const kpi = (chave, tit, v, s, tom = "") => {
+      const on = (filtros.situacao || "") === chave;
+      return `<button type="button" class="pos-kpi ${tom ? `pos-kpi-${tom}` : ""} ${on ? "on" : ""}" data-sit="${chave}" aria-pressed="${on}"
+        title="${esc(chave ? (on ? t("Click again to show all") : t("Click to show only these")) : t("Show all"))}">
+        <span class="pos-kpi-t">${tom ? icon("alert") : ""}${esc(tit)}</span><span class="pos-kpi-v">${v}</span><span class="pos-kpi-s">${s}</span></button>`;
+    };
     $("#shpKpis", alvo).innerHTML = `
-      ${kpi("Contracts to ship", fmtN(visiveis.length), `${fmtN(sacas)} ${t("bags")}`)}
-      ${kpi("No order yet", fmtN(semGuia.length), `${fmtN(semGuia.reduce((s, x) => s + (x.r.sacas ?? 0), 0))} ${t("bags")}`)}
-      ${kpi("Loading within 7 days, no order", fmtN(semana.length), t("contracts"), semana.length ? "alerta" : "")}
-      ${kpi("Checks to look at", fmtN(comAviso.length), t("contracts"), comAviso.length ? "alerta" : "")}`;
+      ${kpi("", "Contracts to ship", fmtN(base.length), `${fmtN(sacasDe(base))} ${t("bags")}`)}
+      ${kpi("none", "No order yet", fmtN(semGuia.length), `${fmtN(sacasDe(semGuia))} ${t("bags")}`)}
+      ${kpi("week", "Loading within 7 days, no order", fmtN(semana.length), t("contracts"), semana.length ? "alerta" : "")}
+      ${kpi("alert", "Checks to look at", fmtN(comAviso.length), t("contracts"), comAviso.length ? "alerta" : "")}`;
 
     if (!visiveis.length) { $("#shpTabela", alvo).innerHTML = `<p class="muted qa-vazio">Nothing for this selection.</p>`; return; }
     $("#shpTabela", alvo).innerHTML = `<table class="shp-tab"><thead><tr>${COLS.map(([k, rot, tipo]) =>

@@ -806,6 +806,7 @@ const PT = {
   "Differential": "Diferencial", "Sample": "Status amostra", "Sample sent": "Envio amostra", "ICO": "OIC", "Coffee deadline": "Dead café",
   "Destination": "Destino", "Booking": "Booking", "Carrier": "Armador", "Nothing for this selection.": "Nada nesta seleção.",
   "Contracts to ship": "Contratos a embarcar", "Loading within 7 days, no order": "Carregam em até 7 dias sem guia", "Checks to look at": "Conferências a olhar",
+  "Click to show only these": "Clique para ver só estes", "Click again to show all": "Clique de novo para ver todos", "Show all": "Mostrar todos",
   "Closed": "Fechada", "Open": "Aberta", "open": "aberta", "closed": "fechada", "lot": "lote", "Use the warehouse from Digisul": "Usar o local do Digisul",
   "Order {g} not found in Digisul": "Guia {g} não encontrada no Digisul", "Order is {a}, contract is {b}": "Guia é {a}, contrato é {b}",
   "Lot {l} is {a}, contract is {b}": "Lote {l} é {a}, contrato é {b}", "Order gave {a} bags; contracts on it need {b}": "Guia rendeu {a} sc; os contratos nela pedem {b}",

@@ -877,6 +877,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 
 /* ---------------------------------------------------------------- Shipment (programação de embarque) */
 .shp .pos-kpis { margin-bottom: 14px; }
+.shp .pos-kpi.on { border-color: var(--brand); }
 .shp > .nota { border-radius: 10px; margin-bottom: 12px; }
 .shp-card { padding: 0; overflow: hidden; }
 .shp-rolagem { overflow: auto; max-height: calc(100vh - 300px); min-height: 240px; }
