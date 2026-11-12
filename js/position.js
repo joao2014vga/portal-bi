@@ -1345,6 +1345,8 @@ const MOTIVO_FORA = {
   antes: () => "date before the first month of the matrix",
   depois: () => "date after the last month of the matrix",
   sem_padrao: () => "no standard (Padrão)",
+  padrao_fora: (x) => `standard ${x.padrao} has no column in the Arabica matrix${x.tipo === "c" ? " (only the exportable part is lost; breakage goes to the Low Grades Code)" : ""}`,
+  parte_exp: (x) => `low grade standard ${x.padrao} with breakage under 100%: the exportable part has no column (only the breakage counts)`,
 };
 function alertaForaMatriz(fora) {
   if (!fora?.length) return "";
@@ -1352,7 +1354,7 @@ function alertaForaMatriz(fora) {
   const sinal = (x) => (x.tipo === "c" ? x.sacas : -x.sacas);
   return `<div class="pos-alerta pos-fora" role="alert">${icon("alert")}
     <div><strong>${fora.length} open ${fora.length === 1 ? "contract is" : "contracts are"} out of the long/short · ${fmtN(Math.round(total))} bags</strong> —
-      the matrix places each contract in the month of its date, so these do not count anywhere. Fill in the field in Digisul and they come in at the next update.
+      the matrix places each contract in the column of its standard and the month of its date, so these bags do not count anywhere. Fix the field in Digisul and they come in at the next update.
       <details class="pos-fora-lista"${fora.length <= 8 ? " open" : ""}><summary>${fora.length <= 8 ? "Contracts" : `See the ${fora.length} contracts`}</summary>
       <div class="tabela-wrap"><table class="tabela tabela-num">
         <thead><tr><th>Type</th><th>Contract</th><th>Counterparty</th><th>Species</th><th>Quality</th><th class="num">Bags</th><th class="num">Effect if counted</th><th>Problem</th></tr></thead>
