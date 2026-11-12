@@ -195,33 +195,51 @@ export function componentesPorEspecie(gAba, meses, especie, { soExportavel = fal
 // (fim do mês da data do contrato), então contrato sem data, ou com data antes do primeiro
 // mês / depois do último, some da conta. Mesmas colunas que a matriz usa, nas duas fontes.
 // motivo: "sem_data" · "antes" (do primeiro mês) · "depois" (do último) · "sem_padrao"
+//   · "padrao_fora": padrão sem coluna na matriz da Arábica (ex.: BC14, que é de Conilon) — some tudo
+//     (na compra, a quebra ainda vai para o Low Grades Code: some só a parte exportável)
+//   · "parte_exp": compra de padrão low grade (BC8–BC13) com quebra < 100%: a parte exportável
+//     não tem bloco exportável na planilha e some (só a quebra entra, no Low Grades Code)
+// padroes (Arábica): os padrões da matriz, de resumo.fisica.componentes.q
 const FORA_MATRIZ = [
   // [tipo, aba, data mostrada, mês usado pela matriz, saldo, contrato, parceiro]
   ["c", "purchases", "Vencimento", "EOM Ship/Paym", "A Entregar BC", "Contrato", "Fornecedor"],
   ["v", "expsales", "Embarque", "EOM Ship", "Balance bags", "Contrato", "Importador"],
   ["i", "intsales", "Prev. Embarque", "EOM Ship", "A Entregar(Sc)", "Contrato", "Cliente"],
 ];
-export function foraDaMatriz(gAba, meses) {
+export function foraDaMatriz(gAba, meses, padroes = null) {
   if (!meses?.length) return [];
   const chaves = new Set(meses.map((m) => m.slice(0, 7)));
   const primeiro = meses[0].slice(0, 7), ultimo = meses.at(-1).slice(0, 7);
+  // Arábica: cada bloco da planilha tem um padrão exportável e um low grade
+  const validos = padroes?.length ? new Set(padroes.map(norm)) : null;
+  const ladoExp = validos && new Set([...validos].filter((p) => GRUPO_POR_PADRAO[p] === "EXP"));
   const fora = [];
   for (const [tipo, k, cData, cMes, cSaldo, cCtr, cParc] of FORA_MATRIZ) {
     const g = gAba(ABAS[k]) ?? [];
     const cab = (g[0] ?? []).map(norm);
-    const ix = [cData, cMes, cSaldo, cCtr, cParc, "Padrão", "Espécie"].map((c) => cab.indexOf(norm(c)));
+    const ix = [cData, cMes, cSaldo, cCtr, cParc, "Padrão", "Espécie", "EXP Bags Balance"].map((c) => cab.indexOf(norm(c)));
     if (ix.slice(1, 4).some((i) => i < 0)) continue; // aba sem as colunas da matriz
     for (const r of g.slice(1)) {
       if (vazia(r)) continue;
-      const [dt, m, saldo, ctr, parc, padrao, esp] = ix.map((i) => (i < 0 ? null : r[i]));
-      const sacas = num(saldo) ?? 0;
+      const [dt, m, saldo, ctr, parc, padrao, esp, expBags] = ix.map((i) => (i < 0 ? null : r[i]));
+      let sacas = num(saldo) ?? 0;
       if (sacas < 0.5 || !String(ctr ?? "").trim()) continue; // só contrato aberto
       const especie = norm(esp).startsWith("CONILON") ? "C" : norm(esp).startsWith("AR") ? "A" : null;
       if (!especie) continue;
       // data em branco vira 0 (ou 31, o EOMONTH do zero) na planilha
       const mesIso = num(m) != null && num(m) > 366 ? serialIso(m).slice(0, 7) : null;
-      const motivo = !String(padrao ?? "").trim() ? "sem_padrao"
+      let motivo = !String(padrao ?? "").trim() ? "sem_padrao"
         : !mesIso ? "sem_data" : chaves.has(mesIso) ? null : mesIso < primeiro ? "antes" : mesIso > ultimo ? "depois" : null;
+      // padrão que a matriz da Arábica não tem (só com a lista de padrões da matriz)
+      if (!motivo && especie === "A" && validos) {
+        const p = norm(padrao);
+        if (tipo !== "c") { if (!validos.has(p)) motivo = "padrao_fora"; }
+        else if (!ladoExp.has(p) && norm(parc) !== FORNECEDOR_PROPRIO) {
+          // compra: só a parte exportável se perde (a quebra vai para o Low Grades Code)
+          const perdida = num(expBags) ?? 0;
+          if (perdida >= 0.5) { motivo = validos.has(p) ? "parte_exp" : "padrao_fora"; sacas = perdida; }
+        }
+      }
       if (!motivo) continue;
       fora.push({ tipo, contrato: String(ctr).trim(), parceiro: parc == null ? null : String(parc).trim(), padrao: padrao == null ? null : String(padrao).trim(),
         especie, sacas: arred(sacas), data: num(dt) != null && num(dt) > 366 ? serialIso(dt) : null, motivo });
@@ -235,7 +253,7 @@ export function textoForaDaMatriz(fora, fmtN = (v) => v.toLocaleString("en-US", 
   if (!fora?.length) return null;
   const total = fora.reduce((s, x) => s + x.sacas, 0);
   const lista = fora.slice(0, 4).map((x) => `${x.contrato} ${fmtN(Math.round(x.sacas))}`).join(", ");
-  return `Out of the long/short: ${fora.length} open ${fora.length === 1 ? "contract" : "contracts"} (${fmtN(Math.round(total))} bags) without a valid date or standard (${lista}${fora.length > 4 ? ", …" : ""}). Fix them in Digisul`;
+  return `Out of the long/short: ${fora.length} open ${fora.length === 1 ? "contract" : "contracts"} (${fmtN(Math.round(total))} bags) without a valid date or with a standard that has no column (${lista}${fora.length > 4 ? ", …" : ""}). Fix them in Digisul`;
 }
 
 // Variation: Previous → movimentos do dia → posição atual, por grupo
@@ -372,7 +390,7 @@ export function montarPosition(gAba) {
   // contratos abertos que não entram no long/short (sem data, data fora do período ou sem padrão)
   try {
     const meses = resumo.fisica.componentes?.meses;
-    if (meses) resumo.fisica.fora = foraDaMatriz(gAba, meses);
+    if (meses) resumo.fisica.fora = foraDaMatriz(gAba, meses, Object.keys(resumo.fisica.componentes.q ?? {}));
   } catch (e) { /* segue sem o alerta */ }
   const detalhes = Object.fromEntries(Object.entries(DETALHES).map(([k, def]) => [k, lerDetalhe(gAba(def.aba), def)]));
   return { data_ref: serialIso(serial), resumo, detalhes };
