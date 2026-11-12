@@ -938,3 +938,10 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
   .shp-tab .shp-c-contrato { left: 0; }
   .shp-rolagem { max-height: none; }
 }
+
+/* Physical Position: contratos abertos fora do long/short */
+.pos-fora { margin-bottom: 14px; }
+.pos-fora > div { flex: 1; min-width: 0; }
+.pos-fora-lista { margin-top: 8px; color: var(--texto); }
+.pos-fora-lista > summary { cursor: pointer; color: var(--critico); font-weight: 600; }
+.pos-fora-lista .tabela-wrap { margin-top: 8px; max-height: 320px; overflow: auto; }
