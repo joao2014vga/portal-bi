@@ -13,7 +13,7 @@
 import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } from "./ui.js";
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
-  prazoFixacao, alertasFixacao, textoAlertaFixacao, textoFixacaoPerdida, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
+  prazoFixacao, alertasFixacao, textoAlertaFixacao, textoFixacaoPerdida, textoForaDaMatriz, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
   calcularPosition, basesDaGrade, ABA_CAMBIO, encadearComposicao,
 } from "./position-calc.js";
 import { t as tr, LOCALE, IDIOMA } from "./i18n.js";
@@ -329,7 +329,7 @@ function ligarTopo(alvo, ctx) {
       }
       // contratos vencidos ou a vencer em 15 dias viram notificação para quem vê o Open Contracts
       await ctx.api.publicarPosition({ data_ref: lida.data_ref, resumo: lida.resumo, detalhes: lida.detalhes, nome_arquivo: file.name,
-        alerta: [textoFixacaoPerdida(lida.resumo.alteracoes, fmtN), textoAlertaFixacao(lida.detalhes, fmtN)].filter(Boolean).join(" · ") || null });
+        alerta: [textoFixacaoPerdida(lida.resumo.alteracoes, fmtN), textoForaDaMatriz(lida.resumo.fisica?.fora, fmtN), textoAlertaFixacao(lida.detalhes, fmtN)].filter(Boolean).join(" · ") || null });
       toast(`Position of ${fmtData(lida.data_ref)} published.`);
       lida.avisos.forEach((a) => toast(a, "erro"));
       // fórmulas e futuros desta planilha passam a valer para a atualização pelo Digisul
@@ -1338,6 +1338,31 @@ async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor 
   }
 }
 
+// Contratos abertos que ficam fora do long/short (resumo.fisica.fora, de foraDaMatriz):
+// sem data, data fora do período da matriz ou sem padrão. Sempre visível, com a lista aberta.
+const MOTIVO_FORA = {
+  sem_data: (x) => `no ${x.tipo === "c" ? "maturity date (Vencimento)" : x.tipo === "v" ? "shipment date (Embarque)" : "delivery date (Prev. Embarque)"}`,
+  antes: () => "date before the first month of the matrix",
+  depois: () => "date after the last month of the matrix",
+  sem_padrao: () => "no standard (Padrão)",
+};
+function alertaForaMatriz(fora) {
+  if (!fora?.length) return "";
+  const total = fora.reduce((s, x) => s + x.sacas, 0);
+  const sinal = (x) => (x.tipo === "c" ? x.sacas : -x.sacas);
+  return `<div class="pos-alerta pos-fora" role="alert">${icon("alert")}
+    <div><strong>${fora.length} open ${fora.length === 1 ? "contract is" : "contracts are"} out of the long/short · ${fmtN(Math.round(total))} bags</strong> —
+      the matrix places each contract in the month of its date, so these do not count anywhere. Fill in the field in Digisul and they come in at the next update.
+      <details class="pos-fora-lista"${fora.length <= 8 ? " open" : ""}><summary>${fora.length <= 8 ? "Contracts" : `See the ${fora.length} contracts`}</summary>
+      <div class="tabela-wrap"><table class="tabela tabela-num">
+        <thead><tr><th>Type</th><th>Contract</th><th>Counterparty</th><th>Species</th><th>Quality</th><th class="num">Bags</th><th class="num">Effect if counted</th><th>Problem</th></tr></thead>
+        <tbody>${fora.map((x) => `<tr><td>${ROT_TIPO_ALT[x.tipo]}</td><td>${esc(x.contrato)}</td><td>${esc(x.parceiro ?? "—")}</td>
+          <td>${x.especie === "C" ? "Conilon" : "Arabica"}</td><td>${esc(x.padrao ?? "—")}</td>${celNum(x.sacas)}${celNum(sinal(x), { forte: true })}
+          <td>${esc(MOTIVO_FORA[x.motivo]?.(x) ?? x.motivo)}${x.data && x.motivo !== "sem_data" ? ` (${esc(fmtData(x.data))})` : ""}</td></tr>`).join("")}</tbody>
+      </table></div></details>
+    </div></div>`;
+}
+
 async function painelFisica(alvo, carga, ctx) {
   composicaoCache = null;
   const f = carga.resumo.fisica;
@@ -1353,6 +1378,7 @@ async function painelFisica(alvo, carga, ctx) {
   const desenhar = () => {
     const b = f[grupo];
     alvo.innerHTML = `
+    ${alertaForaMatriz(f.fora)}
     ${matrizPorPadrao(f, estado)}
     <div class="pos-filtros">${segmentos("segGrupo", grupos.map((k) => [k, NOME_GRUPO[k]]), grupo)}</div>
     <section class="pos-card">
