@@ -1348,20 +1348,26 @@ const MOTIVO_FORA = {
   padrao_fora: (x) => `standard ${x.padrao} has no column in the Arabica matrix${x.tipo === "c" ? " (only the exportable part is lost; breakage goes to the Low Grades Code)" : ""}`,
   parte_exp: (x) => `low grade standard ${x.padrao} with breakage under 100%: the exportable part has no column (only the breakage counts)`,
 };
-function alertaForaMatriz(fora) {
-  if (!fora?.length) return "";
+// só os da espécie na tela (Arábica ou Conilon); os da outra viram uma linha de aviso
+function alertaForaMatriz(todos, especie) {
+  const esp = especie === "conilon" ? "C" : "A";
+  const fora = (todos ?? []).filter((x) => x.especie === esp), outros = (todos ?? []).filter((x) => x.especie !== esp);
+  const nomeOutra = esp === "C" ? "Arabica" : "Conilon";
+  const avisoOutra = outros.length ? `${fmtN(outros.length)} ${outros.length === 1 ? "contract" : "contracts"} (${fmtN(Math.round(outros.reduce((s, x) => s + x.sacas, 0)))} bags) out of the ${nomeOutra} long/short — switch to ${nomeOutra} to see ${outros.length === 1 ? "it" : "them"}.` : "";
+  if (!fora.length) return avisoOutra ? `<p class="pos-nota pos-cmp-aviso">${icon("alert")} <span>${avisoOutra}</span></p>` : "";
   const total = fora.reduce((s, x) => s + x.sacas, 0);
   const sinal = (x) => (x.tipo === "c" ? x.sacas : -x.sacas);
   return `<div class="pos-alerta pos-fora" role="alert">${icon("alert")}
-    <div><strong>${fora.length} open ${fora.length === 1 ? "contract is" : "contracts are"} out of the long/short · ${fmtN(Math.round(total))} bags</strong> —
+    <div><strong>${fora.length} open ${esp === "C" ? "Conilon" : "Arabica"} ${fora.length === 1 ? "contract is" : "contracts are"} out of the long/short · ${fmtN(Math.round(total))} bags</strong> —
       the matrix places each contract in the column of its standard and the month of its date, so these bags do not count anywhere. Fix the field in Digisul and they come in at the next update.
       <details class="pos-fora-lista"${fora.length <= 8 ? " open" : ""}><summary>${fora.length <= 8 ? "Contracts" : `See the ${fora.length} contracts`}</summary>
       <div class="tabela-wrap"><table class="tabela tabela-num">
-        <thead><tr><th>Type</th><th>Contract</th><th>Counterparty</th><th>Species</th><th>Quality</th><th class="num">Bags</th><th class="num">Effect if counted</th><th>Problem</th></tr></thead>
+        <thead><tr><th>Type</th><th>Contract</th><th>Counterparty</th><th>Quality</th><th class="num">Bags</th><th class="num">Effect if counted</th><th>Problem</th></tr></thead>
         <tbody>${fora.map((x) => `<tr><td>${ROT_TIPO_ALT[x.tipo]}</td><td>${esc(x.contrato)}</td><td>${esc(x.parceiro ?? "—")}</td>
-          <td>${x.especie === "C" ? "Conilon" : "Arabica"}</td><td>${esc(x.padrao ?? "—")}</td>${celNum(x.sacas)}${celNum(sinal(x), { forte: true })}
+          <td>${esc(x.padrao ?? "—")}</td>${celNum(x.sacas)}${celNum(sinal(x), { forte: true })}
           <td>${esc(MOTIVO_FORA[x.motivo]?.(x) ?? x.motivo)}${x.data && x.motivo !== "sem_data" ? ` (${esc(fmtData(x.data))})` : ""}</td></tr>`).join("")}</tbody>
       </table></div></details>
+      ${avisoOutra ? `<p class="muted" style="margin-top:6px">${avisoOutra}</p>` : ""}
     </div></div>`;
 }
 
@@ -1380,7 +1386,7 @@ async function painelFisica(alvo, carga, ctx) {
   const desenhar = () => {
     const b = f[grupo];
     alvo.innerHTML = `
-    ${alertaForaMatriz(f.fora)}
+    ${alertaForaMatriz(f.fora, estado.especie)}
     ${matrizPorPadrao(f, estado)}
     <div class="pos-filtros">${segmentos("segGrupo", grupos.map((k) => [k, NOME_GRUPO[k]]), grupo)}</div>
     <section class="pos-card">
