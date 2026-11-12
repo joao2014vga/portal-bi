@@ -1325,7 +1325,7 @@ async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor 
     const mesesTxt = (l) => [...l.meses].sort((a, b) => a - b).map((m) => mesLongo(dados.meses[m])).join(", ");
     modal({
       titulo: `${rotulo} · ${mesLongo(mes)}`,
-      largura: "modal-lg",
+      largura: "modal-xl",
       corpo: `<p><span>Accumulated position up to</span> <b>${esc(mesLongo(mes))}</b>: <strong class="pos-alt-ef">${esc(valor)}</strong> <span>bags</span></p>
         <div class="pos-alt-resumo">${secoes.map((s) => `<span>${esc(tr(ROT_COMP_FIS[s.c]))}: <strong class="pos-alt-ef">${fmtN(Math.round(s.total))}</strong></span>`).join("")}</div>
         ${valor && Math.abs(Math.abs(total) - (Number(String(valor).replace(/[^\d]/g, "")) || 0)) > 1
