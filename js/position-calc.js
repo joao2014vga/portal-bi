@@ -191,6 +191,53 @@ export function componentesPorEspecie(gAba, meses, especie, { soExportavel = fal
   return Object.keys(q).length ? { meses, q } : null;
 }
 
+// Contratos abertos que ficam FORA da Physical Position (long/short): a matriz soma por mês
+// (fim do mês da data do contrato), então contrato sem data, ou com data antes do primeiro
+// mês / depois do último, some da conta. Mesmas colunas que a matriz usa, nas duas fontes.
+// motivo: "sem_data" · "antes" (do primeiro mês) · "depois" (do último) · "sem_padrao"
+const FORA_MATRIZ = [
+  // [tipo, aba, data mostrada, mês usado pela matriz, saldo, contrato, parceiro]
+  ["c", "purchases", "Vencimento", "EOM Ship/Paym", "A Entregar BC", "Contrato", "Fornecedor"],
+  ["v", "expsales", "Embarque", "EOM Ship", "Balance bags", "Contrato", "Importador"],
+  ["i", "intsales", "Prev. Embarque", "EOM Ship", "A Entregar(Sc)", "Contrato", "Cliente"],
+];
+export function foraDaMatriz(gAba, meses) {
+  if (!meses?.length) return [];
+  const chaves = new Set(meses.map((m) => m.slice(0, 7)));
+  const primeiro = meses[0].slice(0, 7), ultimo = meses.at(-1).slice(0, 7);
+  const fora = [];
+  for (const [tipo, k, cData, cMes, cSaldo, cCtr, cParc] of FORA_MATRIZ) {
+    const g = gAba(ABAS[k]) ?? [];
+    const cab = (g[0] ?? []).map(norm);
+    const ix = [cData, cMes, cSaldo, cCtr, cParc, "Padrão", "Espécie"].map((c) => cab.indexOf(norm(c)));
+    if (ix.slice(1, 4).some((i) => i < 0)) continue; // aba sem as colunas da matriz
+    for (const r of g.slice(1)) {
+      if (vazia(r)) continue;
+      const [dt, m, saldo, ctr, parc, padrao, esp] = ix.map((i) => (i < 0 ? null : r[i]));
+      const sacas = num(saldo) ?? 0;
+      if (sacas < 0.5 || !String(ctr ?? "").trim()) continue; // só contrato aberto
+      const especie = norm(esp).startsWith("CONILON") ? "C" : norm(esp).startsWith("AR") ? "A" : null;
+      if (!especie) continue;
+      // data em branco vira 0 (ou 31, o EOMONTH do zero) na planilha
+      const mesIso = num(m) != null && num(m) > 366 ? serialIso(m).slice(0, 7) : null;
+      const motivo = !String(padrao ?? "").trim() ? "sem_padrao"
+        : !mesIso ? "sem_data" : chaves.has(mesIso) ? null : mesIso < primeiro ? "antes" : mesIso > ultimo ? "depois" : null;
+      if (!motivo) continue;
+      fora.push({ tipo, contrato: String(ctr).trim(), parceiro: parc == null ? null : String(parc).trim(), padrao: padrao == null ? null : String(padrao).trim(),
+        especie, sacas: arred(sacas), data: num(dt) != null && num(dt) > 366 ? serialIso(dt) : null, motivo });
+    }
+  }
+  return fora.sort((a, b) => b.sacas - a.sacas);
+}
+
+// texto da notificação (sino); null quando todos os contratos abertos entram na matriz
+export function textoForaDaMatriz(fora, fmtN = (v) => v.toLocaleString("en-US", { maximumFractionDigits: 0 })) {
+  if (!fora?.length) return null;
+  const total = fora.reduce((s, x) => s + x.sacas, 0);
+  const lista = fora.slice(0, 4).map((x) => `${x.contrato} ${fmtN(Math.round(x.sacas))}`).join(", ");
+  return `Out of the long/short: ${fora.length} open ${fora.length === 1 ? "contract" : "contracts"} (${fmtN(Math.round(total))} bags) without a valid date or standard (${lista}${fora.length > 4 ? ", …" : ""}). Fix them in Digisul`;
+}
+
 // Variation: Previous → movimentos do dia → posição atual, por grupo
 const NOMES_VARIACAO = { ARABICA: "arabica", CONILON: "robusta", EXP: "exportable", "LOW GRADE": "lowgrade" };
 export function lerVariacao(g) {
@@ -322,6 +369,11 @@ export function montarPosition(gAba) {
     const conilon = meses && componentesPorEspecie(gAba, meses, "CONILON");
     if (conilon) resumo.fisica.conilon = conilon;
   } catch (e) { /* segue sem o Conilon */ }
+  // contratos abertos que não entram no long/short (sem data, data fora do período ou sem padrão)
+  try {
+    const meses = resumo.fisica.componentes?.meses;
+    if (meses) resumo.fisica.fora = foraDaMatriz(gAba, meses);
+  } catch (e) { /* segue sem o alerta */ }
   const detalhes = Object.fromEntries(Object.entries(DETALHES).map(([k, def]) => [k, lerDetalhe(gAba(def.aba), def)]));
   return { data_ref: serialIso(serial), resumo, detalhes };
 }
