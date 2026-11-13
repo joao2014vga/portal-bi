@@ -1496,7 +1496,27 @@ export function encadearComposicao(novo, guardado, em = new Date().toISOString()
 
 // Calcula a Position inteira: bases = { aba: linhas }, hoje = "AAAA-MM-DD",
 // anterior = kpis do último dia anterior { arabica: {diff, outright}, ... } (opcional)
-export function calcularPosition(modelo, bases, { hoje = hojeSP(), anterior = null } = {}) {
+// Regras do portal por cima das fórmulas da planilha (valem no cálculo pela Digisul API).
+// Cada uma só entra se a planilha ainda não tiver a regra; se a fórmula mudar de jeito, fica de fora.
+//  - Low Grades Code das compras (Purchases BQ): a planilha manda toda quebra de Arábica fora da
+//    lista (BC8/9/10/17) para a BC11; a de BC13 passa a ficar na própria BC13 (pedido de 13/11/2026).
+const REGRAS_PORTAL = [
+  { aba: "Purchases", col: "BQ", titulo: "Low Grades Code", jaTem: /X2\s*=\s*"BC13"/i, antes: /AS2\s*=\s*"AR[ÁA]BICA"\s*,\s*"BC11"/i, inserir: 'X2="BC13","BC13",' },
+];
+export function aplicarRegrasPortal(modelo) {
+  const bases = { ...(modelo?.bases ?? {}) };
+  for (const r of REGRAS_PORTAL) {
+    const b = bases[r.aba], f = b?.formulas?.[r.col];
+    if (typeof f !== "string" || norm(b.cabecalho?.[r.col]) !== norm(r.titulo) || r.jaTem.test(f)) continue;
+    const m = f.match(r.antes);
+    if (!m) continue;
+    bases[r.aba] = { ...b, formulas: { ...b.formulas, [r.col]: f.slice(0, m.index) + r.inserir + f.slice(m.index) } };
+  }
+  return { ...modelo, bases };
+}
+
+export function calcularPosition(modeloPlanilha, bases, { hoje = hojeSP(), anterior = null } = {}) {
+  const modelo = aplicarRegrasPortal(modeloPlanilha);
   const todas = { ...bases, OpenFutures: bases.OpenFutures ?? modelo.futuros };
   const sobrepor = sobreporAnterior(modelo, anterior);
   // "UPDATED AS OF" = hoje; as demais abas apontam para essa célula
