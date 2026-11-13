@@ -1286,40 +1286,6 @@ const ABA_PENEIRA = { e: ["inventory", "lote", "peneiras"], c: ["purchases", "co
 // "13/16(70.00%),17/18(15.00%)" → "13/16 (70%), 17/18 (15%)"
 const fmtPeneira = (s) => (s ? String(s).replace(/\.00%/g, "%").replace(/\s*\(/g, " (").replace(/,\s*/g, ", ") : "—");
 
-// Peneira em partes: lote "13/16(70.00%),17/18(30.00%)" → [["13/16", .7], ["17/18", .3]];
-// contrato "14/16" → [["14/16", 1]]; sem peneira → [["No sieve", 1]]
-function partesPeneira(p) {
-  const s = String(p ?? "").trim();
-  if (!s) return [["No sieve", 1]];
-  const partes = [...s.matchAll(/([^,(]+?)\s*\(\s*([\d.,]+)\s*%\s*\)/g)].map((m) => [m[1].trim().toUpperCase(), Number(m[2].replace(",", ".")) || 0]);
-  const soma = partes.reduce((t, [, v]) => t + v, 0);
-  return partes.length && soma > 0 ? partes.map(([k, v]) => [k, v / soma]) : [[s.toUpperCase(), 1]];
-}
-// Resumo da célula por peneira: estoque, compras e vendas de cada peneira (lotes divididos
-// pelo % de cada peneira) e o líquido. Fica no fim da janela da composição.
-function resumoPorPeneira(secoes, peneiraDe) {
-  if (!secoes.length) return "";
-  const comps = secoes.map((s) => s.c);
-  const porP = new Map();
-  for (const s of secoes) for (const l of s.linhas) {
-    for (const [lab, f] of partesPeneira(peneiraDe(l))) {
-      const a = porP.get(lab) ?? porP.set(lab, [0, 0, 0, 0]).get(lab);
-      a[s.c] += l.v * f;
-    }
-  }
-  if (porP.size < 1 || (porP.size === 1 && porP.has("No sieve"))) return "";
-  const linhas = [...porP].map(([lab, a]) => ({ lab, a, net: comps.reduce((t, c) => t + a[c], 0) }))
-    .sort((x, y) => (x.lab === "No sieve") - (y.lab === "No sieve") || x.lab.localeCompare(y.lab, "en", { numeric: true }));
-  const tot = [0, 1, 2, 3].map((c) => linhas.reduce((t, l) => t + l.a[c], 0));
-  const net = linhas.reduce((t, l) => t + l.net, 0);
-  return `<h3 class="pos-comp-h">Summary by sieve <span class="muted">· lots split by the % of each sieve</span></h3>
-    <div class="tabela-wrap"><table class="tabela tabela-num">
-      <thead><tr><th>Sieve</th>${comps.map((c) => `<th class="num">${esc(tr(ROT_COMP_FIS[c]))}</th>`).join("")}<th class="num">Net</th></tr></thead>
-      <tbody>${linhas.map((l) => `<tr><td>${esc(l.lab)}</td>${comps.map((c) => celNum(Math.round(l.a[c]))).join("")}${celNum(Math.round(l.net), { forte: true })}</tr>`).join("")}</tbody>
-      <tfoot><tr class="total"><th scope="row">Total</th>${comps.map((c) => celNum(Math.round(tot[c]), { forte: true })).join("")}${celNum(Math.round(net), { forte: true })}</tr></tfoot>
-    </table></div>`;
-}
-
 async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor }) {
   if (!ctx?.api?.positionDetalhe) return;
   if (ctx.historico) { toast(tr("The contracts behind each number are only kept for the latest Position."), "erro"); return; }
@@ -1372,8 +1338,7 @@ async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor 
             <thead><tr><th>${rotChave}</th><th>${rotParc}</th>${variasQ ? "<th>Quality</th>" : ""}${comPeneira ? "<th>Sieve</th>" : ""}${s.c ? "<th>Month</th>" : ""}<th class="num">Bags</th></tr></thead>
             <tbody>${s.linhas.map((l) => `<tr><td>${esc(l.chave ?? "—")}</td><td>${esc(l.parceiro ?? "—")}</td>${variasQ ? `<td>${esc(l.padrao)}</td>` : ""}${comPeneira ? `<td class="pos-peneira">${esc(fmtPeneira(peneiraDe(l)))}</td>` : ""}${s.c ? `<td>${esc(mesesTxt(l))}</td>` : ""}${celNum(l.v)}</tr>`).join("")}</tbody>
           </table></div>`;
-        }).join("") || `<p class="muted">No contracts or lots in this cell.</p>`}
-        ${resumoPorPeneira(secoes, peneiraDe)}`,
+        }).join("") || `<p class="muted">No contracts or lots in this cell.</p>`}`,
     });
     // os negativos do modal também ficam em vermelho
     const m = $$(".modal").at(-1);
