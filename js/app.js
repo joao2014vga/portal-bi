@@ -231,6 +231,7 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false, topo 
   document.body.className = (cheio ? "pg-app pg-cheio" : "pg-app") + (topo ? "" : " pg-sem-topo");
   const p = estado.perfil;
   const banners = banner ? await bannersVigentes() : [];
+  const lembrete = banner ? await lembretePosition() : "";
   estado.sistemas ??= (await api.dashboards()).filter((d) => d.ativo && ehSistema(d));
   if (estado.arquivos === undefined) estado.arquivos = (await api.arquivos().catch(() => null)) ?? false;
   const menuArquivos = estado.arquivos && (gerenciaArquivos() || estado.arquivos.length);
@@ -260,6 +261,7 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false, topo 
     </div>
   </header>` : ""}
   ${MODO_DEMO ? `<div class="faixa-demo">Demo mode — sample data stored in this browser only. <button class="link" id="resetDemo">Reset data</button></div>` : ""}
+  ${lembrete}
   ${banners.map((b) => `
     <div class="banner banner-${esc(b.nivel)}" data-banner="${b.id}">
       ${icon(NIVEL_ICON[b.nivel])}
@@ -277,7 +279,59 @@ async function shell(conteudo, { ativo = "", banner = true, cheio = false, topo 
     storage.set("portalbi_banners", JSON.stringify([...fechados, id]));
     b.closest(".banner").remove();
   }));
+  ligarLembrete();
+  agendarLembrete();
   bindSino();
+}
+
+// ---------------------------------------------------------------- lembrete da Position
+// Só para o administrador (quem sobe a planilha): em dia útil, a partir das 15:00, se a planilha
+// da Position Overview ainda não foi enviada hoje, um aviso no topo das páginas até o upload.
+const HORA_LEMBRETE_POSITION = 15;
+const CHAVE_LEMBRETE = "portalbi_lembrete_position"; // fechado: some por 1 hora (nesta aba)
+const lembreteFechado = () => { try { return Date.now() - Number(sessionStorage.getItem(CHAVE_LEMBRETE) || 0) < 3600e3; } catch { return false; } };
+
+async function lembretePosition() {
+  if (!estado.perfil?.is_admin || MODO_DEMO || !api.positionUltimoEnvio || lembreteFechado()) return "";
+  const agora = new Date();
+  if (agora.getDay() === 0 || agora.getDay() === 6 || agora.getHours() < HORA_LEMBRETE_POSITION) return "";
+  let ultimo;
+  try { ultimo = await api.positionUltimoEnvio("planilha"); } catch { return ""; }
+  if (ultimo && new Date(ultimo).toDateString() === agora.toDateString()) return "";
+  if (estado.posOverview === undefined) {
+    estado.posOverview = (await api.dashboards().catch(() => [])).find((d) => d.ativo && d.link === "portal:position-overview")?.id ?? null;
+  }
+  return `<div class="banner banner-alerta banner-lembrete" data-lembrete-position>
+    ${icon("alert")}
+    <div><strong>Position Overview not updated today.</strong> <span>It is past ${HORA_LEMBRETE_POSITION}:00 and today's spreadsheet has not been uploaded${ultimo ? ` (last upload ${esc(tempoRelativo(ultimo))})` : ""}. Upload it so everyone sees the latest Position.</span>
+    ${estado.posOverview ? ` <a href="#/d/${estado.posOverview}">Go to Position Overview</a>` : ""}</div>
+    <button class="btn-icon" data-fecha-lembrete title="Hide for one hour" aria-label="Hide for one hour">${icon("x")}</button>
+  </div>`;
+}
+
+function ligarLembrete() {
+  $("[data-fecha-lembrete]")?.addEventListener("click", (e) => {
+    try { sessionStorage.setItem(CHAVE_LEMBRETE, String(Date.now())); } catch { /* some só agora */ }
+    e.currentTarget.closest(".banner").remove();
+  });
+}
+
+// com o portal aberto antes das 15:00, o aviso aparece sozinho na hora, sem recarregar
+function agendarLembrete() {
+  if (estado.lembreteAgendado || !estado.perfil?.is_admin || MODO_DEMO) return;
+  estado.lembreteAgendado = true;
+  const hora = new Date();
+  hora.setHours(HORA_LEMBRETE_POSITION, 0, 5, 0);
+  const ms = hora - Date.now();
+  if (ms <= 0) return;
+  setTimeout(async () => {
+    if ($("[data-lembrete-position]") || !$(".topo")) return; // páginas sem a barra do portal (os painéis) ficam como estão
+    const html = await lembretePosition();
+    const main = $("main.conteudo");
+    if (!html || !main) return;
+    main.insertAdjacentHTML("beforebegin", html);
+    ligarLembrete();
+  }, ms);
 }
 
 // ---------------------------------------------------------------- notificações (sininho)
