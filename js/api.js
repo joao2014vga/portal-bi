@@ -254,6 +254,13 @@ async function criarApiSupabase() {
       if (error) throw new Error(erroPosition(error.message));
       return [...new Set(data.map((c) => c.data_ref))];
     },
+    // quando a fonte recebeu a última versão (null = nunca), para o lembrete do upload diário
+    async positionUltimoEnvio(fonte = "planilha") {
+      const { data, error } = await sb.from("bi_position_cargas").select("created_at").eq("fonte", fonte)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(erroPosition(error.message));
+      return data?.created_at ?? null;
+    },
     // pegada da última versão de um dia anterior (null = não há);
     // sem data_ref: a versão mais recente, de qualquer dia ("desde a última atualização")
     async positionPegadaAnterior(fonte, data_ref = null) {
