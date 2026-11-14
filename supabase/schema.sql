@@ -1640,3 +1640,218 @@ notify pgrst, 'reload schema';
 
 -- Para conferir:
 --   select count(*), max(atualizado_em) from public.bi_shipment;
+-- =====================================================================
+-- 28. SEGURANÇA: TABELAS DO INFORMATIVO DIÁRIO E SOBRAS DE OUTROS APPS
+-- =====================================================================
+-- O Informativo Diário (outro repositório, aberto dentro do Portal BI)
+-- usa lancamentos, negociacoes e perfis neste mesmo projeto. As policies
+-- antigas liberavam tudo para "public" (inclusive sem login, só com a
+-- chave anon que fica no HTML). Agora:
+--  - ler e lançar: quem está ativo no portal e tem o card "Daily Report";
+--  - editar/excluir lançamento: admin do Informativo (perfis.role) ou do portal;
+--  - perfis: cada um lê só a própria linha (o Informativo busca o role assim);
+--  - contratos: nenhum app usa — fica fechada (só service_role), dados mantidos.
+-- =====================================================================
+
+create or replace function public.bi_ve_informativo()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.bi_ve_painel('informativo-diario');
+$$;
+
+create or replace function public.bi_informativo_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.bi_is_admin() or (public.bi_is_ativo() and exists (
+    select 1 from public.perfis p where p.id = auth.uid() and p.role = 'admin'));
+$$;
+
+revoke all on function public.bi_ve_informativo() from public, anon;
+revoke all on function public.bi_informativo_admin() from public, anon;
+grant execute on function public.bi_ve_informativo() to authenticated;
+grant execute on function public.bi_informativo_admin() to authenticated;
+
+-- lancamentos
+drop policy if exists acesso_publico on public.lancamentos;
+drop policy if exists lancamentos_select on public.lancamentos;
+drop policy if exists lancamentos_insert on public.lancamentos;
+drop policy if exists lancamentos_update on public.lancamentos;
+drop policy if exists lancamentos_delete on public.lancamentos;
+create policy lancamentos_select on public.lancamentos for select to authenticated
+  using (public.bi_ve_informativo());
+create policy lancamentos_insert on public.lancamentos for insert to authenticated
+  with check (public.bi_ve_informativo());
+create policy lancamentos_update on public.lancamentos for update to authenticated
+  using (public.bi_informativo_admin()) with check (public.bi_informativo_admin());
+create policy lancamentos_delete on public.lancamentos for delete to authenticated
+  using (public.bi_informativo_admin());
+
+-- negociacoes (Pricing: o histórico é editado por quem usa o Pricing)
+drop policy if exists acesso_negociacoes on public.negociacoes;
+drop policy if exists negociacoes_acesso on public.negociacoes;
+create policy negociacoes_acesso on public.negociacoes for all to authenticated
+  using (public.bi_ve_informativo()) with check (public.bi_ve_informativo());
+
+-- perfis do Informativo
+drop policy if exists perfis_publico on public.perfis;
+drop policy if exists perfis_select on public.perfis;
+create policy perfis_select on public.perfis for select to authenticated
+  using (id = auth.uid() or public.bi_is_admin());
+
+-- contratos: sem uso, fechada
+drop policy if exists acesso_contratos on public.contratos;
+
+-- sem login não há o que fazer nessas tabelas
+revoke all on public.lancamentos, public.negociacoes, public.perfis, public.contratos from anon;
+
+-- =====================================================================
+-- 29. SEGURANÇA: QUALIDADE ANTIGA (qualidade_contratos, qualidade_log)
+-- =====================================================================
+-- Sobras de uma versão antiga da Qualidade; nenhum app usa. A policy
+-- "auth read/write" liberava tudo para qualquer usuário logado — inclusive
+-- quem se cadastrasse sozinho. Ficam fechadas (só service_role), dados mantidos.
+-- =====================================================================
+drop policy if exists "auth read/write" on public.qualidade_contratos;
+drop policy if exists "auth read/write" on public.qualidade_log;
+revoke all on public.qualidade_contratos, public.qualidade_log from anon, authenticated;
+
+-- =====================================================================
+-- 30. PERMISSÕES: "FILE MANAGER" SÓ CUIDA DE ARQUIVOS; DAILY REPORT
+-- =====================================================================
+-- Regra: só o administrador cadastra usuários, libera painéis e opera o
+-- Position e o Certificado. Quem tem gerencia_arquivos ("File manager")
+-- só envia arquivos no Files e escolhe quem baixa cada um.
+-- Daily Report: todos com o card leem; lançar, editar e apagar só os
+-- admins do Informativo (perfis.role = 'admin') e o admin do portal.
+-- O Pricing (negociacoes) só é usado pelo link direto do admin.
+-- =====================================================================
+
+-- Certificado: ver segue o card; mexer só o admin
+drop policy if exists bi_cert_historico_select on public.bi_cert_historico;
+drop policy if exists bi_cert_historico_insert on public.bi_cert_historico;
+drop policy if exists bi_cert_historico_update on public.bi_cert_historico;
+drop policy if exists bi_cert_historico_delete on public.bi_cert_historico;
+create policy bi_cert_historico_select on public.bi_cert_historico for select to authenticated using (public.bi_ve_painel('portal:cert-'));
+create policy bi_cert_historico_insert on public.bi_cert_historico for insert to authenticated with check (public.bi_is_admin());
+create policy bi_cert_historico_update on public.bi_cert_historico for update to authenticated using (public.bi_is_admin()) with check (public.bi_is_admin());
+create policy bi_cert_historico_delete on public.bi_cert_historico for delete to authenticated using (public.bi_is_admin());
+
+drop policy if exists bi_cert_ajustes_select on public.bi_cert_ajustes;
+drop policy if exists bi_cert_ajustes_insert on public.bi_cert_ajustes;
+drop policy if exists bi_cert_ajustes_update on public.bi_cert_ajustes;
+drop policy if exists bi_cert_ajustes_delete on public.bi_cert_ajustes;
+create policy bi_cert_ajustes_select on public.bi_cert_ajustes for select to authenticated using (public.bi_ve_painel('portal:cert-'));
+create policy bi_cert_ajustes_insert on public.bi_cert_ajustes for insert to authenticated with check (public.bi_is_admin());
+create policy bi_cert_ajustes_update on public.bi_cert_ajustes for update to authenticated using (public.bi_is_admin()) with check (public.bi_is_admin());
+create policy bi_cert_ajustes_delete on public.bi_cert_ajustes for delete to authenticated using (public.bi_is_admin());
+
+drop policy if exists bi_cert_vinculos_select on public.bi_cert_vinculos;
+drop policy if exists bi_cert_vinculos_insert on public.bi_cert_vinculos;
+drop policy if exists bi_cert_vinculos_update on public.bi_cert_vinculos;
+drop policy if exists bi_cert_vinculos_delete on public.bi_cert_vinculos;
+create policy bi_cert_vinculos_select on public.bi_cert_vinculos for select to authenticated using (public.bi_ve_painel('portal:cert-'));
+create policy bi_cert_vinculos_insert on public.bi_cert_vinculos for insert to authenticated with check (public.bi_is_admin());
+create policy bi_cert_vinculos_update on public.bi_cert_vinculos for update to authenticated using (public.bi_is_admin()) with check (public.bi_is_admin());
+create policy bi_cert_vinculos_delete on public.bi_cert_vinculos for delete to authenticated using (public.bi_is_admin());
+
+-- Position: ver segue os cards; bastidores (modelo, lançamentos do portal) só o admin
+drop policy if exists bi_position_cargas_select on public.bi_position_cargas;
+create policy bi_position_cargas_select on public.bi_position_cargas for select to authenticated
+  using (public.bi_ve_painel('portal:position-'));
+
+drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
+create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated using (
+  public.bi_is_admin()
+  or (tipo = 'vendas' and (public.bi_ve_painel('portal:position-sales') or public.bi_ve_painel('portal:position-diffs')))
+  or (tipo = 'compras' and public.bi_ve_painel('portal:position-purchases'))
+  or (tipo like 'cert\_%' and public.bi_ve_painel('portal:cert-'))
+  or (tipo = 'fisica_itens' and public.bi_ve_painel('portal:position-physical'))
+  or (tipo = 'termm_itens' and public.bi_ve_painel('portal:position-overview'))
+  or (tipo = 'comercial' and public.bi_ve_painel('portal:position-commercial'))
+  or (tipo <> all (array['vendas', 'compras', 'fisica_itens', 'termm_itens', 'comercial']) and tipo not like 'cert\_%'
+      and public.bi_ve_painel('portal:position-contracts')));
+
+drop policy if exists bi_position_lancamentos_select on public.bi_position_lancamentos;
+create policy bi_position_lancamentos_select on public.bi_position_lancamentos for select to authenticated using (public.bi_is_admin());
+drop policy if exists bi_position_modelo_select on public.bi_position_modelo;
+create policy bi_position_modelo_select on public.bi_position_modelo for select to authenticated using (public.bi_is_admin());
+
+-- Funções de escrita do Position e do Certificado: só o admin
+create or replace function public.bi_position_publicar(p_data_ref date, p_nome text, p_resumo jsonb, p_detalhes jsonb, p_alerta text default null)
+returns bigint language plpgsql security definer set search_path = public as $$
+declare
+  v_id bigint;
+  v_tipo text;
+begin
+  if not public.bi_is_admin() then
+    raise exception 'Access denied';
+  end if;
+  insert into public.bi_position_cargas (data_ref, nome_arquivo, resumo, enviado_por)
+  values (p_data_ref, p_nome, p_resumo,
+          (select nullif(split_part(nome, ' ', 1), '') from public.bi_perfis where id = auth.uid()))
+  returning id into v_id;
+
+  for v_tipo in select jsonb_object_keys(p_detalhes) loop
+    insert into public.bi_position_detalhe (fonte, tipo, carga_id, linhas, updated_at)
+    values ('planilha', v_tipo, v_id, p_detalhes -> v_tipo, now())
+    on conflict (fonte, tipo) do update set carga_id = excluded.carga_id, linhas = excluded.linhas, updated_at = now();
+  end loop;
+
+  -- painéis e notificações só acompanham a fonte que está valendo
+  if (select valor #>> '{}' from public.bi_config where chave = 'position_fonte') is distinct from 'api' then
+    perform set_config('bi.sem_notificacao', '1', true);
+    update public.bi_dashboards set atualizado_em = now()
+     where link like 'portal:position-%' and link <> 'portal:position-overview';
+    perform set_config('bi.sem_notificacao', '', true);
+    update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-overview';
+
+    if nullif(trim(p_alerta), '') is not null then
+      insert into public.bi_notificacoes (dashboard_id, titulo, mensagem)
+      select id, 'Fixation alert', left(p_alerta, 300) from public.bi_dashboards where link = 'portal:position-contracts';
+    end if;
+  end if;
+  return v_id;
+end;
+$$;
+
+create or replace function public.bi_position_salvar_modelo(p_modelo jsonb, p_nome text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.bi_is_admin() then
+    raise exception 'Access denied';
+  end if;
+  insert into public.bi_position_modelo (id, modelo, nome_arquivo, enviado_por, atualizado_em)
+  values (1, p_modelo, p_nome, (select nullif(split_part(nome, ' ', 1), '') from public.bi_perfis where id = auth.uid()), now())
+  on conflict (id) do update set modelo = excluded.modelo, nome_arquivo = excluded.nome_arquivo,
+    enviado_por = excluded.enviado_por, atualizado_em = now();
+end;
+$$;
+
+create or replace function public.bi_cert_historico_importar(p_certificado text, p_linhas jsonb)
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  v_autor text;
+  v_n integer;
+begin
+  if not public.bi_is_admin() then
+    raise exception 'permission denied: only administrators can import the certificate history';
+  end if;
+  v_autor := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  delete from public.bi_cert_historico where certificado = p_certificado and origem = 'planilha';
+  insert into public.bi_cert_historico (certificado, origem, ordem, compra, id_cert, fornecedor, fazenda, sacas, usado, vencimento, vinculos, importado_por)
+  select p_certificado, 'planilha', (l ->> 'ordem')::int, l ->> 'compra', l ->> 'id_cert', l ->> 'fornecedor', l ->> 'fazenda',
+         (l ->> 'sacas')::numeric, (l ->> 'usado')::numeric, (l ->> 'vencimento')::date,
+         coalesce(l -> 'vinculos', '[]'::jsonb), v_autor
+  from jsonb_array_elements(p_linhas) l;
+  get diagnostics v_n = row_count;
+  return v_n;
+end;
+$$;
+
+-- Daily Report: lançar fica com os admins do Informativo (antes: qualquer leitor)
+drop policy if exists lancamentos_insert on public.lancamentos;
+create policy lancamentos_insert on public.lancamentos for insert to authenticated
+  with check (public.bi_informativo_admin());
+
+-- Pricing: só o admin do portal (é usado pelo link direto do Informativo)
+drop policy if exists negociacoes_acesso on public.negociacoes;
+create policy negociacoes_acesso on public.negociacoes for all to authenticated
+  using (public.bi_is_admin()) with check (public.bi_is_admin());

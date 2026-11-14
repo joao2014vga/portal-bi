@@ -575,7 +575,9 @@ async function telaDashboard(id) {
   });
   if (nativo) {
     const render = ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : ehPainelPrecos(d.link) ? renderPrecos : ehPainelShipment(d.link) ? renderShipment : renderPosition;
-    await render(d.link, $("#frame"), { api, gerente: gerenciaArquivos(), admin: !!estado.perfil?.is_admin, recarregar, titulo: d.titulo });
+    // Position e Certificado: publicar, importar e ajustar é só do admin (o File manager só cuida do Files)
+    const admin = !!estado.perfil?.is_admin;
+    await render(d.link, $("#frame"), { api, gerente: admin, admin, recarregar, titulo: d.titulo });
   }
 }
 
