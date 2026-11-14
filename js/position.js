@@ -133,9 +133,25 @@ const fmtK = (v) => (Math.abs(v) >= 1000 ? fmtN(v / 1000, Math.abs(v) >= 10000 ?
 const NOME_GRUPO = { arabica: "Arabica", robusta: "Robusta", exportable: "Exportable", lowgrade: "Low Grade" };
 
 let chartPromise;
-const carregarChart = () => (chartPromise ??= import(CHART_URL).then((m) => { m.Chart.register(...m.registerables); return m.Chart; }));
+// se o CDN falhar, esquece a promessa rejeitada para tentar de novo na próxima vez
+const carregarChart = () => (chartPromise ??= import(CHART_URL).then((m) => { m.Chart.register(...m.registerables); return m.Chart; })
+  .catch((e) => { chartPromise = null; throw e; }));
 let graficos = [];
 function limparGraficos() { graficos.forEach((c) => c.destroy()); graficos = []; }
+// desenha sem derrubar o painel: se o Chart.js não carregar, KPIs e tabelas ficam e o gráfico vira um aviso
+async function semQuebrar(fn, canvas, ...args) {
+  try {
+    await fn(canvas, ...args);
+  } catch (e) {
+    console.error(e);
+    const caixa = canvas?.closest(".pos-grafico") ?? canvas;
+    if (!caixa) return;
+    const aviso = document.createElement("p");
+    aviso.className = "vazio-td";
+    aviso.textContent = "Chart unavailable. Check your connection.";
+    caixa.replaceWith(aviso);
+  }
+}
 
 // cores e tinta vêm das variáveis do tema (claro/escuro) no momento do desenho
 function tema() {
@@ -799,7 +815,7 @@ async function painelOverview(alvo, carga, ctx) {
       guardarAbertosTermM(); desenhar();
     });
     if (hist.length >= 2) {
-      await graficoLinha($("#gHist", alvo), { rotulos: hist.map((h) => fmtData(h.data_ref)), dados: hist.map((h) => h.kpis[grupo].outright), rotulo: "Net outright" });
+      await semQuebrar(graficoLinha, $("#gHist", alvo), { rotulos: hist.map((h) => fmtData(h.data_ref)), dados: hist.map((h) => h.kpis[grupo].outright), rotulo: "Net outright" });
     }
   };
   await desenhar();
@@ -2200,7 +2216,7 @@ async function painelSafras(alvo, ctx, cfg) {
     $$("[data-qual]", alvo).forEach((linha) => linha.addEventListener("click", () => { qualidade = qualidade === linha.dataset.qual ? "" : linha.dataset.qual; desenhar(); }));
 
     const comDados = posicoes.filter((p) => mA.has(p) || mP.has(p));
-    await graficoSafras($("#gSafra", alvo), {
+    await semQuebrar(graficoSafras, $("#gSafra", alvo), {
       rotulos: comDados.map(rotuloPosicao),
       atual: comDados.map((p) => arred(mA.get(p)?.sacas ?? 0)),
       anterior: aEntregar ? null : comDados.map((p) => arred(mP.get(p)?.sacas ?? 0)),
@@ -2446,7 +2462,7 @@ async function painelDiffs(alvo, carga, ctx) {
     $("#fAte", alvo).addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; desenhar(); });
 
     if (meses.length) {
-      await graficoDiffs($("#gDiffs", alvo), {
+      await semQuebrar(graficoDiffs, $("#gDiffs", alvo), {
         rotulos: meses.map(rotMes), unidade,
         difs: meses.map((m) => { const v = media(porMes.get(m), "dif"); return v == null ? null : arred(v); }),
         sacas: meses.map((m) => arred(porMes.get(m).sacas)),
@@ -2763,10 +2779,10 @@ async function painelComercial(alvo, carga, ctx) {
     $("#comAte", alvo)?.addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; desenhar(); });
 
     if (porPadrao.length) {
-      await graficoQualidades($("#gComQual", alvo), porPadrao, (p, varios) => selecionar("padrao", p, varios), filtro.padrao);
+      await semQuebrar(graficoQualidades, $("#gComQual", alvo), porPadrao, (p, varios) => selecionar("padrao", p, varios), filtro.padrao);
     }
     if (meses.length) {
-      await graficoHistorico($("#gComHist", alvo), {
+      await semQuebrar(graficoHistorico, $("#gComHist", alvo), {
         rotulos: meses.map(rotMes),
         arabica: meses.map((mes) => (porMes.get(mes).difA == null ? null : arred(porMes.get(mes).difA))),
         conilon: meses.map((mes) => (temConilon(mes) ? arred(porMes.get(mes).difC) : null)),

@@ -491,9 +491,14 @@ export async function renderShipment(link, alvo, ctx) {
   async function salvarLinha(tr) {
     const contrato = tr.dataset.c;
     const atual = edicoes.get(contrato) ?? {};
+    // só vai o campo que a pessoa mudou: os outros podem ter sido salvos por um colega
+    // depois que a tela abriu, e o valor (antigo) da tela não pode passar por cima
     const novo = { contrato };
-    for (const inp of $$(".shp-in", tr)) novo[inp.dataset.f] = limpo(inp.dataset.f, inp.value);
-    if (["guia", "obs", "local"].every((f) => (novo[f] ?? null) === (atual[f] ?? null))) return;
+    for (const inp of $$(".shp-in", tr)) {
+      const f = inp.dataset.f, v = limpo(f, inp.value);
+      if (v !== (atual[f] ?? null)) novo[f] = v;
+    }
+    if (Object.keys(novo).length === 1) return;
     const ins = $$(".shp-in", tr);
     ins.forEach((i) => i.classList.add("shp-salvando"));
     try {
@@ -569,12 +574,18 @@ export async function renderShipment(link, alvo, ctx) {
       const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellFormula: false, cellHTML: false, cellStyles: false });
       lidas = lerPlanilha(XLSX, wb);
     } catch (e) { toast(e.message, "erro"); return; }
-    const mudam = lidas.filter((l) => ["guia", "obs", "local"].some((f) => (l[f] ?? null) !== (edicoes.get(l.contrato)?.[f] ?? null)));
+    // só os campos que a planilha tem (sem a coluna OBS ou LOCAL, o salvo fica como está)
+    const mudam = lidas.filter((l) => ["guia", "obs", "local"].some((f) => f in l && (l[f] ?? null) !== (edicoes.get(l.contrato)?.[f] ?? null)));
     if (!mudam.length) { toast(t("Nothing to import: the spreadsheet matches what is saved.")); return; }
     const naTela = new Set(dados.exportacao.map((r) => r.contrato));
     const fora = mudam.filter((l) => !naTela.has(l.contrato)).length;
+    const temObs = "obs" in lidas[0], temLocal = "local" in lidas[0];
+    const aviso = temObs && temLocal ? "{n} contracts will get the Order, Notes and Warehouse from the spreadsheet, replacing what is saved for them."
+      : temObs ? "{n} contracts will get the Order and Notes from the spreadsheet, replacing what is saved for them. The spreadsheet has no Warehouse column: it stays as saved."
+        : temLocal ? "{n} contracts will get the Order and Warehouse from the spreadsheet, replacing what is saved for them. The spreadsheet has no Notes column: they stay as saved."
+          : "{n} contracts will get the Order from the spreadsheet, replacing what is saved for them. The spreadsheet has no Notes or Warehouse column: they stay as saved.";
     const ok = await confirmar(t("Import spreadsheet"),
-      esc(t("{n} contracts will get the Order, Notes and Warehouse from the spreadsheet, replacing what is saved for them.", { n: fmtN(mudam.length) }))
+      esc(t(aviso, { n: fmtN(mudam.length) }))
         + (fora ? `<br><span class="muted">${esc(t("{n} of them are not in the list to ship (already shipped or renamed in Digisul).", { n: fmtN(fora) }))}</span>` : ""),
       t("Import"));
     if (!ok) return;
@@ -594,25 +605,29 @@ export async function renderShipment(link, alvo, ctx) {
 
 const somarDias = (iso, n) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 
-// linhas { contrato, guia, obs, local } da primeira aba que tiver as colunas Contrato e GUIA
+// cabeçalhos aceitos (já passados por norm: sem acento, maiúsculos)
+const COL_OBS = ["OBS", "OBSERVACAO", "OBSERVACOES", "NOTES"];
+const COL_LOCAL = ["LOCAL", "ARMAZEM", "WAREHOUSE"];
+
+// linhas { contrato, guia, obs?, local? } da primeira aba que tiver as colunas Contrato e GUIA;
+// obs e local só entram se a planilha tiver a coluna (sem ela, o que está salvo não muda)
 export function lerPlanilha(XLSX, wb) {
   for (const nome of wb.SheetNames) {
     const g = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: true, defval: null });
     for (let i = 0; i < Math.min(g.length, 15); i++) {
       const cab = (g[i] ?? []).map(norm);
-      const c = { contrato: cab.indexOf("CONTRATO"), guia: cab.indexOf("GUIA"), obs: cab.indexOf("OBS"), local: cab.indexOf("LOCAL") };
+      const coluna = (nomes) => nomes.map((n) => cab.indexOf(n)).find((x) => x >= 0) ?? -1;
+      const c = { contrato: cab.indexOf("CONTRATO"), guia: cab.indexOf("GUIA"), obs: coluna(COL_OBS), local: coluna(COL_LOCAL) };
       if (c.contrato < 0 || c.guia < 0) continue;
       const txt = (v) => { const s = v == null ? "" : String(v).trim().replace(/\s+/g, " "); return s || null; };
       const out = new Map();
       for (const l of g.slice(i + 1)) {
         const contrato = txt(l?.[c.contrato]);
         if (!contrato || !/^[A-Z]{2,5}-\d/i.test(contrato)) continue;
-        out.set(contrato.toUpperCase(), {
-          contrato: contrato.toUpperCase(),
-          guia: txt(l[c.guia])?.toUpperCase() ?? null,
-          obs: c.obs >= 0 ? txt(l[c.obs]) : null,
-          local: c.local >= 0 ? txt(l[c.local]) : null,
-        });
+        const linha = { contrato: contrato.toUpperCase(), guia: txt(l[c.guia])?.toUpperCase() ?? null };
+        if (c.obs >= 0) linha.obs = txt(l[c.obs]);
+        if (c.local >= 0) linha.local = txt(l[c.local]);
+        out.set(linha.contrato, linha);
       }
       if (out.size) return [...out.values()];
     }

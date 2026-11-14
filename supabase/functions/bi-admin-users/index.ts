@@ -106,6 +106,10 @@ Deno.serve(async (req) => {
       case "redefinir": {
         const senha = String(body.senha ?? "");
         if (senha.length < 8) return json({ error: "The temporary password must be at least 8 characters long" }, 400);
+        // só contas do portal (o projeto é compartilhado com outros sistemas) e nunca outro administrador
+        const { data: alvo } = await admin.from("bi_perfis").select("is_admin").eq("id", body.user_id).maybeSingle();
+        if (!alvo) return json({ error: "User not found" }, 404);
+        if (alvo.is_admin && body.user_id !== caller.user.id) return json({ error: "The password of another administrator cannot be reset here" }, 403);
         const { data: u, error } = await admin.auth.admin.getUserById(body.user_id);
         if (error || !u?.user) return json({ error: "User not found" }, 404);
         const { error: e2 } = await admin.auth.admin.updateUserById(body.user_id, {

@@ -145,19 +145,26 @@ export async function renderPrecos(link, alvo, ctx) {
   let meta = { em: reg?.atualizado_em ?? null, por: reg?.atualizado_por ?? null };
   let dados = structuredClone(salvo ?? MODELO());
 
-  // rascunho: o que foi digitado e não salvo volta se a pessoa sair da página sem querer
+  // rascunho: o que foi digitado e não salvo volta se a pessoa sair da página sem querer.
+  // base = atualizado_em da versão salva sobre a qual a edição começou: se a lista foi salva
+  // de novo depois (ou o rascunho é antigo, sem base), ele não volta, senão desfaria a lista nova
   try {
     const r = JSON.parse(storage.get(CHAVE_RASCUNHO) ?? "null");
     if (r?.dados && JSON.stringify(normalizar(r.dados)) !== JSON.stringify(salvo)) {
-      dados = normalizar(r.dados);
-      toast("Your unsaved changes were restored.");
+      if (salvo && (r.base ?? null) !== meta.em) {
+        storage.del(CHAVE_RASCUNHO);
+        toast("An old unsaved draft was discarded: the list was updated by someone else in the meantime.", "notif");
+      } else {
+        dados = normalizar(r.dados);
+        toast("Your unsaved changes were restored.");
+      }
     } else storage.del(CHAVE_RASCUNHO);
   } catch { storage.del(CHAVE_RASCUNHO); }
 
   const sujo = () => !salvo || JSON.stringify(limpo(dados)) !== JSON.stringify(limpo(salvo));
   const guardarRascunho = () => {
     if (salvo && !sujo()) storage.del(CHAVE_RASCUNHO);
-    else storage.set(CHAVE_RASCUNHO, JSON.stringify({ dados, em: new Date().toISOString() }));
+    else storage.set(CHAVE_RASCUNHO, JSON.stringify({ dados, em: new Date().toISOString(), base: meta.em }));
   };
 
   // fechar a aba com alteração não salva: o navegador pergunta
@@ -309,7 +316,16 @@ export async function renderPrecos(link, alvo, ctx) {
   const salvar = async (btn) => {
     btn.disabled = true; btn.classList.add("loading");
     try {
-      const r = await ctx.api.salvarPrecos(chave, limpo(dados));
+      // só grava se a lista no banco ainda é a que foi aberta (meta.em); senão não passa por cima
+      const r = await ctx.api.salvarPrecos(chave, limpo(dados), meta.em);
+      if (!r) {
+        btn.classList.remove("loading"); btn.disabled = false;
+        const recarregar = await confirmar("Not saved",
+          "Someone else saved this list after you opened it. Reload the page to see their version. Your changes here will be lost: use Copy text first if you want to keep them.",
+          "Reload");
+        if (recarregar) { window.removeEventListener("beforeunload", aoSair); location.reload(); }
+        return;
+      }
       salvo = normalizar(r.dados);
       dados = structuredClone(salvo);
       meta = { em: r.atualizado_em, por: r.atualizado_por };

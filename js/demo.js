@@ -276,8 +276,11 @@ export function criarDemo() {
     async shipmentEdicoes() { return structuredClone(Object.values(db.shipment ?? {})); },
     async salvarShipment(linhas) {
       const agora = new Date().toISOString();
-      const salvas = [].concat(linhas).map(({ contrato, guia = null, obs = null, local = null }) =>
-        ((db.shipment ??= {})[contrato] = { contrato, guia, obs, local, atualizado_em: agora, atualizado_por: eu().nome }));
+      // como no Supabase: só os campos enviados mudam, o resto fica como estava
+      const salvas = [].concat(linhas).map((l) => {
+        const antes = (db.shipment ??= {})[l.contrato] ?? { contrato: l.contrato, guia: null, obs: null, local: null };
+        return (db.shipment[l.contrato] = { ...antes, ...l, atualizado_em: agora, atualizado_por: eu().nome });
+      });
       salvar();
       return structuredClone(salvas);
     },

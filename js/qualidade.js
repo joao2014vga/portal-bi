@@ -53,7 +53,10 @@ const qtd = (n, um, varios) => `${fmtN(n)} ${n === 1 ? um : varios}`;
 // GRÁFICOS (Chart.js, cores do tema: séries validadas para daltonismo)
 // =====================================================================
 let chartPromise;
-const carregarChart = () => (chartPromise ??= import(CHART_URL).then((m) => { m.Chart.register(...m.registerables); return m.Chart; }));
+// se o CDN falhar, esquece a promessa rejeitada para tentar de novo na próxima vez
+const carregarChart = () => (chartPromise ??= import(CHART_URL).then((m) => { m.Chart.register(...m.registerables); return m.Chart; })
+  .catch((e) => { chartPromise = null; throw e; }));
+const AVISO_SEM_GRAFICO = `<p class="muted qa-vazio">Chart unavailable. Check your connection.</p>`;
 let graficos = [];
 const limparGraficos = () => { graficos.forEach((c) => c.destroy()); graficos = []; };
 function tema() {
@@ -130,7 +133,14 @@ async function ligarCartoes(raiz) {
   for (const [id, spec] of specs) {
     const caixa = $(`#qg-${id}`, raiz);
     if (!caixa) continue;
-    await desenhar($("canvas", caixa), spec);
+    try {
+      await desenhar($("canvas", caixa), spec);
+    } catch (e) {
+      // sem Chart.js: aviso no lugar do gráfico; a tabela (botão Table) continua
+      console.error(e);
+      caixa.style.height = "";
+      caixa.innerHTML = AVISO_SEM_GRAFICO;
+    }
     $(`#qt-${id}`, raiz).innerHTML = tabelaDoGrafico(spec);
   }
   $$(".qa-vt", raiz).forEach((b) => b.addEventListener("click", () => {

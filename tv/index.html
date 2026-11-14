@@ -105,6 +105,8 @@ const REFRESH_MINUTOS=180; // recarrega os dados sozinho a cada N minutos (180 =
 const HORA_REFRESH_EXTRA=18; // além do ciclo de 3 em 3 horas, força uma atualização extra todo dia nesse horário (hora cheia, 0-23)
 
 // ── util ────────────────────────────────────────────────────────────────
+// escapa texto vindo da API antes de ir para innerHTML (conteúdo e atributos)
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtR$=v=>'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtN=v=>Number(v||0).toLocaleString('pt-BR');
 const normEsp=v=>String(v||'ARABICA').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -152,14 +154,14 @@ async function carregarTvDashboard(){
     const json=await res.json();
     if(!res.ok)throw Object.assign(new Error(json.error||'Error fetching data'),{status:res.status});
     document.getElementById('erroBox').innerHTML=json.erros?.length
-      ?`<div class="err">Warning: Digisul query partially failed (${json.erros.join(' · ')}). The data below may be incomplete.</div>`
+      ?`<div class="err">Warning: Digisul query partially failed (${json.erros.map(esc).join(' · ')}). The data below may be incomplete.</div>`
       :'';
     contratosGlobais=json.contratos;
     popularFiltroCorretor();
     aplicarFiltros();
     renderExportacao(json.exportacoes,json.totais,json.ptax);
   }catch(e){
-    document.getElementById('erroBox').innerHTML=`<div class="err">${msgErro(e)}</div>`;
+    document.getElementById('erroBox').innerHTML=`<div class="err">${esc(msgErro(e))}</div>`;
     document.getElementById('contratosTableWrap').innerHTML='<div class="empty">—</div>';
     document.getElementById('exportTableWrap').innerHTML='<div class="empty">—</div>';
   }
@@ -179,8 +181,8 @@ function popularFiltroCorretor(){
   lista.innerHTML=opcaoSemCorretor+(corretores.length
     ?corretores.map(c=>`
       <label style="display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:.78rem;color:#e8f0ec;cursor:pointer;white-space:nowrap">
-        <input type="checkbox" class="chk-corretor" value="${c}" ${corretoresSelecionados.has(c)?'checked':''}>
-        ${c}
+        <input type="checkbox" class="chk-corretor" value="${esc(c)}" ${corretoresSelecionados.has(c)?'checked':''}>
+        ${esc(c)}
       </label>`).join('')
     :(semCorretorQtd?'':'<div style="font-size:.75rem;color:#8aab97;padding:4px 2px">No brokers in this period</div>'));
   lista.querySelectorAll('.chk-corretor').forEach(chk=>{
@@ -259,7 +261,7 @@ async function buscarFornecedorTodosPeriodos(){
     const busca=document.getElementById('buscaFornecedor').value.trim();
     if(!busca)return;
     const {de,ate}=periodoAtual();
-    document.getElementById('contratosTableWrap').innerHTML='<div class="empty">Searching all contracts for "'+busca+'"...</div>';
+    document.getElementById('contratosTableWrap').innerHTML='<div class="empty">Searching all contracts for "'+esc(busca)+'"...</div>';
     document.getElementById('periodoLabel').textContent='on any date ("'+busca+'")';
     try{
       const res=await fetch(`${TV_API_BASE}/api/tv-dashboard?de=${de}&ate=${ate}&fornecedor=${encodeURIComponent(busca)}`,{headers:headersPortal()});
@@ -271,7 +273,7 @@ async function buscarFornecedorTodosPeriodos(){
       };
       renderContratos(json.contratos,totais);
     }catch(e){
-      document.getElementById('contratosTableWrap').innerHTML=`<div class="empty">${e.status===401||e.status===403?e.message:'Error: '+e.message}</div>`;
+      document.getElementById('contratosTableWrap').innerHTML=`<div class="empty">${esc(e.status===401||e.status===403?e.message:'Error: '+e.message)}</div>`;
     }
   },500); // pequena pausa pra não disparar uma busca a cada letra digitada
 }
@@ -308,18 +310,18 @@ function renderContratos(rows,totais){
       // (evita mostrar "R$ 0,00" pra tudo quando o campo não veio no registro)
       const temPagoEFalta=r.pago!=null&&r.aPagar!=null;
       return `<tr>
-      <td>${fmtDataBr(r.vencimento)}</td>
-      <td><b>${r.contrato}</b></td>
-      <td>${r.filial||'—'}</td>
-      <td>${r.fornecedor||'—'}</td>
-      <td><span class="badge ${r.tipo==='PURCHASE'?'badge-c':'badge-v'}">${r.tipo}</span></td>
-      <td>${r.quality||'—'}</td>
-      <td><span class="badge ${normEsp(r.especie)==='CONILON'?'badge-esp-c':'badge-esp-a'}">${r.especie||'ARÁBICA'}</span></td>
+      <td>${esc(fmtDataBr(r.vencimento))}</td>
+      <td><b>${esc(r.contrato)}</b></td>
+      <td>${esc(r.filial||'—')}</td>
+      <td>${esc(r.fornecedor||'—')}</td>
+      <td><span class="badge ${r.tipo==='PURCHASE'?'badge-c':'badge-v'}">${esc(r.tipo)}</span></td>
+      <td>${esc(r.quality||'—')}</td>
+      <td><span class="badge ${normEsp(r.especie)==='CONILON'?'badge-esp-c':'badge-esp-a'}">${esc(r.especie||'ARÁBICA')}</span></td>
       <td>${fmtN(r.sacas)}</td>
       <td>${fmtR$(r.valorBag)}</td>
       <td>${fmtR$(r.total)}${temPagoEFalta?`<br><span style="font-size:.68rem;color:#8aab97">Paid: ${fmtR$(r.pago)} · Outstanding: ${fmtR$(r.aPagar)}</span>`:''}</td>
-      <td class="col-marca"><input type="checkbox" class="chk-marca" data-contrato="${r.contrato}" data-campo="posto" ${estaMarcado(r.contrato,'posto')?'checked':''}></td>
-      <td class="col-marca"><input type="checkbox" class="chk-marca" data-contrato="${r.contrato}" data-campo="programado" ${estaMarcado(r.contrato,'programado')?'checked':''}></td>
+      <td class="col-marca"><input type="checkbox" class="chk-marca" data-contrato="${esc(r.contrato)}" data-campo="posto" ${estaMarcado(r.contrato,'posto')?'checked':''}></td>
+      <td class="col-marca"><input type="checkbox" class="chk-marca" data-contrato="${esc(r.contrato)}" data-campo="programado" ${estaMarcado(r.contrato,'programado')?'checked':''}></td>
     </tr>`;
     }).join('')}</tbody></table>
     <div class="tot-bar">
@@ -334,12 +336,12 @@ function renderExportacao(rows,totais,ptax){
   if(!rows.length){wrap.innerHTML='<div class="empty">No exports scheduled in this period.</div>';return;}
   wrap.innerHTML=`<table><thead><tr><th>Est. Loading</th><th>Contract</th><th>Importer</th><th>Bags</th><th>BL</th><th>BL Date</th><th>Total (US$)</th><th>Total (R$)</th></tr></thead>
     <tbody>${rows.map(r=>`<tr>
-      <td>${fmtDataBr(r.prevCarga)}</td>
-      <td><b>${r.contrato}</b></td>
-      <td>${r.importador||'—'}</td>
+      <td>${esc(fmtDataBr(r.prevCarga))}</td>
+      <td><b>${esc(r.contrato)}</b></td>
+      <td>${esc(r.importador||'—')}</td>
       <td>${fmtN(r.sacas)}</td>
-      <td>${r.bl||'—'}</td>
-      <td>${fmtDataBr(r.dataBl)}</td>
+      <td>${esc(r.bl||'—')}</td>
+      <td>${esc(fmtDataBr(r.dataBl))}</td>
       <td>US$ ${fmtN(r.totalDolar.toFixed(2))}</td>
       <td>${fmtR$(r.totalReais)}</td>
     </tr>`).join('')}</tbody></table>
@@ -347,7 +349,7 @@ function renderExportacao(rows,totais,ptax){
       <div>Total US$: <b>${fmtN(totais.exportacaoDolar.toFixed(2))}</b></div>
       <div>Total R$: <b style="color:#1e5c1e">${fmtR$(totais.exportacaoReais)}</b></div>
     </div>
-    <div class="ptax-tag">PTAX buy rate D-1 (${ptax.data}): ${ptax.compra}</div>`;
+    <div class="ptax-tag">PTAX buy rate D-1 (${esc(ptax.data)}): ${esc(ptax.compra)}</div>`;
 }
 
 async function salvarImagem(){

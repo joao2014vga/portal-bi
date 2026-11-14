@@ -463,12 +463,24 @@ async function criarApiSupabase() {
       if (error) throw new Error(erroPrecos(error.message));
       return data;
     },
-    // quem salvou e quando vêm do banco (gatilho), não do navegador
-    async salvarPrecos(chave, dados) {
-      const { data, error } = await sb.from("bi_precos").upsert({ chave, dados }, { onConflict: "chave" })
-        .select("dados, atualizado_em, atualizado_por").single();
+    // quem salvou e quando vêm do banco (gatilho), não do navegador.
+    // base = atualizado_em da versão que a tela abriu (null: a lista ainda não existia).
+    // Com base, só grava se ninguém salvou depois; se alguém salvou, devolve null.
+    async salvarPrecos(chave, dados, base) {
+      const campos = "dados, atualizado_em, atualizado_por";
+      if (base === undefined) {
+        const { data, error } = await sb.from("bi_precos").upsert({ chave, dados }, { onConflict: "chave" })
+          .select(campos).single();
+        if (error) throw new Error(erroPrecos(error.message));
+        return data;
+      }
+      const q = base
+        ? sb.from("bi_precos").update({ dados }).eq("chave", chave).eq("atualizado_em", base)
+        : sb.from("bi_precos").insert({ chave, dados });
+      const { data, error } = await q.select(campos);
+      if (error?.code === "23505") return null; // outra pessoa criou a lista enquanto esta estava aberta
       if (error) throw new Error(erroPrecos(error.message));
-      return data;
+      return data?.[0] ?? null; // nenhuma linha: a lista foi salva de novo depois que a tela abriu
     },
 
     // ----------------------------------------------------------- shipment (portal:shipment)
@@ -478,13 +490,28 @@ async function criarApiSupabase() {
       if (error) throw new Error(erroShipment(error.message));
       return data;
     },
-    // quem salvou e quando vêm do banco (gatilho); aceita um registro ou uma lista (importação)
+    // quem salvou e quando vêm do banco (gatilho); aceita um registro ou uma lista (importação).
+    // Só grava os campos presentes em cada registro: campo ausente fica como está no banco
+    // (nunca vira null). No upsert em lote o PostgREST usa a união das chaves e põe null
+    // onde faltar, por isso os registros vão agrupados pelo mesmo conjunto de campos.
     async salvarShipment(linhas) {
-      const lista = [].concat(linhas).map(({ contrato, guia = null, obs = null, local = null }) => ({ contrato, guia, obs, local }));
-      const { data, error } = await sb.from("bi_shipment").upsert(lista, { onConflict: "contrato" })
-        .select("contrato, guia, obs, local, atualizado_em, atualizado_por");
-      if (error) throw new Error(erroShipment(error.message));
-      return data;
+      const grupos = new Map();
+      for (const l of [].concat(linhas)) {
+        const o = { contrato: l.contrato };
+        for (const f of ["guia", "obs", "local"]) if (f in l) o[f] = l[f] ?? null;
+        if (Object.keys(o).length < 2) continue; // nada a gravar
+        const k = Object.keys(o).join(",");
+        if (!grupos.has(k)) grupos.set(k, []);
+        grupos.get(k).push(o);
+      }
+      const salvos = [];
+      for (const lista of grupos.values()) {
+        const { data, error } = await sb.from("bi_shipment").upsert(lista, { onConflict: "contrato" })
+          .select("contrato, guia, obs, local, atualizado_em, atualizado_por");
+        if (error) throw new Error(erroShipment(error.message));
+        salvos.push(...(data ?? []));
+      }
+      return salvos;
     },
 
     // ----------------------------------------------------------- notificações

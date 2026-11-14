@@ -605,6 +605,7 @@ const PT = {
   "Expand all": "Abrir todos", "Collapse all": "Fechar todos", "Used in exports": "Usado nas exportações", "No purchases due in this period.": "Nenhuma compra vence neste período.",
   "Due date = coffee payment date. Click a producer to see its BRC purchases.": "Vencimento = data de pagamento do café. Clique num produtor para ver as compras BRC dele.",
   "Unable to load the image generator. Check your connection.": "Não foi possível carregar o gerador de imagem. Verifique sua conexão.",
+  "Chart unavailable. Check your connection.": "Gráfico indisponível. Verifique sua conexão.",
   "History": "Histórico", "Links": "Vínculos", "Due": "Vencida", "Yes": "Sim", "Linked by": "Lançado por", "Date": "Data", "Portal": "Portal",
   "With leftover": "Com sobra", "Available today": "Disponível hoje",
   "In the opening stock": "No saldo inicial", "Balance today:": "Saldo hoje:",
@@ -773,6 +774,11 @@ const PT = {
   "Discard": "Descartar", "All changes saved": "Tudo salvo", "Discard changes?": "Descartar alterações?",
   "The list goes back to the last saved version.": "A lista volta para a última versão salva.", "Prices saved.": "Preços salvos.",
   "Your unsaved changes were restored.": "Suas alterações não salvas foram recuperadas.",
+  "An old unsaved draft was discarded: the list was updated by someone else in the meantime.":
+    "Um rascunho antigo, não salvo, foi descartado: a lista foi atualizada por outra pessoa nesse meio tempo.",
+  "Not saved": "Não salvo", "Reload": "Recarregar",
+  "Someone else saved this list after you opened it. Reload the page to see their version. Your changes here will be lost: use Copy text first if you want to keep them.":
+    "Outra pessoa salvou esta lista depois que você a abriu. Recarregue a página para ver a versão dela. Suas alterações aqui serão perdidas: use Copiar texto antes, se quiser guardá-las.",
   "Grade": "Padrão", "Title": "Título",
   "Period (e.g. January to June)": "Período (ex.: January to June)", "Country / group (optional)": "País / grupo (opcional)",
   "Note (optional), e.g. diffs in US¢/lb vs ICE": "Observação (opcional), ex.: diffs in US¢/lb vs ICE",
@@ -843,6 +849,12 @@ const PT = {
   "Changed by {p} {q}": "Alterado por {p} {q}", "Nothing to import: the spreadsheet matches what is saved.": "Nada a importar: a planilha está igual ao que já está salvo.",
   "{n} contracts will get the Order, Notes and Warehouse from the spreadsheet, replacing what is saved for them.":
     "{n} contratos vão receber Guia, Obs e Local da planilha, no lugar do que está salvo para eles.",
+  "{n} contracts will get the Order and Notes from the spreadsheet, replacing what is saved for them. The spreadsheet has no Warehouse column: it stays as saved.":
+    "{n} contratos vão receber Guia e Obs da planilha, no lugar do que está salvo para eles. A planilha não tem a coluna Local: ele fica como está salvo.",
+  "{n} contracts will get the Order and Warehouse from the spreadsheet, replacing what is saved for them. The spreadsheet has no Notes column: they stay as saved.":
+    "{n} contratos vão receber Guia e Local da planilha, no lugar do que está salvo para eles. A planilha não tem a coluna Obs: ela fica como está salva.",
+  "{n} contracts will get the Order from the spreadsheet, replacing what is saved for them. The spreadsheet has no Notes or Warehouse column: they stay as saved.":
+    "{n} contratos vão receber a Guia da planilha, no lugar do que está salvo para eles. A planilha não tem as colunas Obs e Local: elas ficam como estão salvas.",
   "{n} of them are not in the list to ship (already shipped or renamed in Digisul).": "{n} deles não estão na lista a embarcar (já embarcados ou renomeados no Digisul).",
   "Import": "Importar", "{n} contracts imported.": "{n} contratos importados.",
   "No sheet with the Contrato and GUIA columns was found in this file.": "Nenhuma aba com as colunas Contrato e GUIA neste arquivo.",
