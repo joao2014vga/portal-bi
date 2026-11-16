@@ -1248,39 +1248,6 @@ function matrizPorPadrao(f, estado) {
   const opcoesMes = (sel) => ym.map((m) => `<option value="${m}" ${m === sel ? "selected" : ""}>${esc(mesLongo(`${m}-01`))}</option>`).join("");
   const classe = (v) => (Math.abs(v) < 0.5 ? "nil" : v > 0 ? "long" : "short");
   const formula = formulaComps(ligados);
-  // "+" de cada mês: o acumulado do mês aberto por grupo de peneira (só na Position mais recente)
-  const penOk = !!comp && estado.penDisponivel;
-  const itensPen = estado.pen?.[conilon ? "conilon" : "arabica"] ?? [];
-  const compsIdx = new Set(ligados.map((k) => COMPONENTES_FIS.indexOf(k)));
-  const linhasPeneira = (i) => {
-    const porG = new Map();
-    for (const [p, c, mi, g, v] of itensPen) {
-      if (mi > i || !compsIdx.has(c)) continue;
-      const o = porG.get(g) ?? porG.set(g, {}).get(g);
-      o[p] = (o[p] ?? 0) + v;
-    }
-    const visiveis = grupos.flatMap((g) => g.qualidades);
-    const nomes = [...porG.keys()].filter((g) => visiveis.some((c) => Math.abs(porG.get(g)[c] ?? 0) >= 0.5))
-      .sort((a, b) => {
-        const oa = ORDEM_PEN.indexOf(a), ob = ORDEM_PEN.indexOf(b);
-        if (oa >= 0 || ob >= 0) return (oa < 0 ? 99 : oa) - (ob < 0 ? 99 : ob);
-        if (a === PEN_SEM || b === PEN_SEM) return a === PEN_SEM ? 1 : -1;
-        return a.localeCompare(b, "en", { numeric: true });
-      });
-    if (!nomes.length) return `<tr class="pbi-pen"><th scope="row">${esc(tr("No sieve data"))}</th><td colspan="99"></td></tr>`;
-    const cel = (v, cls = "") => `<td class="${cls} ${v < -0.5 ? "neg" : ""}">${numPbi(v)}</td>`;
-    return nomes.map((nome) => {
-      const o = porG.get(nome);
-      let geral = 0;
-      const cels = grupos.map((g) => {
-        const t = g.qualidades.reduce((s, c) => s + (o[c] ?? 0), 0);
-        geral += t;
-        return `${estado.recolhidos.has(g.nome) ? "" : g.qualidades.map((c) => cel(o[c] ?? 0)).join("")}${cel(t, "pbi-tot")}`;
-      }).join("");
-      return `<tr class="pbi-pen"><th scope="row" title="${esc(TIT_PEN[nome] ?? nome)}">${esc(nome)}</th>${cels}${cel(geral, "pbi-total")}</tr>`;
-    }).join("");
-  };
-  const todosAbertos = penOk && ym.every((m, i) => m < de || m > ate || estado.penAbertos.has(i));
 
   return `<section class="pos-card pbi-fisica">
     <div class="pbi-topo">
@@ -1308,7 +1275,7 @@ function matrizPorPadrao(f, estado) {
           const fechado = estado.recolhidos.has(g.nome);
           return `<th class="pbi-grupo" colspan="${fechado ? 1 : g.qualidades.length + 1}"><button type="button" data-grupo="${esc(g.nome)}" aria-expanded="${!fechado}" title="${fechado ? "Expand" : "Collapse"}">${fechado ? "⊞" : "⊟"}</button> ${esc(g.nome)}</th>`;
         }).join("")}<th class="pbi-total" rowspan="2">Total</th></tr>
-        <tr><th class="pbi-canto">${penOk ? `<button type="button" class="pbi-pen-btn" data-pen="all" aria-expanded="${todosAbertos}" title="${todosAbertos ? "Hide the sieves of all months" : "Show all months by sieve"}">${todosAbertos ? "−" : "+"}</button>` : ""}${esc(tr("MONTH"))}</th>${grupos.map((g) => (estado.recolhidos.has(g.nome) ? `<th class="pbi-tot">Total</th>`
+        <tr><th class="pbi-canto">${esc(tr("MONTH"))}</th>${grupos.map((g) => (estado.recolhidos.has(g.nome) ? `<th class="pbi-tot">Total</th>`
           : `${g.qualidades.map((c) => `<th>${esc(c)}</th>`).join("")}<th class="pbi-tot">Total</th>`)).join("")}</tr>
       </thead>
       <tbody>${meses.map((m, i) => {
@@ -1320,9 +1287,7 @@ function matrizPorPadrao(f, estado) {
           const qs = estado.recolhidos.has(g.nome) ? "" : g.qualidades.map((c) => { const v = acumulado[c][i]; return `<td class="pbi-cel ${v < -0.5 ? "neg" : ""}" data-g="${esc(c)}" data-qs="${esc(c)}" data-i="${i}" title="${esc(tr("Click to see the contracts and lots"))}">${numPbi(v)}</td>`; }).join("");
           return `${qs}<td class="pbi-tot pbi-cel ${classe(t)}" data-g="${esc(g.nome)}" data-qs="${esc(g.qualidades.join(","))}" data-i="${i}">${numPbi(t)}</td>`;
         }).join("");
-        const aberto = estado.penAbertos.has(i);
-        const botao = penOk ? `<button type="button" class="pbi-pen-btn" data-pen="${i}" aria-expanded="${aberto}" title="${aberto ? "Hide the sieves" : "Show by sieve"}">${aberto ? "−" : "+"}</button>` : "";
-        return `<tr><th scope="row">${botao}${esc(mesLongo(m))}</th>${cels}<td class="pbi-total pbi-cel ${classe(geral)}" data-g="Total" data-qs="${esc(grupos.flatMap((g) => g.qualidades).join(","))}" data-i="${i}">${numPbi(geral)}</td></tr>${aberto ? linhasPeneira(i) : ""}`;
+        return `<tr><th scope="row">${esc(mesLongo(m))}</th>${cels}<td class="pbi-total pbi-cel ${classe(geral)}" data-g="Total" data-qs="${esc(grupos.flatMap((g) => g.qualidades).join(","))}" data-i="${i}">${numPbi(geral)}</td></tr>`;
       }).join("")}</tbody>
     </table></div>
   </section>`;
@@ -1340,68 +1305,16 @@ let peneirasCache = null;
 const ABA_PENEIRA = { e: ["inventory", "lote", "peneiras"], c: ["purchases", "contrato", "peneira"], v: ["expsales", "contrato", "peneira"], i: ["intsales", "contrato", "peneira"] };
 // "13/16(70.00%),17/18(15.00%)" → "13/16 (70%), 17/18 (15%)"
 const fmtPeneira = (s) => (s ? String(s).replace(/\.00%/g, "%").replace(/\s*\(/g, " (").replace(/,\s*/g, ", ") : "—");
-// itens da composição (fisica_itens) e peneiras de cada lote/contrato, carregados uma vez por tela
-function carregarComposicao(ctx) {
-  composicaoCache ??= ctx.api.positionDetalhe(["fisica_itens"]).then((d) => d.fisica_itens ?? null);
-  peneirasCache ??= ctx.api.positionDetalhe(Object.values(ABA_PENEIRA).map(([t]) => t)).then((d) => Object.fromEntries(
-    Object.entries(ABA_PENEIRA).map(([tipo, [t, k, campo]]) => [tipo, new Map((d[t] ?? []).filter((r) => r[campo]).map((r) => [r[k], r[campo]]))]),
-  )).catch(() => ({}));
-  return Promise.all([composicaoCache, peneirasCache]);
-}
-
-// Peneiras na matriz (o "+" de cada mês): o saldo de cada lote/contrato é dividido pelas peneiras dele.
-// Grupos: MIÚDOS (13/16, 14/16, 15/16, 16…), GRAÚDOS (16 UP e acima: 17/18, 16/18…) e MOKA;
-// o resto (Grinders, Consumo, Fundo, 12 UP, 13 AC…) aparece com o próprio nome, sem agrupar.
-// Lote/compra com peneiras de exportação e de baixa qualidade ("13/16-85%, CONSUMO 800DEF-15%"):
-// a parte que caiu numa coluna low grade (quebra/consumo) vai para as peneiras de baixa qualidade,
-// a parte exportável para as outras. Vendas têm uma peneira só e entram inteiras nela.
-const PEN_MIUDOS = "MIÚDOS", PEN_GRAUDOS = "GRAÚDOS", PEN_MOKA = "MOKA", PEN_SEM = "NO SIEVE";
-const ORDEM_PEN = [PEN_MIUDOS, PEN_GRAUDOS, PEN_MOKA];
-const PADRAO_LOW = /^BC(8|9|10|11|12|13|16)$/;
-const PENEIRA_LOW = /CONSUMO|GRINDER|FUNDO|DEF|VENTO|RESIDUO|CATA|ESCOLHA|PALHA|BROCA/;
-const TIT_PEN = {
-  [PEN_MIUDOS]: "13/16, 14/16, 15/16, 16 and smaller", [PEN_GRAUDOS]: "16 UP and above (17/18, 16/18…)",
-  [PEN_MOKA]: "Moka", [PEN_SEM]: "Lot or contract without this sieve in Digisul",
-};
-function grupoPeneira(nome) {
-  const t = norm(nome).replace(/\s+/g, " ");
-  let m;
-  if (!t) return PEN_SEM;
-  if (/MOKA/.test(t)) return PEN_MOKA;
-  if ((m = t.match(/^(\d+)\s*\/\s*(\d+)$/))) return +m[1] >= 16 ? PEN_GRAUDOS : +m[2] <= 16 ? PEN_MIUDOS : t;
-  if ((m = t.match(/^(\d+)\s*(UP|AC|ACIMA)$/))) return +m[1] >= 16 ? PEN_GRAUDOS : t;
-  if ((m = t.match(/^(\d+)$/))) return +m[1] > 16 ? PEN_GRAUDOS : PEN_MIUDOS;
-  return t;
-}
-// "13/16-85.00%,CONSUMO 800DEF-15.00%" (compras) · "13/16(70.00%),17/18(15.00%)" (estoque) · "14/16" (vendas)
-const partesPeneira = (s) => String(s ?? "").split(",").map((p) => p.trim()).filter(Boolean).map((p) => {
-  const m = p.match(/^(.*?)\s*(?:-\s*|\(\s*)(\d+(?:[.,]\d+)?)\s*%\s*\)?$/);
-  return m ? { nome: m[1].trim(), pct: Number(m[2].replace(",", ".")) } : { nome: p, pct: null };
-}).filter((x) => x.nome);
-function dividirPorPeneira(v, pen, low, venda) {
-  const partes = partesPeneira(pen);
-  const lado = venda ? partes : partes.filter((p) => PENEIRA_LOW.test(norm(p.nome)) === low);
-  if (!lado.length) return [[PEN_SEM, v]];
-  const pesos = lado.map((p) => (p.pct > 0 ? p.pct : 100 / lado.length));
-  const soma = pesos.reduce((s, x) => s + x, 0);
-  return lado.map((p, k) => [grupoPeneira(p.nome), (v * pesos[k]) / soma]);
-}
-// itens da composição → [padrão, componente, mês, grupo de peneira, sacas]
-function itensPorPeneira(dados, peneiras) {
-  if (!dados?.itens) return [];
-  const out = [];
-  for (const [p, c, mi, tipo, chave, , v] of dados.itens) {
-    const pen = peneiras?.[tipo]?.get(chave) ?? null;
-    for (const [g, vv] of dividirPorPeneira(v, pen, PADRAO_LOW.test(norm(p)), tipo === "v" || tipo === "i")) out.push([p, c, mi, g, vv]);
-  }
-  return out;
-}
 
 async function abrirComposicao(ctx, estado, { rotulo, qualidades, i, mes, valor }) {
   if (!ctx?.api?.positionDetalhe) return;
   if (ctx.historico) { toast(tr("The contracts behind each number are only kept for the latest Position."), "erro"); return; }
   try {
-    const [fi, peneiras] = await carregarComposicao(ctx);
+    composicaoCache ??= ctx.api.positionDetalhe(["fisica_itens"]).then((d) => d.fisica_itens ?? null);
+    peneirasCache ??= ctx.api.positionDetalhe(Object.values(ABA_PENEIRA).map(([t]) => t)).then((d) => Object.fromEntries(
+      Object.entries(ABA_PENEIRA).map(([tipo, [t, k, campo]]) => [tipo, new Map((d[t] ?? []).filter((r) => r[campo]).map((r) => [r[k], r[campo]]))]),
+    )).catch(() => ({}));
+    const [fi, peneiras] = await Promise.all([composicaoCache, peneirasCache]);
     const peneiraDe = (l) => peneiras[l.tipo]?.get(l.chave) ?? null;
     const dados = fi?.[estado.especie === "conilon" ? "conilon" : "arabica"];
     if (!dados) throw new Error("Upload the Position again (or update from Digisul) to see what makes up each number.");
@@ -1498,8 +1411,6 @@ async function painelFisica(alvo, carga, ctx) {
   const estado = {
     comps: new Set(COMPS_FISICA.map(([k]) => k)), recolhidos: new Set(), especie: "arabica",
     mesRef: String(carga.data_ref ?? "").slice(0, 7), de: null, ate: null,
-    // peneiras por mês: meses abertos e itens já divididos por peneira (carregados no primeiro "+")
-    penAbertos: new Set(), pen: null, penDisponivel: !ctx?.historico && !!ctx?.api?.positionDetalhe,
   };
   const mesesMatriz = () => (estado.especie === "conilon" ? f.conilon?.meses : f.componentes?.meses ?? f.qualidades?.com.map((l) => l.mes)) ?? [];
 
@@ -1536,33 +1447,6 @@ async function painelFisica(alvo, carga, ctx) {
       if (estado.especie === b2.dataset.especie) return;
       estado.especie = b2.dataset.especie;
       estado.recolhidos.clear();
-      estado.penAbertos.clear();
-      desenhar();
-    }));
-    // "+" do mês (ou do cabeçalho, para todos): abre o acumulado por peneira
-    $$("[data-pen]", alvo).forEach((b2) => b2.addEventListener("click", async (ev) => {
-      ev.stopPropagation();
-      if (!estado.pen) {
-        b2.disabled = true;
-        try {
-          const [fi, peneiras] = await carregarComposicao(ctx);
-          if (!fi) throw new Error("Upload the Position again (or update from Digisul) to see the sieves.");
-          estado.pen = { arabica: itensPorPeneira(fi.arabica, peneiras), conilon: itensPorPeneira(fi.conilon, peneiras) };
-        } catch (e) {
-          composicaoCache = null; peneirasCache = null;
-          b2.disabled = false;
-          toast(e.message, "erro");
-          return;
-        }
-      }
-      if (b2.dataset.pen === "all") {
-        const vis = $$("[data-pen]", alvo).map((x) => x.dataset.pen).filter((k) => k !== "all").map(Number);
-        const fechar = b2.getAttribute("aria-expanded") === "true";
-        vis.forEach((k) => (fechar ? estado.penAbertos.delete(k) : estado.penAbertos.add(k)));
-      } else {
-        const k = Number(b2.dataset.pen);
-        if (estado.penAbertos.has(k)) estado.penAbertos.delete(k); else estado.penAbertos.add(k);
-      }
       desenhar();
     }));
     // clique num número da matriz: contratos e lotes que formam aquele saldo
