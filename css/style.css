@@ -958,13 +958,3 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 /* lembrete do upload diário da Position (só o administrador) */
 .banner-lembrete { border-left: 4px solid var(--alerta); }
 .banner-lembrete a { white-space: nowrap; }
-
-/* peneiras por mês na matriz long/short (botão + e linhas abertas) */
-.pbi-matriz .pbi-pen-btn { width: 18px; height: 18px; margin-right: 8px; padding: 0; border: 1px solid var(--borda); border-radius: 4px; background: var(--sup);
-  color: var(--texto-2); font: 700 13px/1 var(--fonte); cursor: pointer; vertical-align: middle; }
-.pbi-matriz thead .pbi-pen-btn { border-color: rgba(255,255,255,.5); background: transparent; color: #fff; }
-.pbi-matriz .pbi-pen-btn:hover { border-color: var(--brand); color: var(--brand); }
-.pbi-matriz thead .pbi-pen-btn:hover { border-color: #fff; color: #fff; }
-.pbi-matriz tr.pbi-pen th, .pbi-matriz tr.pbi-pen td { font-size: 12.5px; padding-top: 4px; padding-bottom: 4px; background: var(--sup-2, rgba(0,0,0,.025)); }
-.pbi-matriz tr.pbi-pen th { font-weight: 500; padding-left: 36px; color: var(--texto-2); }
-.pbi-matriz tr.pbi-pen td.pbi-tot, .pbi-matriz tr.pbi-pen td.pbi-total { font-weight: 600; }
