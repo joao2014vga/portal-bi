@@ -832,11 +832,6 @@ const PT = {
   "Day {d} · chart: 30 days up to it": "Dia {d} · gráfico: 30 dias até ele", "Last 7 days": "Últimos 7 dias", "Last 30 days": "Últimos 30 dias",
   "Last 90 days": "Últimos 90 dias", "All buyers": "Todos os compradores",
   "Diff in ¢/lb over NY · average of the bids of each day": "Diff em ¢/lb sobre NY · média das cotações de cada dia",
-  "Most aggressive buyers": "Compradores mais agressivos", "Most aggressive overall": "Mais agressivo no geral", "Most aggressive": "Mais agressivo",
-  "Highest average diff of each quality in the period, among all buyers. “vs market” = how much above the average of all bids.":
-    "Maior diff médio de cada qualidade no período, entre todos os compradores. “vs mercado” = quanto acima da média de todas as cotações.",
-  "best diff in {a} of {b} qualities": "melhor diff em {a} de {b} qualidades", "not the best diff in any quality": "não tem o melhor diff em nenhuma qualidade",
-  "vs market": "vs mercado", "Runner-up": "Segundo", "Buyers": "Compradores", "{n} bid": "{n} cotação", "{n} bids": "{n} cotações",
   "Average of the bids of {e} on each day, per quality. The higher the line, the better {e} is paying. Choose “All” in Buyer to see the whole market.":
     "Média das cotações de {e} em cada dia, por qualidade. Quanto mais alta a linha, melhor {e} está pagando. Escolha “Todos” em Comprador para ver o mercado inteiro.",
   "Average of the bids of {e} on each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better {e} is paying. Choose “All” in Buyer to see the whole market.":

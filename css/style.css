@@ -961,11 +961,13 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 
 /* ---------------------------------------------------------------- Buyer Bids (portal:compradores)
    séries: paleta categórica validada para daltonismo (ordem fixa, a cor segue a qualidade);
-   q1–q5: escala sequencial azul do quadro comprador × qualidade */
+   q1–q5: escala sequencial verde (o verde da marca Brascof) do quadro comprador × qualidade;
+   --bc-q-tx: texto nas células q1–q3, --bc-q-tx2: texto nas células q4–q5 */
 .bc {
   --bc-s1: #2a78d6; --bc-s2: #eb6834; --bc-s3: #1baf7a; --bc-s4: #eda100;
   --bc-s5: #e87ba4; --bc-s6: #008300; --bc-s7: #6250d6; --bc-s8: #e34948;
-  --bc-q1: #cde2fb; --bc-q2: #9ec5f4; --bc-q3: #6da7ec; --bc-q4: #2a78d6; --bc-q5: #1c5cab;
+  --bc-q1: #e2efe7; --bc-q2: #b5d6c3; --bc-q3: #7cb593; --bc-q4: #3a8260; --bc-q5: #1d4a3d;
+  --bc-q-tx: #12301f; --bc-q-tx2: #ffffff;
   --bc-grade: #e6ece9;
   display: flex; flex-direction: column; gap: 16px;
 }
@@ -973,14 +975,16 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
   :root:not([data-theme="light"]) .bc {
     --bc-s1: #3987e5; --bc-s2: #d95926; --bc-s3: #199e70; --bc-s4: #c98500;
     --bc-s5: #d55181; --bc-s6: #0ca30c; --bc-s7: #9085e9; --bc-s8: #e66767;
-    --bc-q1: #1b2f45; --bc-q2: #184f95; --bc-q3: #256abf; --bc-q4: #3987e5; --bc-q5: #6da7ec;
+    --bc-q1: #1c3127; --bc-q2: #24513c; --bc-q3: #2f7353; --bc-q4: #46936b; --bc-q5: #7cc49d;
+    --bc-q-tx: #e3eee8; --bc-q-tx2: #0b1d14;
     --bc-grade: #23332b;
   }
 }
 :root[data-theme="dark"] .bc {
   --bc-s1: #3987e5; --bc-s2: #d95926; --bc-s3: #199e70; --bc-s4: #c98500;
   --bc-s5: #d55181; --bc-s6: #0ca30c; --bc-s7: #9085e9; --bc-s8: #e66767;
-  --bc-q1: #1b2f45; --bc-q2: #184f95; --bc-q3: #256abf; --bc-q4: #3987e5; --bc-q5: #6da7ec;
+  --bc-q1: #1c3127; --bc-q2: #24513c; --bc-q3: #2f7353; --bc-q4: #46936b; --bc-q5: #7cc49d;
+  --bc-q-tx: #e3eee8; --bc-q-tx2: #0b1d14;
   --bc-grade: #23332b;
 }
 .bc .qa-filtros { margin-bottom: 0; }
@@ -1041,8 +1045,8 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .bc .tabela-num th:nth-child(2), .bc .tabela-num td:nth-child(2) { text-align: left; }
 .bc .bc-mapa th, .bc .bc-mapa td { text-align: center; }
 .bc .bc-mapa th:first-child, .bc .bc-mapa td:first-child { text-align: left; font-weight: 500; }
-.bc-mapa td.bc-cel { font-weight: 600; color: #0d2a4a; font-variant-numeric: tabular-nums; }
-.bc-mapa td.bc-cel.esc { color: #fff; }
+.bc-mapa td.bc-cel { font-weight: 600; color: var(--bc-q-tx); font-variant-numeric: tabular-nums; }
+.bc-mapa td.bc-cel.esc { color: var(--bc-q-tx2); }
 .tabela td.bc-nada { color: var(--texto-3); }
 .bc-escala { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--texto-2); }
 .bc-escala i { width: 22px; height: 10px; border-radius: 2px; display: inline-block; }
