@@ -870,7 +870,7 @@ const PT = {
   "Buyer bids updated: {n} bids.": "Base dos compradores atualizada: {n} cotações.",
   "Buyer Bids is not set up yet: run section 31 of supabase/schema.sql in the Supabase SQL Editor.":
     "A Base Compradores ainda não está configurada: rode a seção 31 do supabase/schema.sql no SQL Editor do Supabase.",
-  "Only administrators can upload the buyer bids spreadsheet.": "Só administradores podem enviar a planilha da base dos compradores.",
+  "Your user cannot upload the buyer bids spreadsheet. Ask the administrator to allow it.": "Seu usuário não pode enviar a planilha da base dos compradores. Peça ao administrador para liberar.",
   "Excel": "Excel", "Download what is on screen as an Excel file": "Baixar o que está na tela em Excel", "Refresh": "Atualizar",
   "Fetch the latest data from Digisul now (updates it for everyone)": "Buscar agora os dados do Digisul (atualiza para todos)",
   "Contract, client, order or notes": "Contrato, cliente, guia ou obs", "Up to next month": "Até o mês que vem", "Next 3 months": "Próximos 3 meses",

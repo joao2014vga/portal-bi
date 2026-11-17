@@ -1866,7 +1866,7 @@ create policy negociacoes_acesso on public.negociacoes for all to authenticated
 --   dados = { qualidades: [{ k, nome }], qualidades_neg: [{ k, nome }],
 --             base:     [{ d: "2026-11-17", e: "STONEX", q: { "GC 20%": [preço, diff] } }],
 --             negocios: [{ d, e, s: sacas, q: { "Good Cup": [preço, diff] } }] }
--- Vê quem tem acesso ao card portal:compradores; enviar a planilha só o admin.
+-- Vê quem tem acesso ao card portal:compradores; enviar a planilha: o admin (e quem ele liberar na seção 32).
 -- Pré-requisito: seções 1 a 3 (bi_ve_painel, bi_is_admin). Pode rodar de novo.
 -- ---------------------------------------------------------------------
 create table if not exists public.bi_compradores_cargas (
@@ -1922,3 +1922,49 @@ notify pgrst, 'reload schema';
 
 -- Para conferir:
 --   select id, nome_arquivo, cotacoes, negocios, enviado_em, enviado_por from public.bi_compradores_cargas order by id desc;
+
+-- =====================================================================
+-- 32. BUYER BIDS: QUEM PODE ENVIAR A PLANILHA ALÉM DO ADMIN
+-- =====================================================================
+-- Quem mantém a planilha (ex.: Gustavo) envia sem virar administrador.
+-- Fica numa tabela à parte (e não em bi_perfis, que cada um edita na própria
+-- linha) e só o admin inclui ou retira alguém. Para enviar a pessoa também
+-- precisa ter o card portal:compradores.
+--   Liberar:  insert into public.bi_compradores_envio (user_id)
+--             select id from public.bi_perfis where email = 'fulano@brascof.com';
+--   Retirar:  delete from public.bi_compradores_envio where user_id = (select id from public.bi_perfis where email = 'fulano@brascof.com');
+-- Pré-requisito: seção 31. Pode rodar de novo.
+-- ---------------------------------------------------------------------
+create table if not exists public.bi_compradores_envio (
+  user_id    uuid primary key references public.bi_perfis (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.bi_compradores_envio enable row level security;
+drop policy if exists bi_compradores_envio_select on public.bi_compradores_envio;
+create policy bi_compradores_envio_select on public.bi_compradores_envio for select to authenticated
+  using (user_id = auth.uid() or public.bi_is_admin());
+drop policy if exists bi_compradores_envio_admin on public.bi_compradores_envio;
+create policy bi_compradores_envio_admin on public.bi_compradores_envio for all to authenticated
+  using (public.bi_is_admin()) with check (public.bi_is_admin());
+
+-- o usuário logado pode enviar a planilha? (o portal usa para mostrar o botão)
+create or replace function public.bi_envia_compradores()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select public.bi_is_admin() or (
+    public.bi_is_ativo()
+    and public.bi_ve_painel('portal:compradores')
+    and exists (select 1 from public.bi_compradores_envio where user_id = auth.uid())
+  );
+$$;
+revoke all on function public.bi_envia_compradores() from public, anon;
+grant execute on function public.bi_envia_compradores() to authenticated;
+
+drop policy if exists bi_compradores_insert on public.bi_compradores_cargas;
+create policy bi_compradores_insert on public.bi_compradores_cargas for insert to authenticated
+  with check (public.bi_envia_compradores());
+notify pgrst, 'reload schema';
+
+-- Para conferir:
+--   select p.nome, p.email from public.bi_compradores_envio e join public.bi_perfis p on p.id = e.user_id;

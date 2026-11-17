@@ -288,8 +288,9 @@ export function criarDemo() {
 
     // buyer bids: a planilha enviada fica só neste navegador
     async compradores() { return structuredClone(db.compradores ?? null); },
+    async podeEnviarCompradores() { return !!eu().is_admin; },
     async enviarCompradores(dados, nome_arquivo) {
-      if (!eu().is_admin) throw new Error("Only administrators can upload the buyer bids spreadsheet.");
+      if (!eu().is_admin) throw new Error("Your user cannot upload the buyer bids spreadsheet. Ask the administrator to allow it.");
       const agora = new Date().toISOString();
       db.compradores = { dados, nome_arquivo, enviado_em: agora, enviado_por: eu().nome };
       const d = db.dashboards.find((x) => x.link === "portal:compradores");

@@ -66,7 +66,7 @@ function erroShipment(msg = "") {
 }
 function erroCompradores(msg = "") {
   if (/bi_compradores|schema cache|does not exist/i.test(msg)) return "Buyer Bids is not set up yet: run section 31 of supabase/schema.sql in the Supabase SQL Editor.";
-  if (/row-level security|permission denied/i.test(msg)) return "Only administrators can upload the buyer bids spreadsheet.";
+  if (/row-level security|permission denied/i.test(msg)) return "Your user cannot upload the buyer bids spreadsheet. Ask the administrator to allow it.";
   return traduzErro(msg);
 }
 function erroPrecos(msg = "") {
@@ -495,6 +495,12 @@ async function criarApiSupabase() {
         .order("id", { ascending: false }).limit(1).maybeSingle();
       if (error) throw new Error(erroCompradores(error.message));
       return data;
+    },
+    // o admin e quem ele liberou em bi_compradores_envio (seção 32)
+    async podeEnviarCompradores() {
+      const { data, error } = await sb.rpc("bi_envia_compradores");
+      if (error) return false;
+      return data === true;
     },
     // quem enviou e quando vêm do banco (gatilho), não do navegador
     async enviarCompradores(dados, nome_arquivo) {

@@ -7,7 +7,7 @@
 //
 // A planilha é lida no navegador e cada envio vira uma carga em
 // bi_compradores_cargas (seção 31 do supabase/schema.sql). Ver: quem tem o
-// card portal:compradores. Enviar: só o admin.
+// card portal:compradores. Enviar: o admin e quem ele liberou (seção 32).
 //
 // As qualidades vêm do cabeçalho: toda coluna "Diff X" é uma qualidade e o
 // preço é a coluna à esquerda. Qualidade nova na planilha aparece sozinha.
@@ -184,11 +184,16 @@ export async function renderCompradores(link, alvo, ctx) {
   const vis = { fina: new Set(), inf: new Set() };
   const graficos = {};
   const temaEscuro = matchMedia("(prefers-color-scheme: dark)");
+  // enviar a planilha: o admin e quem ele liberou (seção 32 do schema.sql); o banco confere de novo no envio
+  let podeEnviar = !!ctx.admin;
 
   const carregar = async () => {
     alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading buyer bids…</div>`;
     try {
-      carga = await api.compradores();
+      [carga, podeEnviar] = await Promise.all([
+        api.compradores(),
+        ctx.admin ? true : api.podeEnviarCompradores().catch(() => false),
+      ]);
     } catch (e) {
       alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Buyer bids are not available</h3><p>${esc(e.message)}</p></div>`;
       return;
@@ -215,8 +220,8 @@ export async function renderCompradores(link, alvo, ctx) {
 
   function semDados() {
     alvo.innerHTML = `<div class="vazio">${icon("upload")}<h3>No buyer bids yet</h3>
-      <p>${ctx.admin ? "Upload the “Base comprador – Negócios realizados” spreadsheet to publish the bids." : "The bids will appear here once the spreadsheet is uploaded."}</p>
-      ${ctx.admin ? `<button class="btn btn-primary" id="bcEnviar">${icon("upload")}<span>Upload spreadsheet</span></button>` : ""}</div>`;
+      <p>${podeEnviar ? "Upload the “Base comprador – Negócios realizados” spreadsheet to publish the bids." : "The bids will appear here once the spreadsheet is uploaded."}</p>
+      ${podeEnviar ? `<button class="btn btn-primary" id="bcEnviar">${icon("upload")}<span>Upload spreadsheet</span></button>` : ""}</div>`;
     $("#bcEnviar", alvo)?.addEventListener("click", enviar);
   }
 
@@ -246,7 +251,7 @@ export async function renderCompradores(link, alvo, ctx) {
         <div class="pos-data">${icon("clock")}<span>Bids up to <strong data-sem-traducao>${esc(dataLonga(ULTIMA))}</strong></span>
           <span class="muted">· ${esc(carga.nome_arquivo ?? "")}${carga.enviado_por ? ` · ${esc(t("sent by {n}", { n: carga.enviado_por }))}` : ""}${quando ? ` · ${esc(quando)}` : ""}</span></div>
         <div class="pos-acoes">
-          ${ctx.admin ? `<button class="btn" id="bcEnviar" title="Read the spreadsheet and update the bids for everyone with access">${icon("upload")}<span>Upload spreadsheet</span></button>` : ""}
+          ${podeEnviar ? `<button class="btn" id="bcEnviar" title="Read the spreadsheet and update the bids for everyone with access">${icon("upload")}<span>Upload spreadsheet</span></button>` : ""}
         </div>
       </div>
 
