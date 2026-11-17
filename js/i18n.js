@@ -827,6 +827,10 @@ const PT = {
     "Média do diff de todas as cotações do dia, por qualidade. Quanto mais alta a linha, melhor o comprador está pagando. Clique na legenda para mostrar ou esconder uma qualidade.",
   "Average of all bids of each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better buyers are paying. Click the legend to show or hide a quality.":
     "Média do diff de todas as cotações do dia, por qualidade, nos 30 dias até {d} (linha marcada). Quanto mais alta a linha, melhor o comprador está pagando. Clique na legenda para mostrar ou esconder uma qualidade.",
+  "Average of the bids of {e} on each day, per quality. The higher the line, the better {e} is paying. Choose “All” in Buyer to see the whole market.":
+    "Média das cotações de {e} em cada dia, por qualidade. Quanto mais alta a linha, melhor {e} está pagando. Escolha “Todos” em Comprador para ver o mercado inteiro.",
+  "Average of the bids of {e} on each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better {e} is paying. Choose “All” in Buyer to see the whole market.":
+    "Média das cotações de {e} em cada dia, por qualidade, nos 30 dias até {d} (linha marcada). Quanto mais alta a linha, melhor {e} está pagando. Escolha “Todos” em Comprador para ver o mercado inteiro.",
   "Diff in ¢/lb over NY. Days without a bid for a quality have no point (the line joins the neighbouring days).":
     "Diff em ¢/lb sobre NY. Dias sem cotação de uma qualidade ficam sem ponto (a linha liga os dias vizinhos).",
   "Average diff by quality over time": "Diff médio por qualidade ao longo do tempo", "Diff (¢/lb)": "Diff (¢/lb)",

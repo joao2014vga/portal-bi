@@ -311,7 +311,7 @@ export async function renderCompradores(link, alvo, ctx) {
 
       <section class="pos-card">
         <div class="pos-card-h pos-card-h-linha">
-          <div><h2>Average diff by quality</h2>
+          <div><h2 id="bcTitLinha">Average diff by quality</h2>
             <p class="muted" id="bcDescLinha"></p></div>
           <div class="bc-chips" id="bcLegFina"></div>
         </div>
@@ -329,7 +329,7 @@ export async function renderCompradores(link, alvo, ctx) {
           <div class="bc-leg-mini"><span><i class="d"></i>Average diff</span><span><i class="l"></i>Range (worst → best bid)</span><span><i class="r"></i>Market average</span><span>n = number of bids</span></div>
         </section>
         <section class="pos-card">
-          <div class="pos-card-h"><h2>Lower grades</h2>
+          <div class="pos-card-h"><h2 id="bcTitInf">Lower grades</h2>
             <p class="muted">GC 2RD, GC 7/2/1 and Rio have their own chart: the discount is much larger and would flatten the other lines.</p></div>
           <div class="bc-chips" id="bcLegInf"></div>
           <div class="bc-grafico bc-baixo"><canvas id="bcGInf" aria-label="Average diff of the lower grades"></canvas></div>
@@ -405,9 +405,17 @@ export async function renderCompradores(link, alvo, ctx) {
     $("#bcFaixa", alvo).textContent = st.modo === "dia"
       ? t("Bids of {d}", { d: dataLonga(st.dia) })
       : t("{a} to {b}", { a: dataLonga(a === "0000" ? PRIMEIRA : a < PRIMEIRA ? PRIMEIRA : a), b: dataLonga(b) });
-    $("#bcDescLinha", alvo).textContent = st.modo === "dia"
-      ? t("Average of all bids of each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better buyers are paying. Click the legend to show or hide a quality.", { d: diaMes(st.dia) })
-      : t("Average of all bids of each day, per quality. The higher the line, the better buyers are paying. Click the legend to show or hide a quality.");
+    // com um comprador escolhido, os gráficos de linha mostram só a média diária dele
+    const quem = st.comp ? nomeComprador(st.comp) : "";
+    $("#bcTitLinha", alvo).textContent = quem ? `${t("Average diff by quality")} · ${quem}` : t("Average diff by quality");
+    $("#bcTitInf", alvo).textContent = quem ? `${t("Lower grades")} · ${quem}` : t("Lower grades");
+    $("#bcDescLinha", alvo).textContent = quem
+      ? (st.modo === "dia"
+        ? t("Average of the bids of {e} on each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better {e} is paying. Choose “All” in Buyer to see the whole market.", { e: quem, d: diaMes(st.dia) })
+        : t("Average of the bids of {e} on each day, per quality. The higher the line, the better {e} is paying. Choose “All” in Buyer to see the whole market.", { e: quem }))
+      : st.modo === "dia"
+        ? t("Average of all bids of each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better buyers are paying. Click the legend to show or hide a quality.", { d: diaMes(st.dia) })
+        : t("Average of all bids of each day, per quality. The higher the line, the better buyers are paying. Click the legend to show or hide a quality.");
     desenharKpis();
     desenharLinha("fina", "#bcGFina", "#bcLegFina");
     desenharLinha("inf", "#bcGInf", "#bcLegInf");
