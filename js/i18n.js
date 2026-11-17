@@ -827,6 +827,11 @@ const PT = {
     "Média do diff de todas as cotações do dia, por qualidade. Quanto mais alta a linha, melhor o comprador está pagando. Clique na legenda para mostrar ou esconder uma qualidade.",
   "Average of all bids of each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better buyers are paying. Click the legend to show or hide a quality.":
     "Média do diff de todas as cotações do dia, por qualidade, nos 30 dias até {d} (linha marcada). Quanto mais alta a linha, melhor o comprador está pagando. Clique na legenda para mostrar ou esconder uma qualidade.",
+  "Unable to create the image.": "Não foi possível gerar a imagem.",
+  "Download the two line charts as an image (PNG), with the selected period and buyer": "Baixar os dois gráficos de linha como imagem (PNG), com o período e o comprador escolhidos",
+  "Day {d} · chart: 30 days up to it": "Dia {d} · gráfico: 30 dias até ele", "Last 7 days": "Últimos 7 dias", "Last 30 days": "Últimos 30 dias",
+  "Last 90 days": "Últimos 90 dias", "All buyers": "Todos os compradores",
+  "Diff in ¢/lb over NY · average of the bids of each day": "Diff em ¢/lb sobre NY · média das cotações de cada dia",
   "Average of the bids of {e} on each day, per quality. The higher the line, the better {e} is paying. Choose “All” in Buyer to see the whole market.":
     "Média das cotações de {e} em cada dia, por qualidade. Quanto mais alta a linha, melhor {e} está pagando. Escolha “Todos” em Comprador para ver o mercado inteiro.",
   "Average of the bids of {e} on each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better {e} is paying. Choose “All” in Buyer to see the whole market.":

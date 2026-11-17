@@ -12,14 +12,23 @@
 // As qualidades vêm do cabeçalho: toda coluna "Diff X" é uma qualidade e o
 // preço é a coluna à esquerda. Qualidade nova na planilha aparece sozinha.
 // =====================================================================
-import { esc, $, $$, icon, toast, modal, confirmar, storage, tempoRelativo } from "./ui.js";
+import { esc, $, $$, icon, toast, modal, confirmar, storage, tempoRelativo, carregarScript } from "./ui.js";
 import { carregarXlsx } from "./position.js";
 import { LOCALE, t } from "./i18n.js";
 
 export const ehPainelCompradores = (link) => /^portal:compradores$/.test(link ?? "");
 
 const CHART_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/+esm";
+const HTML2CANVAS = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 const CHAVE_FILTROS = "portalbi_compradores_filtros";
+
+// cores da imagem (Save image): tema claro fixo, as mesmas do painel claro e da faixa da Price List
+const COR_IMG = {
+  faixa: "#1d4a3d", "--bg": "#f0f4f2", "--sup": "#ffffff", "--borda": "#dde8e2", "--texto": "#1b2e22", "--texto-2": "#5a7a69",
+  "--texto-3": "#8aab97", "--brand": "#2d4a3e", "--bc-grade": "#e6ece9",
+  "--bc-s1": "#2a78d6", "--bc-s2": "#eb6834", "--bc-s3": "#1baf7a", "--bc-s4": "#eda100",
+  "--bc-s5": "#e87ba4", "--bc-s6": "#008300", "--bc-s7": "#6250d6", "--bc-s8": "#e34948",
+};
 
 // =====================================================================
 // LEITURA DA PLANILHA (sem tela: dá para testar à parte)
@@ -286,6 +295,7 @@ export async function renderCompradores(link, alvo, ctx) {
         <div class="pos-data">${icon("clock")}<span>Bids up to <strong data-sem-traducao>${esc(dataLonga(ULTIMA))}</strong></span>
           <span class="muted">· ${esc(carga.nome_arquivo ?? "")}${carga.enviado_por ? ` · ${esc(t("sent by {n}", { n: carga.enviado_por }))}` : ""}${quando ? ` · ${esc(quando)}` : ""}</span></div>
         <div class="pos-acoes">
+          <button class="btn" id="bcImagem" title="Download the two line charts as an image (PNG), with the selected period and buyer">${icon("download")}<span>Save image</span></button>
           ${podeEnviar ? `<button class="btn" id="bcEnviar" title="Read the spreadsheet and update the bids for everyone with access">${icon("upload")}<span>Upload spreadsheet</span></button>` : ""}
         </div>
       </div>
@@ -375,6 +385,11 @@ export async function renderCompradores(link, alvo, ctx) {
     </div>`;
 
     $("#bcEnviar", alvo)?.addEventListener("click", enviar);
+    $("#bcImagem", alvo).addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      try { await salvarImagem(); } catch (e) { toast(e.message || t("Unable to create the image."), "erro"); } finally { btn.disabled = false; }
+    });
     $$("#bcModo button", alvo).forEach((b) => b.addEventListener("click", () => {
       st.modo = b.dataset.v; st.pag = 0; guardar();
       $$("#bcModo button", alvo).forEach((x) => x.classList.toggle("on", x === b));
@@ -450,10 +465,59 @@ export async function renderCompradores(link, alvo, ctx) {
   // ---------------------------------------------------------------- gráficos de linha
   function cor(v) { return getComputedStyle(alvo.querySelector(".bc") ?? alvo).getPropertyValue(v).trim(); }
 
-  async function desenharLinha(grupo, idCanvas, idLeg) {
-    const [a, b] = intervaloGrafico();
-    const rs = BASE.filter(noIntervalo([a, b])).filter(doComprador);
+  // séries de um gráfico de linha (média diária do diff por qualidade) no período do gráfico
+  function dadosLinha(grupo) {
+    const rs = BASE.filter(noIntervalo(intervaloGrafico())).filter(doComprador);
     const qs = Q.filter((q) => q.grupo === grupo && q.cor && rs.some((r) => r.q[q.k]));
+    const dias = [...new Set(rs.filter((r) => qs.some((q) => r.q[q.k])).map((r) => r.d))].sort();
+    return { rs, qs, dias };
+  }
+
+  // configuração do Chart.js; P(nome da variável) dá a cor: na tela vem do tema, na imagem é fixa (tema claro)
+  function configLinha(grupo, P, imagem = false) {
+    const { rs, qs, dias } = dadosLinha(grupo);
+    const set = vis[grupo];
+    const tinta = P("--texto-2"), grade = P("--bc-grade"), sup = P("--sup");
+    const datasets = qs.map((q) => {
+      const c = P(`--bc-s${q.cor}`);
+      return {
+        label: q.nome, k: q.k, borderColor: c, backgroundColor: c, borderWidth: imagem ? 2.25 : 2, pointRadius: 3, pointHoverRadius: 5,
+        pointBorderColor: sup, pointBorderWidth: 1, spanGaps: true, tension: 0.35, hidden: !set.has(q.k),
+        borderDash: q.k === "FUTURO" ? [6, 4] : [], // o futuro é outra natureza de preço: linha tracejada
+        data: dias.map((d) => { const v = rs.filter((r) => r.d === d && r.q[q.k]).map((r) => r.q[q.k][1]); return v.length ? Math.round(media(v) * 100) / 100 : null; }),
+      };
+    });
+    const fonte = { family: "Inter, system-ui, sans-serif", size: imagem ? 12 : 11 };
+    return {
+      type: "line",
+      data: { labels: dias.map(diaMes), datasets },
+      plugins: [guia, rotulos],
+      options: {
+        maintainAspectRatio: false, animation: false,
+        ...(imagem ? { responsive: false, devicePixelRatio: 2, events: [] } : {}),
+        layout: { padding: { right: larguraRotulos(datasets), top: 6 } },
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          bcGuia: { cor: P("--texto-3"), corMarca: P("--brand"), marca: st.modo === "dia" ? dias.indexOf(st.dia) : null },
+          tooltip: {
+            enabled: !imagem,
+            backgroundColor: sup, titleColor: P("--texto"), bodyColor: P("--texto"), borderColor: P("--borda"), borderWidth: 1,
+            padding: 10, boxPadding: 4, usePointStyle: true, itemSort: (x, y) => y.raw - x.raw, filter: (i) => i.raw != null,
+            callbacks: { title: (i) => i[0].label, label: (i) => ` ${i.dataset.label}: ${fmtD(i.raw)} ¢/lb` },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, border: { color: grade }, ticks: { color: tinta, font: fonte, maxRotation: 0, autoSkipPadding: 14 } },
+          y: { grid: { color: grade }, border: { display: false }, ticks: { color: tinta, font: fonte, callback: (v) => fmtD(v, 0) },
+            title: { display: true, text: t("Diff (¢/lb)"), color: tinta, font: fonte } },
+        },
+      },
+    };
+  }
+
+  async function desenharLinha(grupo, idCanvas, idLeg) {
+    const { qs } = dadosLinha(grupo);
     const leg = $(idLeg, alvo), canvas = $(idCanvas, alvo);
     graficos[idCanvas]?.destroy(); delete graficos[idCanvas];
     if (!qs.length) {
@@ -463,7 +527,6 @@ export async function renderCompradores(link, alvo, ctx) {
       return;
     }
     canvas.parentElement.classList.remove("bc-sem");
-    const dias = [...new Set(rs.filter((r) => qs.some((q) => r.q[q.k])).map((r) => r.d))].sort();
     const set = vis[grupo];
     leg.innerHTML = qs.map((q) => `<button type="button" class="bc-chip ${set.has(q.k) ? "" : "off"} ${q.k === "FUTURO" ? "tr" : ""}" data-k="${esc(q.k)}" style="--c:var(--bc-s${q.cor})" aria-pressed="${set.has(q.k)}"><i></i>${esc(q.nome)}</button>`).join("");
     $$(".bc-chip", leg).forEach((ch) => ch.addEventListener("click", () => {
@@ -481,41 +544,77 @@ export async function renderCompradores(link, alvo, ctx) {
     }
     if (!document.body.contains(canvas)) return; // a tela mudou enquanto o Chart.js carregava
     graficos[idCanvas]?.destroy();
-    const tinta = cor("--texto-2"), grade = cor("--bc-grade"), sup = cor("--sup");
-    const datasets = qs.map((q) => {
-      const c = cor(`--bc-s${q.cor}`);
-      return {
-        label: q.nome, k: q.k, borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5,
-        pointBorderColor: sup, pointBorderWidth: 1, spanGaps: true, tension: 0.35, hidden: !set.has(q.k),
-        borderDash: q.k === "FUTURO" ? [6, 4] : [], // o futuro é outra natureza de preço: linha tracejada
-        data: dias.map((d) => { const v = rs.filter((r) => r.d === d && r.q[q.k]).map((r) => r.q[q.k][1]); return v.length ? Math.round(media(v) * 100) / 100 : null; }),
-      };
-    });
-    const fonte = { family: "Inter, system-ui, sans-serif", size: 11 };
-    graficos[idCanvas] = new Chart(canvas, {
-      type: "line",
-      data: { labels: dias.map(diaMes), datasets },
-      plugins: [guia, rotulos],
-      options: {
-        maintainAspectRatio: false, animation: false,
-        layout: { padding: { right: larguraRotulos(datasets), top: 6 } },
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { display: false },
-          bcGuia: { cor: cor("--texto-3"), corMarca: cor("--brand"), marca: st.modo === "dia" ? dias.indexOf(st.dia) : null },
-          tooltip: {
-            backgroundColor: sup, titleColor: cor("--texto"), bodyColor: cor("--texto"), borderColor: cor("--borda"), borderWidth: 1,
-            padding: 10, boxPadding: 4, usePointStyle: true, itemSort: (x, y) => y.raw - x.raw, filter: (i) => i.raw != null,
-            callbacks: { title: (i) => i[0].label, label: (i) => ` ${i.dataset.label}: ${fmtD(i.raw)} ¢/lb` },
-          },
-        },
-        scales: {
-          x: { grid: { display: false }, border: { color: grade }, ticks: { color: tinta, font: fonte, maxRotation: 0, autoSkipPadding: 14 } },
-          y: { grid: { color: grade }, border: { display: false }, ticks: { color: tinta, font: fonte, callback: (v) => fmtD(v, 0) },
-            title: { display: true, text: t("Diff (¢/lb)"), color: tinta, font: fonte } },
-        },
-      },
-    });
+    graficos[idCanvas] = new Chart(canvas, configLinha(grupo, cor));
+  }
+
+  // ---------------------------------------------------------------- imagem dos dois gráficos (Save image)
+  // sempre no tema claro e com largura fixa: sai igual em qualquer tela; mostra as linhas visíveis na tela
+  function textoPeriodo() {
+    const [a, b] = intervalo();
+    const ini = a === "0000" || a < PRIMEIRA ? PRIMEIRA : a;
+    const per = st.modo === "dia"
+      ? t("Day {d} · chart: 30 days up to it", { d: dataLonga(st.dia) })
+      : `${t({ 7: "Last 7 days", 30: "Last 30 days", 90: "Last 90 days", 0: "Whole crop" }[st.modo])} · ${t("{a} to {b}", { a: dataLonga(ini), b: dataLonga(b) })}`;
+    return { per, comprador: st.comp ? nomeComprador(st.comp) : t("All buyers") };
+  }
+
+  async function graficoImagem(Chart, grupo, largura, altura) {
+    if (!dadosLinha(grupo).qs.length) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = largura; canvas.height = altura;
+    canvas.style.cssText = `width:${largura}px;height:${altura}px`;
+    const caixa = document.createElement("div");
+    caixa.style.cssText = `position:fixed;left:-10000px;top:0;width:${largura}px;height:${altura}px`;
+    caixa.appendChild(canvas);
+    document.body.appendChild(caixa);
+    try {
+      const g = new Chart(canvas, configLinha(grupo, (v) => COR_IMG[v] ?? "#000"));
+      const url = g.toBase64Image("image/png", 1);
+      g.destroy();
+      return url;
+    } finally { caixa.remove(); }
+  }
+
+  async function salvarImagem() {
+    const [Chart, capturar] = await Promise.all([carregarChart(), carregarScript(HTML2CANVAS, "html2canvas")]);
+    await document.fonts?.ready;
+    const L = 1040;
+    const [fina, inf] = await Promise.all([graficoImagem(Chart, "fina", L - 82, 380), graficoImagem(Chart, "inf", L - 82, 260)]);
+    if (!fina && !inf) throw new Error(t("No bids in this period."));
+    const { per, comprador } = textoPeriodo();
+    const C = COR_IMG;
+    const cartao = (titulo, url) => (url ? `<div style="background:#fff;border:1px solid ${C["--borda"]};border-radius:12px;padding:16px 16px 10px;margin-bottom:14px">
+      <div style="font-size:17px;font-weight:700;margin:0 0 8px 4px">${esc(titulo)}</div>
+      <img src="${url}" alt="" style="display:block;width:${L - 82}px;height:auto"></div>` : "");
+    const caixa = document.createElement("div");
+    caixa.setAttribute("data-sem-traducao", "");
+    caixa.style.cssText = `position:fixed;left:-10000px;top:0;width:${L}px;background:${C["--bg"]};color:${C["--texto"]};font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.4`;
+    caixa.innerHTML = `
+      <div style="background:${C.faixa};padding:20px 26px;display:flex;align-items:center;gap:16px">
+        <div style="width:62px;height:62px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex:none">
+          <img src="assets/logo_brascof.png" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:50%"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:26px;font-weight:700;color:#fff;line-height:1.2">${esc(ctx.titulo || "Buyer Bids")}</div>
+          <div style="font-size:15px;color:rgba(255,255,255,.88);margin-top:4px"><b>${esc(t("Period"))}:</b> ${esc(per)}</div>
+          <div style="font-size:15px;color:rgba(255,255,255,.88)"><b>${esc(t("Buyer"))}:</b> ${esc(comprador)}</div>
+        </div>
+        <div style="border:1.5px solid rgba(255,255,255,.75);border-radius:999px;padding:4px 14px;font-size:14px;font-weight:600;color:#fff;white-space:nowrap">${esc(dataLonga(ULTIMA))}</div>
+      </div>
+      <div style="padding:18px 24px 4px">
+        ${cartao(st.comp ? `${t("Average diff by quality")} · ${comprador}` : t("Average diff by quality"), fina)}
+        ${cartao(st.comp ? `${t("Lower grades")} · ${comprador}` : t("Lower grades"), inf)}
+      </div>
+      <div style="padding:0 28px 16px;display:flex;justify-content:space-between;gap:16px;font-size:12px;color:${C["--texto-2"]}">
+        <span>${esc(t("Diff in ¢/lb over NY · average of the bids of each day"))}</span><span>Brascof · internal use</span></div>`;
+    document.body.appendChild(caixa);
+    try {
+      await Promise.all([...caixa.querySelectorAll("img")].map((i) => (i.complete ? null : new Promise((ok) => { i.onload = i.onerror = ok; }))));
+      const c = await capturar(caixa, { scale: 2, backgroundColor: C["--bg"], logging: false, useCORS: true });
+      const nome = `Buyer Bids ${st.modo === "dia" ? st.dia : intervalo()[1]}${st.comp ? ` ${nomeComprador(st.comp)}` : ""}.png`;
+      const a = document.createElement("a");
+      a.href = c.toDataURL("image/png"); a.download = nome;
+      document.body.appendChild(a); a.click(); a.remove();
+    } finally { caixa.remove(); }
   }
 
   // ---------------------------------------------------------------- quem paga melhor
