@@ -575,6 +575,69 @@ export async function renderCompradores(link, alvo, ctx) {
     } finally { caixa.remove(); }
   }
 
+  // quem está mais agressivo (maior diff médio) em cada qualidade no período, entre todos os compradores;
+  // só as qualidades ligadas na legenda dos gráficos
+  function resumoAgressivos() {
+    const rs = BASE.filter(noIntervalo(intervalo()));
+    // mesma ordem dos gráficos: primeiro o de cima (finas e futuro), depois os inferiores
+    const ordem = [...Q.filter((q) => q.grupo === "fina"), ...Q.filter((q) => q.grupo === "inf")];
+    const linhas = ordem.filter((q) => q.cor && vis[q.grupo].has(q.k) && rs.some((r) => r.q[q.k])).map((q) => {
+      const por = {};
+      rs.filter((r) => r.q[q.k]).forEach((r) => (por[r.e] ??= []).push(r.q[q.k][1]));
+      const ord = Object.entries(por).map(([e, v]) => ({ e, m: media(v), n: v.length })).sort((a, b) => b.m - a.m || b.n - a.n);
+      const mercado = media(rs.filter((r) => r.q[q.k]).map((r) => r.q[q.k][1]));
+      return { q, lider: ord[0], segundo: ord[1] ?? null, mercado, nComp: ord.length };
+    });
+    const vezes = {};
+    linhas.forEach((l) => (vezes[l.lider.e] = (vezes[l.lider.e] ?? 0) + 1));
+    const max = Math.max(0, ...Object.values(vezes));
+    const destaque = Object.keys(vezes).filter((e) => vezes[e] === max).sort((a, b) => a.localeCompare(b, LOCALE));
+    return { linhas, destaque, max };
+  }
+
+  function htmlResumo() {
+    const C = COR_IMG;
+    const { linhas, destaque, max } = resumoAgressivos();
+    if (!linhas.length) return "";
+    const nomes = destaque.map(nomeComprador).join(" / ");
+    const lideraEle = st.comp ? linhas.filter((l) => l.lider.e === st.comp).length : 0;
+    const th = `padding:8px 10px;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:${C["--texto-2"]};border-bottom:1px solid ${C["--borda"]};white-space:nowrap`;
+    const td = `padding:8px 10px;border-bottom:1px solid ${C["--bc-grade"]};white-space:nowrap;font-variant-numeric:tabular-nums`;
+    const sinal = (v) => (v == null ? "—" : fmtD(v, 1).replace(/^-/, "−"));
+    // traço da cor da linha (tracejado no Futuro, feito de pedaços: o html2canvas não desenha gradiente repetido)
+    const amostra = (q) => {
+      const c = C[`--bc-s${q.cor}`];
+      const peca = (w, m) => `<span style="display:inline-block;width:${w}px;height:3px;border-radius:1px;background:${c};margin-right:${m}px"></span>`;
+      return `<span style="display:inline-block;width:14px;margin-right:8px;vertical-align:middle;line-height:0;white-space:nowrap">${q.k === "FUTURO" ? peca(4, 1) + peca(4, 1) + peca(4, 0) : peca(14, 0)}</span>`;
+    };
+    return `<div style="background:#fff;border:1px solid ${C["--borda"]};border-radius:12px;padding:16px 18px 10px;margin-bottom:14px">
+      <div style="font-size:17px;font-weight:700;margin:0 0 2px">${esc(t("Most aggressive buyers"))}</div>
+      <div style="font-size:12.5px;color:${C["--texto-2"]};margin-bottom:10px">${esc(t("Highest average diff of each quality in the period, among all buyers. “vs market” = how much above the average of all bids."))}</div>
+      <div style="background:${C["--bg"]};border-left:4px solid ${C.faixa};border-radius:8px;padding:9px 14px;margin-bottom:10px;font-size:14.5px">
+        <b>${esc(t("Most aggressive overall"))}:</b> ${esc(nomes)} · ${esc(t("best diff in {a} of {b} qualities", { a: max, b: linhas.length }))}
+        ${st.comp && !destaque.includes(st.comp) ? `<br><b>${esc(nomeComprador(st.comp))}:</b> ${esc(lideraEle ? t("best diff in {a} of {b} qualities", { a: lideraEle, b: linhas.length }) : t("not the best diff in any quality"))}` : ""}
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+        <thead><tr>
+          <th style="${th};text-align:left">${esc(t("Quality"))}</th><th style="${th};text-align:left">${esc(t("Most aggressive"))}</th>
+          <th style="${th};text-align:right">${esc(t("Average diff"))}</th><th style="${th};text-align:right">${esc(t("vs market"))}</th>
+          <th style="${th};text-align:left">${esc(t("Runner-up"))}</th><th style="${th};text-align:right">${esc(t("Buyers"))}</th>
+        </tr></thead>
+        <tbody>${linhas.map((l) => {
+          const sel = st.comp && l.lider.e === st.comp;
+          return `<tr>
+            <td style="${td}">${amostra(l.q)}${esc(l.q.nome)}</td>
+            <td style="${td};font-weight:700${sel ? `;color:${C.faixa}` : ""}">${esc(nomeComprador(l.lider.e))} <span style="font-weight:400;color:${C["--texto-2"]};font-size:12px">(${esc(t(l.lider.n === 1 ? "{n} bid" : "{n} bids", { n: l.lider.n }))})</span></td>
+            <td style="${td};text-align:right;font-weight:700">${sinal(l.lider.m)}</td>
+            <td style="${td};text-align:right;color:${C["--texto-2"]}">${sinal(l.lider.m - l.mercado)}</td>
+            <td style="${td};color:${C["--texto-2"]}">${l.segundo ? `${esc(nomeComprador(l.segundo.e))} ${sinal(l.segundo.m)}` : "—"}</td>
+            <td style="${td};text-align:right;color:${C["--texto-2"]}">${l.nComp}</td>
+          </tr>`;
+        }).join("")}</tbody>
+      </table>
+    </div>`;
+  }
+
   async function salvarImagem() {
     const [Chart, capturar] = await Promise.all([carregarChart(), carregarScript(HTML2CANVAS, "html2canvas")]);
     await document.fonts?.ready;
@@ -603,6 +666,7 @@ export async function renderCompradores(link, alvo, ctx) {
       <div style="padding:18px 24px 4px">
         ${cartao(st.comp ? `${t("Average diff by quality")} · ${comprador}` : t("Average diff by quality"), fina)}
         ${cartao(st.comp ? `${t("Lower grades")} · ${comprador}` : t("Lower grades"), inf)}
+        ${htmlResumo()}
       </div>
       <div style="padding:0 28px 16px;display:flex;justify-content:space-between;gap:16px;font-size:12px;color:${C["--texto-2"]}">
         <span>${esc(t("Diff in ¢/lb over NY · average of the bids of each day"))}</span><span>Brascof · internal use</span></div>`;
