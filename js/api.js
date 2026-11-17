@@ -64,6 +64,11 @@ function erroShipment(msg = "") {
   if (/row-level security|permission denied/i.test(msg)) return "Your user cannot change the shipment schedule. Ask the administrator for access to it.";
   return traduzErro(msg);
 }
+function erroCompradores(msg = "") {
+  if (/bi_compradores|schema cache|does not exist/i.test(msg)) return "Buyer Bids is not set up yet: run section 31 of supabase/schema.sql in the Supabase SQL Editor.";
+  if (/row-level security|permission denied/i.test(msg)) return "Only administrators can upload the buyer bids spreadsheet.";
+  return traduzErro(msg);
+}
 function erroPrecos(msg = "") {
   if (/bi_precos|schema cache|does not exist/i.test(msg)) return "The price list is not set up yet: run section 26 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/row-level security|permission denied/i.test(msg)) return "Your user cannot change this price list. Ask the administrator for access to it.";
@@ -481,6 +486,20 @@ async function criarApiSupabase() {
       if (error?.code === "23505") return null; // outra pessoa criou a lista enquanto esta estava aberta
       if (error) throw new Error(erroPrecos(error.message));
       return data?.[0] ?? null; // nenhuma linha: a lista foi salva de novo depois que a tela abriu
+    },
+
+    // ----------------------------------------------------------- buyer bids (portal:compradores)
+    // a última planilha enviada (null = nenhuma ainda); cada envio é uma carga nova
+    async compradores() {
+      const { data, error } = await sb.from("bi_compradores_cargas").select("dados, nome_arquivo, enviado_em, enviado_por")
+        .order("id", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(erroCompradores(error.message));
+      return data;
+    },
+    // quem enviou e quando vêm do banco (gatilho), não do navegador
+    async enviarCompradores(dados, nome_arquivo) {
+      const { error } = await sb.from("bi_compradores_cargas").insert({ dados, nome_arquivo });
+      if (error) throw new Error(erroCompradores(error.message));
     },
 
     // ----------------------------------------------------------- shipment (portal:shipment)

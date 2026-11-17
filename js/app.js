@@ -9,6 +9,7 @@ import { ehPainelCert, renderCert } from "./certificado.js";
 import { ehPainelQualidade, renderQualidade } from "./qualidade.js";
 import { ehPainelPrecos, renderPrecos } from "./precos.js";
 import { ehPainelShipment, renderShipment } from "./shipment.js";
+import { ehPainelCompradores, renderCompradores } from "./compradores.js";
 import { IDIOMA, ligarTraducao } from "./i18n.js";
 
 const app = $("#app");
@@ -547,7 +548,7 @@ async function telaDashboard(id) {
   const demo = d.link.startsWith("demo:");
   const sistema = ehSistema(d);
   // painel desenhado pelo próprio portal (Position, Certificados, Qualidade, Price list, Shipment)
-  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link) || ehPainelQualidade(d.link) || ehPainelPrecos(d.link) || ehPainelShipment(d.link);
+  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link) || ehPainelQualidade(d.link) || ehPainelPrecos(d.link) || ehPainelShipment(d.link) || ehPainelCompradores(d.link);
   // o certificado e a Price list desenham o próprio cabeçalho (com as abas e os botões deles)
   const cabProprio = ehPainelCert(d.link) || ehPainelPrecos(d.link);
   // Qualidade e Shipment leem o Digisul: a data de atualização aparece no próprio painel
@@ -574,7 +575,7 @@ async function telaDashboard(id) {
     (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   });
   if (nativo) {
-    const render = ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : ehPainelPrecos(d.link) ? renderPrecos : ehPainelShipment(d.link) ? renderShipment : renderPosition;
+    const render = ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : ehPainelPrecos(d.link) ? renderPrecos : ehPainelShipment(d.link) ? renderShipment : ehPainelCompradores(d.link) ? renderCompradores : renderPosition;
     // Position e Certificado: publicar, importar e ajustar é só do admin (o File manager só cuida do Files)
     const admin = !!estado.perfil?.is_admin;
     await render(d.link, $("#frame"), { api, gerente: admin, admin, recarregar, titulo: d.titulo });
@@ -740,7 +741,7 @@ async function formDashboard(d, cats) {
       const titulo = f.titulo.value.trim();
       const link = f.link.value.trim();
       if (!titulo) throw new Error("Please enter a title.");
-      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link) && !ehPainelCert(link) && !ehPainelQualidade(link) && !ehPainelPrecos(link) && !ehPainelShipment(link)) throw new Error("The link must start with https://");
+      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link) && !ehPainelCert(link) && !ehPainelQualidade(link) && !ehPainelPrecos(link) && !ehPainelShipment(link) && !ehPainelCompradores(link)) throw new Error("The link must start with https://");
       const dados = {
         titulo, link,
         id: d.id,

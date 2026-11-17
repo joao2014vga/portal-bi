@@ -805,6 +805,72 @@ const PT = {
   "· updated daily at 6:00, or now with Refresh · Order, Notes and Warehouse are saved for everyone as you type":
     "· atualizado todo dia às 6h, ou agora pelo Atualizar · Guia, Obs e Local são salvos para todos enquanto você digita",
   "Bring Order, Notes and Warehouse from the Shipment spreadsheet (.xlsx)": "Trazer Guia, Obs e Local da planilha Shipment (.xlsx)",
+
+  // ---------------------------------------------------------------- buyer bids (base comprador)
+  "Buyer Bids": "Base Compradores", "Diffs offered by buyers by quality and screen cleaning, who pays best, and the deals closed.":
+    "Diffs oferecidos pelos compradores por qualidade e catação, quem paga melhor e os negócios fechados.",
+  "Loading buyer bids…": "Carregando a base dos compradores…", "Buyer bids are not available": "Base dos compradores indisponível",
+  "No buyer bids yet": "Ainda não há base dos compradores",
+  "Upload the “Base comprador – Negócios realizados” spreadsheet to publish the bids.": "Envie a planilha “Base comprador – Negócios realizados” para publicar a base.",
+  "The bids will appear here once the spreadsheet is uploaded.": "A base aparece aqui assim que a planilha for enviada.",
+  "Upload spreadsheet": "Enviar planilha", "Read the spreadsheet and update the bids for everyone with access": "Ler a planilha e atualizar a base para todos que têm acesso",
+  "Bids up to": "Base até", "sent by {n}": "enviada por {n}",
+  "Day": "Dia", "7 days": "7 dias", "30 days": "30 dias", "90 days": "90 dias", "Whole crop": "Safra toda", "Buyer": "Comprador",
+  "Previous day with bids": "Dia anterior com base", "Next day with bids": "Próximo dia com base",
+  "Bids of {d}": "Base de {d}", "{a} to {b}": "{a} a {b}",
+  "Latest bids": "Última base recebida", "{n} bids that day": "{n} cotações nesse dia", "Bids on the day": "Cotações no dia",
+  "Bids in the period": "Cotações no período", "from {n} buyers": "de {n} compradores", "{q} diff · {d}": "Diff {q} · {d}",
+  "No {q} bid on this day": "Sem cotação de {q} nesse dia", "previous 30 days {v}": "30 dias anteriores {v}", "period average {v}": "média do período {v}",
+  "Bags traded": "Sacas negociadas", "{n} deals on the day": "{n} negócios no dia", "{n} deals in the period": "{n} negócios no período",
+  "Average diff by quality": "Evolução do diff médio por qualidade",
+  "Average of all bids of each day, per quality. The higher the line, the better buyers are paying. Click the legend to show or hide a quality.":
+    "Média do diff de todas as cotações do dia, por qualidade. Quanto mais alta a linha, melhor o comprador está pagando. Clique na legenda para mostrar ou esconder uma qualidade.",
+  "Average of all bids of each day, per quality, in the 30 days up to {d} (marked line). The higher the line, the better buyers are paying. Click the legend to show or hide a quality.":
+    "Média do diff de todas as cotações do dia, por qualidade, nos 30 dias até {d} (linha marcada). Quanto mais alta a linha, melhor o comprador está pagando. Clique na legenda para mostrar ou esconder uma qualidade.",
+  "Diff in ¢/lb over NY. Days without a bid for a quality have no point (the line joins the neighbouring days).":
+    "Diff em ¢/lb sobre NY. Dias sem cotação de uma qualidade ficam sem ponto (a linha liga os dias vizinhos).",
+  "Average diff by quality over time": "Diff médio por qualidade ao longo do tempo", "Diff (¢/lb)": "Diff (¢/lb)",
+  "No bids in this period.": "Nenhuma cotação no período.", "No lower-grade bids in this period.": "Nenhuma cotação de café inferior no período.",
+  "Who pays best": "Quem paga melhor", "Average diff of each buyer in the period, with the range from the worst to the best bid.":
+    "Diff médio de cada comprador no período, com a faixa entre a pior e a melhor cotação.",
+  "Average diff": "Diff médio", "Range (worst → best bid)": "Faixa (pior → melhor cotação)", "Market average": "Média do mercado",
+  "n = number of bids": "n = nº de cotações", "← worse · better →": "← pior · melhor →", "average": "média",
+  "No {q} bids in this period.": "Nenhuma cotação de {q} no período.",
+  "{e}: average {m} · worst {min} · best {max} · {n} bids": "{e}: média {m} · pior {min} · melhor {max} · {n} cotações",
+  "Lower grades": "Cafés inferiores", "GC 2RD, GC 7/2/1 and Rio have their own chart: the discount is much larger and would flatten the other lines.":
+    "GC 2RD, GC 7/2/1 e Rio ficam em gráfico separado: o desconto é bem maior e achataria as outras linhas.",
+  "Average diff of the lower grades": "Diff médio dos cafés inferiores",
+  "Buyer × quality": "Quadro comprador × qualidade", "Average diff in the period. The colour compares the buyers within each column: darker = pays better for that quality.":
+    "Diff médio no período. A cor compara os compradores dentro de cada coluna: mais escuro = paga melhor naquela qualidade.",
+  "worse": "pior", "better": "melhor", "Bids": "Cotações",
+  "Latest bid per buyer": "Última base de cada comprador", "All bids": "Todas as cotações", "Search buyer": "Buscar comprador",
+  "The bids of the day. In green, the best diff of each column.": "As cotações do dia. Em verde, o melhor diff de cada coluna.",
+  "The most recent bid of each buyer in the period. In green, the best diff of each column among the bids of the last 7 days; older bids are faded.":
+    "A cotação mais recente de cada comprador no período. Em verde, o melhor diff de cada coluna entre as bases dos últimos 7 dias; bases mais antigas aparecem esmaecidas.",
+  "{n} bids in the period, most recent first.": "{n} cotações no período, da mais recente para a mais antiga.",
+  "No buyer matches the search.": "Nenhum comprador encontrado.", "{n} days ago": "há {n} dias", "Page {a} of {b}": "Página {a} de {b}",
+  "‹ Previous": "‹ Anterior", "Next ›": "Próxima ›", "Each cell: diff in ¢/lb (top) and price in R$/bag (bottom).": "Cada célula: diff em ¢/lb (em cima) e preço em R$/saca (embaixo).",
+  "Deals closed": "Negócios realizados", "Bags traded by buyer": "Sacas negociadas por comprador",
+  "Sum of the bags of the deals closed in the period.": "Soma das sacas dos negócios fechados no período.",
+  "Quantity not filled in the spreadsheet": "Quantidade não informada na planilha", "No deals in this period.": "Nenhum negócio no período.",
+  "Average diff traded by quality": "Diff médio negociado por qualidade", "Weighted by bags.": "Média ponderada pelas sacas.",
+  "Deals": "Negócios", "Average price": "Preço médio", "Deals in the period": "Negócios do período", "{a} deals · {b} bags": "{a} negócios · {b} sacas",
+  "Price (R$/bag)": "Preço (R$/sc)",
+  "Upload buyer bids": "Enviar base dos compradores", "Read spreadsheet": "Ler planilha",
+  "Choose the “Base comprador – Negócios realizados” spreadsheet (.xlsx). It is read in your browser and the bids and deals are updated for everyone with access. The previous uploads are kept.":
+    "Escolha a planilha “Base comprador – Negócios realizados” (.xlsx). Ela é lida no seu navegador e a base e os negócios são atualizados para todos que têm acesso. Os envios anteriores ficam guardados.",
+  "The spreadsheet has no buyer base sheet (with the Data and Empresa columns).": "A planilha não tem a aba da base dos compradores (com as colunas Data e Empresa).",
+  "No quotes found in the buyer base sheet.": "Nenhuma cotação encontrada na aba da base dos compradores.",
+  "Publish buyer bids": "Publicar base dos compradores", "Publish": "Publicar",
+  "{a} bids from {b} buyers, from {c} to {d}, and {e} deals.": "{a} cotações de {b} compradores, de {c} a {d}, e {e} negócios.",
+  "Qualities: {q}": "Qualidades: {q}",
+  "The spreadsheet has fewer bids ({a}) than what is published now ({b}). Check that it is the right file.":
+    "A planilha tem menos cotações ({a}) do que a base publicada agora ({b}). Confira se é o arquivo certo.",
+  "Its latest bid ({a}) is older than the one published now ({b}).": "A última cotação dela ({a}) é mais antiga que a da base publicada agora ({b}).",
+  "Buyer bids updated: {n} bids.": "Base dos compradores atualizada: {n} cotações.",
+  "Buyer Bids is not set up yet: run section 31 of supabase/schema.sql in the Supabase SQL Editor.":
+    "A Base Compradores ainda não está configurada: rode a seção 31 do supabase/schema.sql no SQL Editor do Supabase.",
+  "Only administrators can upload the buyer bids spreadsheet.": "Só administradores podem enviar a planilha da base dos compradores.",
   "Excel": "Excel", "Download what is on screen as an Excel file": "Baixar o que está na tela em Excel", "Refresh": "Atualizar",
   "Fetch the latest data from Digisul now (updates it for everyone)": "Buscar agora os dados do Digisul (atualiza para todos)",
   "Contract, client, order or notes": "Contrato, cliente, guia ou obs", "Up to next month": "Até o mês que vem", "Next 3 months": "Próximos 3 meses",

@@ -1855,3 +1855,70 @@ create policy lancamentos_insert on public.lancamentos for insert to authenticat
 drop policy if exists negociacoes_acesso on public.negociacoes;
 create policy negociacoes_acesso on public.negociacoes for all to authenticated
   using (public.bi_is_admin()) with check (public.bi_is_admin());
+
+-- =====================================================================
+-- 31. BUYER BIDS (planilha "Base comprador - Negócios realizados")
+-- =====================================================================
+-- Cotações das tradings/exportadoras por qualidade e catação (aba "Base
+-- Comprador SAFRA NOVA") e os negócios fechados (aba "Negócios Realizados").
+-- A planilha é lida no navegador e cada envio vira uma carga nova (as
+-- anteriores ficam guardadas: um envio errado não apaga o que havia).
+--   dados = { qualidades: [{ k, nome }], qualidades_neg: [{ k, nome }],
+--             base:     [{ d: "2026-11-17", e: "STONEX", q: { "GC 20%": [preço, diff] } }],
+--             negocios: [{ d, e, s: sacas, q: { "Good Cup": [preço, diff] } }] }
+-- Vê quem tem acesso ao card portal:compradores; enviar a planilha só o admin.
+-- Pré-requisito: seções 1 a 3 (bi_ve_painel, bi_is_admin). Pode rodar de novo.
+-- ---------------------------------------------------------------------
+create table if not exists public.bi_compradores_cargas (
+  id             bigint generated always as identity primary key,
+  dados          jsonb not null,
+  nome_arquivo   text,
+  cotacoes       integer,
+  negocios       integer,
+  enviado_em     timestamptz not null default now(),
+  enviado_por    text,
+  created_by     uuid default auth.uid() references public.bi_perfis (id) on delete set null
+);
+
+-- quem enviou e quando: sempre o usuário logado (não vem do navegador);
+-- e a data do card avança (gera o aviso "… was updated" no sininho)
+create or replace function public.bi_compradores_enviado()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  new.created_by := auth.uid();
+  new.enviado_por := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  new.enviado_em := now();
+  new.cotacoes := jsonb_array_length(coalesce(new.dados -> 'base', '[]'::jsonb));
+  new.negocios := jsonb_array_length(coalesce(new.dados -> 'negocios', '[]'::jsonb));
+  update public.bi_dashboards set atualizado_em = now() where link = 'portal:compradores';
+  return new;
+end;
+$$;
+drop trigger if exists bi_compradores_enviado on public.bi_compradores_cargas;
+create trigger bi_compradores_enviado before insert on public.bi_compradores_cargas
+  for each row execute function public.bi_compradores_enviado();
+
+alter table public.bi_compradores_cargas enable row level security;
+drop policy if exists bi_compradores_select on public.bi_compradores_cargas;
+create policy bi_compradores_select on public.bi_compradores_cargas for select to authenticated
+  using (public.bi_ve_painel('portal:compradores'));
+drop policy if exists bi_compradores_insert on public.bi_compradores_cargas;
+create policy bi_compradores_insert on public.bi_compradores_cargas for insert to authenticated
+  with check (public.bi_is_admin());
+-- sem update/delete pelo portal: cada envio é uma carga nova
+
+-- Card "Buyer Bids" na categoria do Dashboard Commercial / Price List (ou na
+-- primeira categoria). Depois é só liberar o acesso em Administração → Usuários.
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select coalesce(
+         (select categoria_id from public.bi_dashboards where link = 'portal:precos-europe'),
+         (select id from public.bi_categorias order by ordem, id limit 1)),
+       'Buyer Bids', 'Diffs offered by buyers by quality and screen cleaning, who pays best, and the deals closed.',
+       'portal:compradores', 'diaria', true, 9
+where not exists (select 1 from public.bi_dashboards d where d.link = 'portal:compradores');
+notify pgrst, 'reload schema';
+
+-- Para conferir:
+--   select id, nome_arquivo, cotacoes, negocios, enviado_em, enviado_por from public.bi_compradores_cargas order by id desc;

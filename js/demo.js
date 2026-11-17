@@ -35,6 +35,7 @@ function seed() {
       { id: 45, categoria_id: 4, titulo: "Purchases", descricao: "Purchased volume, value and purchase diff, crop over crop, by supplier and quality.", link: "portal:position-purchases", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 5 },
       { id: 46, categoria_id: 4, titulo: "Dashboard Commercial", descricao: "Export sales: contracts, bags, average diffs, bags per client and what is left to ship.", link: "portal:position-commercial", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 7 },
       { id: 47, categoria_id: 4, titulo: "Price List", descricao: "Diffs by client, edited here and shared as an image or PDF on WhatsApp, e-mail or Teams.", link: "portal:precos-europe", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "manual", ativo: true, ordem: 8 },
+      { id: 48, categoria_id: 4, titulo: "Buyer Bids", descricao: "Diffs offered by buyers by quality and screen cleaning, who pays best, and the deals closed.", link: "portal:compradores", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 9 },
       { id: 32, categoria_id: 3, titulo: "Logística de Entregas", descricao: "OTIF, prazo médio e ocorrências por transportadora.", link: "demo:logistica", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "semanal", ativo: true, ordem: 2 },
     ],
     acessos: [
@@ -283,6 +284,17 @@ export function criarDemo() {
       });
       salvar();
       return structuredClone(salvas);
+    },
+
+    // buyer bids: a planilha enviada fica só neste navegador
+    async compradores() { return structuredClone(db.compradores ?? null); },
+    async enviarCompradores(dados, nome_arquivo) {
+      if (!eu().is_admin) throw new Error("Only administrators can upload the buyer bids spreadsheet.");
+      const agora = new Date().toISOString();
+      db.compradores = { dados, nome_arquivo, enviado_em: agora, enviado_por: eu().nome };
+      const d = db.dashboards.find((x) => x.link === "portal:compradores");
+      if (d) d.atualizado_em = agora;
+      salvar();
     },
 
     // price list
