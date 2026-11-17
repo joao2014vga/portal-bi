@@ -172,6 +172,41 @@ const guia = {
   },
 };
 
+// nome e último valor de cada linha visível, na cor dela, à direita do gráfico
+// (na altura do último ponto; rótulos próximos se afastam para não encostar)
+const FONTE_ROTULO = "600 12px Inter, system-ui, sans-serif";
+const textoRotulo = (ds) => {
+  const ult = ds.data.findLast((v) => v != null);
+  return ult == null ? null : `${ds.label}  ${fmt(ult, 1)}`;
+};
+const rotulos = {
+  id: "bcRotulos",
+  afterDatasetsDraw(c) {
+    const g = c.ctx, { top, bottom, right } = c.chartArea, y = c.scales.y;
+    const itens = c.data.datasets
+      .map((ds, i) => ({ ds, i, txt: textoRotulo(ds) }))
+      .filter((r) => r.txt && c.isDatasetVisible(r.i))
+      .map((r) => ({ ...r, y: y.getPixelForValue(r.ds.data.findLast((v) => v != null)) }))
+      .sort((a, b) => a.y - b.y);
+    const GAP = 16;
+    for (let k = 1; k < itens.length; k++) itens[k].y = Math.max(itens[k].y, itens[k - 1].y + GAP);
+    if (itens.length) itens.at(-1).y = Math.min(itens.at(-1).y, bottom - 6);
+    for (let k = itens.length - 2; k >= 0; k--) itens[k].y = Math.min(itens[k].y, itens[k + 1].y - GAP);
+    if (itens.length) itens[0].y = Math.max(itens[0].y, top + 6);
+    g.save();
+    g.font = FONTE_ROTULO;
+    g.textBaseline = "middle";
+    for (const r of itens) { g.fillStyle = r.ds.borderColor; g.fillText(r.txt, right + 10, r.y); }
+    g.restore();
+  },
+};
+// espaço à direita para o rótulo mais largo (fixo por gráfico: esconder uma linha não mexe no desenho)
+function larguraRotulos(datasets) {
+  const g = document.createElement("canvas").getContext("2d");
+  g.font = FONTE_ROTULO;
+  return Math.ceil(Math.max(0, ...datasets.map((ds) => { const t_ = textoRotulo(ds); return t_ ? g.measureText(t_).width : 0; }))) + 16;
+}
+
 // =====================================================================
 // TELA
 // =====================================================================
@@ -422,7 +457,7 @@ export async function renderCompradores(link, alvo, ctx) {
     canvas.parentElement.classList.remove("bc-sem");
     const dias = [...new Set(rs.filter((r) => qs.some((q) => r.q[q.k])).map((r) => r.d))].sort();
     const set = vis[grupo];
-    leg.innerHTML = qs.map((q) => `<button type="button" class="bc-chip ${set.has(q.k) ? "" : "off"}" data-k="${esc(q.k)}" style="--c:var(--bc-s${q.cor})" aria-pressed="${set.has(q.k)}"><i></i>${esc(q.nome)}</button>`).join("");
+    leg.innerHTML = qs.map((q) => `<button type="button" class="bc-chip ${set.has(q.k) ? "" : "off"} ${q.k === "FUTURO" ? "tr" : ""}" data-k="${esc(q.k)}" style="--c:var(--bc-s${q.cor})" aria-pressed="${set.has(q.k)}"><i></i>${esc(q.nome)}</button>`).join("");
     $$(".bc-chip", leg).forEach((ch) => ch.addEventListener("click", () => {
       const k = ch.dataset.k;
       set.has(k) ? set.delete(k) : set.add(k);
@@ -443,7 +478,8 @@ export async function renderCompradores(link, alvo, ctx) {
       const c = cor(`--bc-s${q.cor}`);
       return {
         label: q.nome, k: q.k, borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5,
-        pointBorderColor: sup, pointBorderWidth: 1, spanGaps: true, tension: 0.25, hidden: !set.has(q.k),
+        pointBorderColor: sup, pointBorderWidth: 1, spanGaps: true, tension: 0.35, hidden: !set.has(q.k),
+        borderDash: q.k === "FUTURO" ? [6, 4] : [], // o futuro é outra natureza de preço: linha tracejada
         data: dias.map((d) => { const v = rs.filter((r) => r.d === d && r.q[q.k]).map((r) => r.q[q.k][1]); return v.length ? Math.round(media(v) * 100) / 100 : null; }),
       };
     });
@@ -451,9 +487,10 @@ export async function renderCompradores(link, alvo, ctx) {
     graficos[idCanvas] = new Chart(canvas, {
       type: "line",
       data: { labels: dias.map(diaMes), datasets },
-      plugins: [guia],
+      plugins: [guia, rotulos],
       options: {
         maintainAspectRatio: false, animation: false,
+        layout: { padding: { right: larguraRotulos(datasets), top: 6 } },
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: { display: false },
