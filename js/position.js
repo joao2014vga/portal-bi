@@ -154,8 +154,9 @@ async function semQuebrar(fn, canvas, ...args) {
 }
 
 // cores e tinta vêm das variáveis do tema (claro/escuro) no momento do desenho
-function tema() {
-  const s = getComputedStyle(document.documentElement);
+// el: lê as variáveis de um painel (ex.: o Dashboard Commercial tem séries no verde da marca)
+function tema(el = document.documentElement) {
+  const s = getComputedStyle(el);
   const v = (n) => s.getPropertyValue(n).trim();
   return {
     s1: v("--serie-1"), s2: v("--serie-2"), s3: v("--serie-3"), tinta: v("--texto"), tinta2: v("--texto-2"),
@@ -2528,7 +2529,7 @@ const rotulosGrafico = {
 // selecao: qualidades escolhidas (as outras barras ficam apagadas); Ctrl+clique soma à escolha
 async function graficoQualidades(canvas, itens, aoClicar, selecao = new Set()) {
   const Chart = await carregarChart();
-  const t = tema();
+  const t = tema(canvas);
   const apagada = /^#[0-9a-f]{6}$/i.test(t.s1) ? `${t.s1}55` : t.grade;
   const cores = itens.map((x) => (!selecao.size || selecao.has(x.padrao) ? t.s1 : apagada));
   const c = new Chart(canvas, {
@@ -2560,7 +2561,7 @@ async function graficoQualidades(canvas, itens, aoClicar, selecao = new Set()) {
 
 async function graficoHistorico(canvas, { rotulos, arabica, conilon }) {
   const Chart = await carregarChart();
-  const t = tema();
+  const t = tema(canvas);
   const linha = (rot, dados, cor) => ({ label: tr(rot), data: dados, borderColor: cor, backgroundColor: cor, borderWidth: 2, tension: 0.35,
     pointRadius: 3, pointHoverRadius: 5, pointBorderColor: t.sup, pointBorderWidth: 2, spanGaps: true });
   const c = new Chart(canvas, {
@@ -2584,6 +2585,7 @@ async function graficoHistorico(canvas, { rotulos, arabica, conilon }) {
 }
 
 async function painelComercial(alvo, carga, ctx) {
+  alvo.classList.add("pos-comercial"); // séries no verde da marca (css)
   let dados = null;
   try { dados = (await ctx.api.positionDetalhe(["comercial"])).comercial ?? null; } catch { /* cai no aviso abaixo */ }
   if (!dados) {
