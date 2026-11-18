@@ -328,7 +328,8 @@ export const DETALHES = {
     aba: ABAS.expsales,
     cols: [["contrato", "Contrato"], ["alertas", "Alertas"], ["referencia", "Referência"], ["embarque", "Embarque", "d"],
       ["padrao", "Padrão"], ["peneira", "Peneira"], ["especie", "Espécie"], ["sacas", "Sacas", "n"], ["saida", "Saída (sc)", "n"],
-      ["saldo", "Saldo (sc)", "n"], ["diferencial", "Diferencial", "n"], ["inclusao", "Data de Inclusão", "d"], ["emissao", "Emissão", "d"]],
+      ["saldo", "Saldo (sc)", "n"], ["diferencial", "Diferencial", "n"], ["inclusao", "Data de Inclusão", "d"], ["emissao", "Emissão", "d"],
+      ["qualidade", "Qualidade"]],
     aberto: () => true,
   },
   compras: {
