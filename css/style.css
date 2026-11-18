@@ -1080,3 +1080,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
   .bc-faixa { margin-left: 0; }
   .bc-barra { grid-template-columns: 96px 1fr 60px; }
 }
+
+/* Dashboard Commercial: especificação (Qualidade) na frente da peneira, cortada com o texto inteiro no hover */
+.pos-com-arvore .pos-com-qual { display: inline-block; max-width: 40ch; margin-left: 10px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; vertical-align: bottom; font-size: 11.5px; color: var(--texto-2); }
