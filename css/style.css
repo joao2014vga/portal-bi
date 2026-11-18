@@ -1084,3 +1084,7 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 /* Dashboard Commercial: card "Quality" com a especificação da peneira clicada (valores selecionados) */
 .pos-com-quals .pos-card-h h2 .muted { font-weight: 500; font-size: 13px; }
 .pos-com-quals td.pos-com-espec { white-space: normal; font-size: 12.5px; line-height: 1.4; }
+/* Dashboard Commercial: gráficos e barras no verde da marca (Arábica) e dourado (Conilon), no lugar do azul/laranja */
+.pos-comercial { --serie-1: #2f7d57; --serie-2: #c8962e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pos-comercial { --serie-1: #4fa77a; --serie-2: #d9ab4a; } }
+:root[data-theme="dark"] .pos-comercial { --serie-1: #4fa77a; --serie-2: #d9ab4a; }
