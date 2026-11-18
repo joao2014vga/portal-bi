@@ -2615,7 +2615,8 @@ async function painelComercial(alvo, carga, ctx) {
   let de = `${hoje.slice(0, 4)}-01`, ate = hoje;
   const abertos = new Set();
   let listaAberta = null; // filtro com a lista de escolha aberta (continua aberta ao redesenhar)
-  const passa = (r, exceto) => FILTROS.every(([k, , val]) => k === exceto || !filtro[k].size || filtro[k].has(val(r)));
+  // exceto: um filtro ou uma lista deles (o visual não se filtra pela própria escolha, só destaca)
+  const passa = (r, exceto) => FILTROS.every(([k, , val]) => (Array.isArray(exceto) ? exceto.includes(k) : k === exceto) || !filtro[k].size || filtro[k].has(val(r)));
   // clique escolhe só aquele valor (de novo: limpa); Ctrl+clique soma ou tira da seleção
   const selecionar = (k, v, varios) => {
     const s = filtro[k];
@@ -2630,24 +2631,32 @@ async function painelComercial(alvo, carga, ctx) {
   // a embarcar: mês de embarque > grupo > qualidade > peneira. Como o filtro "Sacas a Entregar ≥ 1"
   // do Power BI, vale no nível mais fino: só entram as linhas de combinações com saldo ≥ 1,
   // e as médias dos níveis de cima são calculadas só sobre elas.
+  // [chave, ordem, rótulo, filtro da página que o clique escolhe, valor do filtro, complemento em HTML]
+  // a última linha é peneira + qualidade (a especificação do contrato aparece na frente da peneira)
+  const SEP_QUAL = "\u0002";
   const NIVEIS = [
-    [(r) => r._emb ?? "", alfa, (v) => (v ? rotMesLongo(v) : tr("No date"))],
-    [(r) => r._tipo ?? "", ordemTipo, (v) => v || "—"],
-    [(r) => r.padrao ?? "", ordemPadrao, (v) => v || "—"],
-    [(r) => r.peneira ?? "", alfa, (v) => v || "—"],
+    [(r) => r._emb ?? "", alfa, (v) => (v ? rotMesLongo(v) : tr("No date")), "eom", (v) => v],
+    [(r) => r._tipo ?? "", ordemTipo, (v) => v || "—", "tipo", (v) => v],
+    [(r) => r.padrao ?? "", ordemPadrao, (v) => v || "—", "padrao", (v) => v],
+    [(r) => `${r.peneira ?? ""}${SEP_QUAL}${r.qualidade ?? ""}`, alfa, (v) => v.split(SEP_QUAL)[0] || "—", "peneira", (v) => v.split(SEP_QUAL)[0],
+      (v) => { const q = v.split(SEP_QUAL)[1]; return q ? ` <span class="pos-com-qual" title="${esc(q)}">${esc(q)}</span>` : ""; }],
   ];
   const linhasArvore = (rows, nivel, caminho) => {
-    const [chave, ordem, rotulo] = NIVEIS[nivel];
+    const [chave, ordem, rotulo, fk, fv, extra] = NIVEIS[nivel];
     const grupos = new Map();
     for (const r of rows) { const k = chave(r); (grupos.get(k) ?? grupos.set(k, []).get(k)).push(r); }
+    const folha = nivel === NIVEIS.length - 1;
     return [...grupos.keys()].sort(ordem).flatMap((k) => {
       const g = grupos.get(k), mg = medidasComercial(g);
-      const id =`${caminho}\u0001${k}`, folha = nivel === NIVEIS.length - 1, aberto = !folha && abertos.has(id);
+      // na última linha, especificações sem saldo (contratos já embarcados do mesmo mês e peneira) não aparecem
+      if (folha && Math.abs(mg.saldo ?? 0) < 1) return [];
+      const id = `${caminho}\u0001${k}`, aberto = !folha && abertos.has(id);
       const tog = folha ? `<span class="pos-com-folha"></span>`
         : `<button type="button" class="pos-com-tog" data-no="${esc(id)}" aria-expanded="${aberto}" title="${aberto ? "Collapse" : "Expand"}">${aberto ? "⊟" : "⊞"}</button>`;
-      // os meses filtram a página (clique e Ctrl+clique)
-      const mes = nivel === 0 && k ? ` data-eom="${esc(k)}"` : "";
-      return [`<tr class="pos-com-n${nivel}${mes ? ` pos-clic${marca("eom", k)}` : ""}"${mes}><td style="padding-left:${10 + nivel * 18}px">${tog}${esc(rotulo(k))}</td>${celNum(mg.saldo)}
+      // todo nível filtra a página: clique escolhe, Ctrl+clique soma ou tira da seleção
+      const v = fv(k);
+      const clic = v ? ` data-fk="${fk}" data-fv="${esc(v)}"` : "";
+      return [`<tr class="pos-com-n${nivel}${clic ? ` pos-clic${marca(fk, v)}` : ""}"${clic}><td style="padding-left:${10 + nivel * 18}px">${tog}${esc(rotulo(k))}${extra ? extra(k) : ""}</td>${celNum(mg.saldo)}
         <td class="num">${fmtDif(mg.difA)}</td><td class="num">${fmtDif(mg.difC)}</td></tr>`,
         ...(aberto ? linhasArvore(g, nivel + 1, id) : [])];
     });
@@ -2668,8 +2677,10 @@ async function painelComercial(alvo, carga, ctx) {
     const porCliente = [...semFiltro("cliente").reduce((mp, r) => mp.set(r._cliente, (mp.get(r._cliente) ?? 0) + (r.sacas ?? 0)), new Map())]
       .filter(([, v]) => v).sort((a, b) => b[1] - a[1]);
     const maxCli = porCliente[0]?.[1] ?? 0;
-    const folha = (r) => NIVEIS.map(([chave]) => chave(r)).join("\u0001");
-    const linhasEmb = semFiltro("eom");
+    // "Sacas a Entregar ≥ 1" vale por mês > grupo > qualidade > peneira (a especificação não muda a conta)
+    const folha = (r) => [r._emb ?? "", r._tipo ?? "", r.padrao ?? "", r.peneira ?? ""].join("\u0001");
+    // a árvore mostra mês, grupo, qualidade e peneira inteiros (a escolha fica em destaque, o resto apagado)
+    const linhasEmb = dados.filter((r) => passa(r, ["eom", "tipo", "padrao", "peneira"]));
     const saldoFolha = linhasEmb.reduce((mp, r) => mp.set(folha(r), (mp.get(folha(r)) ?? 0) + (r.saldo ?? 0)), new Map());
     const aEmbarcar = linhasEmb.filter((r) => saldoFolha.get(folha(r)) >= 1);
     const mE = medidasComercial(aEmbarcar);
@@ -2707,7 +2718,7 @@ async function painelComercial(alvo, carga, ctx) {
       ${FILTROS.map(lista).join("")}
       ${algumFiltro ? `<button type="button" class="btn" id="comLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
     </div>
-    <p class="muted pos-nota">${icon("info")} <span>Click a client, a shipment month or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
+    <p class="muted pos-nota">${icon("info")} <span>Click a client, any line of To be shipped or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
     <div class="pos-kpis pos-kpis-fix">
       <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Total contracts</span><span class="pos-kpi-v">${fmtN(m.contratos)}</span></div>
       <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Total bags</span><span class="pos-kpi-v">${fmtN(m.sacas)}</span></div>
@@ -2769,7 +2780,7 @@ async function painelComercial(alvo, carga, ctx) {
     });
     $("#comLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); listaAberta = null; desenhar(); });
     $$("tr[data-cliente]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("cliente", l.dataset.cliente, e.ctrlKey || e.metaKey)));
-    $$("tr[data-eom]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("eom", l.dataset.eom, e.ctrlKey || e.metaKey)));
+    $$("tr[data-fk]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar(l.dataset.fk, l.dataset.fv, e.ctrlKey || e.metaKey)));
     $$(".pos-com-tog", alvo).forEach((b) => b.addEventListener("click", (e) => {
       e.stopPropagation();  // abrir o mês não filtra
       if (!abertos.delete(b.dataset.no)) abertos.add(b.dataset.no);
