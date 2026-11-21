@@ -287,6 +287,8 @@ const PT = {
   "Past the FND": "FND vencido", "To receive and to fix": "A receber e a fixar", "Dollar to fix": "Dólar a fixar", "Fixed price": "Preço fixado",
   "bags still to receive in contracts with lots to fix": "sacas ainda a receber em contratos com lotes a fixar",
   "Lots to fix by exchange month": "Lotes a fixar por mês da bolsa", "Ordered by the fixation deadline (FND).": "Em ordem do prazo de fixação (FND).",
+  "Ordered by the fixation deadline (FND). ⊞ opens the contracts of the month with their due date.":
+    "Em ordem do prazo de fixação (FND). ⊞ abre os contratos do mês com o vencimento de cada um.",
   "Contracts to fix": "Contratos a fixar", "Every open purchase with lots still to fix on the exchange, nearest deadline first.":
     "Todas as compras em aberto com lotes ainda a fixar na bolsa, do prazo mais próximo para o mais longe.",
   "Contracts with the exchange price already fixed, coffee still to receive and no USD/BRL rate in Digisul. Earliest due date first.":

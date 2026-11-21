@@ -3080,6 +3080,7 @@ async function painelComprasDash(alvo, carga, ctx) {
   let de = `${hoje.slice(0, 4)}-01`, ate = hoje;
   let espDif = "ARABICA", espForn = "ARABICA", visaoMatriz = "mes", busca = "";
   const abertosForn = new Set(); // nós abertos da árvore fornecedor > qualidade > peneira
+  const abertosMesFix = new Set(); // meses da bolsa abertos na aba Fixations
   const estadoLista = { aberta: null };
   const noPeriodo = (r) => !!r._mes && r._mes >= de && r._mes <= ate;
   // filtro de contrato: parte do número, sem diferenciar maiúsculas ("0459/26", "brc-0459")
@@ -3165,9 +3166,18 @@ async function painelComprasDash(alvo, carga, ctx) {
     const porMesBolsa = new Map();
     for (const x of aFixar) {
       const k = `${norm(x.p.bolsa)}|${x.p.mes_bolsa ?? ""}`;
-      const o = porMesBolsa.get(k) ?? porMesBolsa.set(k, { bolsa: x.p.bolsa, mes: x.p.mes_bolsa, fx: x.fx, ctr: 0, lotes: 0, sacas: 0, aRec: 0 }).get(k);
-      o.ctr++; o.lotes += x.p.lotes_a_fixar; o.sacas += x.p.a_fixar ?? 0; o.aRec += x.r._aEnt;
+      const o = porMesBolsa.get(k) ?? porMesBolsa.set(k, { k, bolsa: x.p.bolsa, mes: x.p.mes_bolsa, fx: x.fx, ctr: 0, lotes: 0, sacas: 0, aRec: 0, itens: [] }).get(k);
+      o.ctr++; o.lotes += x.p.lotes_a_fixar; o.sacas += x.p.a_fixar ?? 0; o.aRec += x.r._aEnt; o.itens.push(x);
     }
+    // ⊞ do mês abre os contratos dele: contrato (fornecedor), vencimento, lotes e sacas
+    const linhaMes = (o) => {
+      const aberto = abertosMesFix.has(o.k);
+      const filhos = !aberto ? "" : [...o.itens].sort((a, b) => b.p.lotes_a_fixar - a.p.lotes_a_fixar).map(({ r, p }) => `<tr class="pos-com-n1">
+        <td style="padding-left:34px">${esc(r.contrato)}</td><td class="muted">${esc(r.fornecedor ?? "—")}</td><td><span class="muted">Due date</span> ${vencimento(r)}</td>
+        <td class="num"></td><td class="num">${fmtLotes(p.lotes_a_fixar)}</td>${celNum(p.a_fixar)}${celNum(r._aEnt)}</tr>`).join("");
+      return `<tr class="pos-com-n0"><td><button type="button" class="pos-com-tog" data-mesfix="${esc(o.k)}" aria-expanded="${aberto}" title="${aberto ? "Collapse" : "Expand"}">${aberto ? "⊟" : "⊞"}</button>${esc(nomeBolsa(o.bolsa))}</td>
+        <td>${esc(mesBolsa(o.mes))}</td>${fxCel(o.fx)}<td class="num">${fmtN(o.ctr)}</td><td class="num">${fmtLotes(o.lotes)}</td>${celNum(o.sacas)}${celNum(o.aRec)}</tr>${filhos}`;
+    };
     const meses = [...porMesBolsa.values()].sort((a, b) => (a.fx?.data ?? "9999").localeCompare(b.fx?.data ?? "9999"));
 
     // dólar a fixar: só quando os dados do Digisul chegaram
@@ -3204,11 +3214,10 @@ async function painelComprasDash(alvo, carga, ctx) {
     </div>
 
     <section class="pos-card">
-      <div class="pos-card-h"><h2>Lots to fix by exchange month</h2><p class="muted">Ordered by the fixation deadline (FND).</p></div>
-      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+      <div class="pos-card-h"><h2>Lots to fix by exchange month</h2><p class="muted">Ordered by the fixation deadline (FND). ⊞ opens the contracts of the month with their due date.</p></div>
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num pos-com-arvore">
         <thead><tr><th>Exchange</th><th>Month</th><th>Fix by (FND)</th><th class="num">Contracts</th><th class="num">Lots to fix</th><th class="num">Bags to fix</th><th class="num">To receive</th></tr></thead>
-        <tbody>${meses.length ? meses.map((o) => `<tr><td>${esc(nomeBolsa(o.bolsa))}</td><td>${esc(mesBolsa(o.mes))}</td>${fxCel(o.fx)}
-          <td class="num">${fmtN(o.ctr)}</td><td class="num">${fmtLotes(o.lotes)}</td>${celNum(o.sacas)}${celNum(o.aRec)}</tr>`).join("") : vazio(7, "No lots to fix for these filters.")}</tbody>
+        <tbody>${meses.length ? meses.map(linhaMes).join("") : vazio(7, "No lots to fix for these filters.")}</tbody>
         ${meses.length ? `<tfoot><tr class="total"><th scope="row" colspan="3">Total</th><td class="num forte">${fmtN(aFixar.length)}</td>
           <td class="num forte">${fmtLotes(soma(meses, (o) => o.lotes))}</td>${celNum(soma(meses, (o) => o.sacas), { forte: true })}${celNum(soma(meses, (o) => o.aRec), { forte: true })}</tr></tfoot>` : ""}
       </table></div>
@@ -3240,9 +3249,10 @@ async function painelComprasDash(alvo, carga, ctx) {
     </section>`;
 
     ligarAbasNoPainel();
+    $$("[data-mesfix]", alvo).forEach((b) => b.addEventListener("click", () => { if (!abertosMesFix.delete(b.dataset.mesfix)) abertosMesFix.add(b.dataset.mesfix); desenhar(); }));
     ligarListasMulti(alvo, estadoLista, (k, valores) => { filtro[k] = new Set(valores); return desenhar(); });
     $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); busca = ""; estadoLista.aberta = null; desenhar(); });
-    const campo = $("#cpContrato", alvo);
+    const campo =$("#cpContrato", alvo);
     campo.addEventListener("input", () => {
       busca = campo.value;
       desenhar().then(() => { const n = $("#cpContrato", alvo); n?.focus(); n?.setSelectionRange(busca.length, busca.length); });
