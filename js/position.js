@@ -3211,10 +3211,14 @@ async function painelComprasDash(alvo, carga, ctx) {
       ? `<p class="muted pos-nota">${icon("alert")} <span>Brokers could not be loaded from Digisul:</span> <span>${esc(corretoresErro)}</span> <button type="button" class="link" id="cpCorrRetry">Try again</button></p>`
       : !corretoresEm ? `<p class="muted pos-nota">${icon("clock")} <span>Loading brokers from Digisul…</span></p>` : "";
     const nomeCorr = (r) => (r._corr ? r._corr.map((c) => c.nome).join(" / ") : corretoresEm ? "—" : "…");
-    // vencimento só para quem ainda tem café a receber; vencido em vermelho
+    // vencimento de todos os contratos: já passou em vermelho, ainda vai vencer (a receber) em verde
     const hojeDia = hojeIso();
-    const vencimento = (r) => (!(r._aEnt > 0) ? "" : !corretoresEm ? "…" : !r._venc ? "—"
-      : r._venc < hojeDia ? `<span style="color:var(--critico)" title="${esc(tr("Overdue"))}">${esc(fmtData(r._venc))}</span>` : esc(fmtData(r._venc)));
+    const vencimento = (r) => {
+      if (!corretoresEm) return "…";
+      if (!r._venc) return "—";
+      const passou = r._venc < hojeDia;
+      return `<span style="color:var(${passou ? "--critico" : "--ok"});font-weight:600" title="${esc(tr(passou ? "Past due date" : "Due ahead"))}">${esc(fmtData(r._venc))}</span>`;
+    };
     const titulo = filtro.fornecedor.size === 1 ? [...filtro.fornecedor][0] : filtro.corretor.size === 1 ? [...filtro.corretor][0] : tr("Dashboard Purchases");
 
     alvo.innerHTML = `

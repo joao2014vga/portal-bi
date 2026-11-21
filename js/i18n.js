@@ -286,7 +286,7 @@ const PT = {
     "Compras pela data de emissão do contrato. Clique num fornecedor, numa qualidade, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
   "Diffs by screen category (GTLB, MTGB, LG) are not available from Digisul yet: the query brascof_pesq_diferencial_peneira must be created there.":
     "Os diferenciais por categoria de peneira (GTLB, MTGB, LG) ainda não vêm do Digisul: é preciso criar lá a consulta brascof_pesq_diferencial_peneira.",
-  "Diff bica": "Diff bica", "Overdue": "Vencido", "Accumulated": "Acumulado", "accumulated": "acumulado", "Avg rate": "% média",
+  "Diff bica": "Diff bica", "Past due date": "Vencimento já passou", "Due ahead": "A vencer", "Accumulated": "Acumulado", "accumulated": "acumulado", "Avg rate": "% média",
   "Top suppliers": "Top fornecedores", "Top brokers": "Top corretores", "Top contracts": "Top contratos", "Top contract": "Maior contrato",
   "Brokerage R$": "Corretagem R$", "Avg brokerage": "Corretagem média", "Brokers unavailable.": "Corretores indisponíveis.",
   "Loading brokers…": "Carregando corretores…", "Loading brokers from Digisul…": "Carregando os corretores do Digisul…",
