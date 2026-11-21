@@ -34,6 +34,7 @@ function seed() {
       { id: 44, categoria_id: 4, titulo: "Export Sales", descricao: "Shipped volume, revenue and sale diff, crop over crop, by client and quality.", link: "portal:position-sales", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 4 },
       { id: 45, categoria_id: 4, titulo: "Purchases", descricao: "Purchased volume, value and purchase diff, crop over crop, by supplier and quality.", link: "portal:position-purchases", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 5 },
       { id: 46, categoria_id: 4, titulo: "Dashboard Commercial", descricao: "Export sales: contracts, bags, average diffs, bags per client and what is left to ship.", link: "portal:position-commercial", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 7 },
+      { id: 49, categoria_id: 4, titulo: "Dashboard Purchases", descricao: "Purchases: bags by month, suppliers, brokers, average diffs per quality and bags to be delivered.", link: "portal:position-purchasing", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 8 },
       { id: 47, categoria_id: 4, titulo: "Price List", descricao: "Diffs by client, edited here and shared as an image or PDF on WhatsApp, e-mail or Teams.", link: "portal:precos-europe", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "manual", ativo: true, ordem: 8 },
       { id: 48, categoria_id: 4, titulo: "Buyer Bids", descricao: "Diffs offered by buyers by quality and screen cleaning, who pays best, and the deals closed.", link: "portal:compradores", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 9 },
       { id: 32, categoria_id: 3, titulo: "Logística de Entregas", descricao: "OTIF, prazo médio e ocorrências por transportadora.", link: "demo:logistica", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "semanal", ativo: true, ordem: 2 },
@@ -256,6 +257,7 @@ export function criarDemo() {
     },
     async sincronizarPosition() { throw new Error("The Digisul update is not available in demo mode."); },
     async qualidade() { throw new Error("The Quality views read Digisul live and are not available in demo mode."); },
+    async comprasCorretores() { throw new Error("Brokers come live from Digisul and are not available in demo mode."); },
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       exigeArquivos();
       db.position ??= { cargas: [], detalhe: {} };

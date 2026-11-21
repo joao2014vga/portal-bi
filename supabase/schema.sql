@@ -1968,3 +1968,32 @@ notify pgrst, 'reload schema';
 
 -- Para conferir:
 --   select p.nome, p.email from public.bi_compradores_envio e join public.bi_perfis p on p.id = e.user_id;
+
+-- =====================================================================
+-- 33. DASHBOARD PURCHASES (compras por mês, fornecedor, corretor e qualidade)
+-- Card portal:position-purchasing na mesma categoria do Dashboard Commercial.
+-- Lê do Position as compras (tipo 'compras', histórico inteiro) e os contratos de
+-- compra em aberto (tipo 'purchases', para as sacas a entregar); o corretor vem ao
+-- vivo do Digisul pelo brascof-api (/api/compras-corretores, confere o acesso ao card).
+-- A política abaixo é a da seção 30 com a linha do card novo. Pode rodar de novo.
+-- =====================================================================
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select coalesce((select categoria_id from public.bi_dashboards where link = 'portal:position-commercial'),
+                (select id from public.bi_categorias where nome = 'Position')),
+       'Dashboard Purchases', 'Purchases: bags by month, suppliers, brokers, average diffs per quality and bags to be delivered.',
+       'portal:position-purchasing', 'diaria', true, 8
+where not exists (select 1 from public.bi_dashboards d where d.link = 'portal:position-purchasing');
+
+drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
+create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated using (
+  public.bi_is_admin()
+  or (tipo = 'vendas' and (public.bi_ve_painel('portal:position-sales') or public.bi_ve_painel('portal:position-diffs')))
+  or (tipo = 'compras' and public.bi_ve_painel('portal:position-purchases'))
+  or (tipo in ('compras', 'purchases') and public.bi_ve_painel('portal:position-purchasing'))
+  or (tipo like 'cert\_%' and public.bi_ve_painel('portal:cert-'))
+  or (tipo = 'fisica_itens' and public.bi_ve_painel('portal:position-physical'))
+  or (tipo = 'termm_itens' and public.bi_ve_painel('portal:position-overview'))
+  or (tipo = 'comercial' and public.bi_ve_painel('portal:position-commercial'))
+  or (tipo <> all (array['vendas', 'compras', 'fisica_itens', 'termm_itens', 'comercial']) and tipo not like 'cert\_%'
+      and public.bi_ve_painel('portal:position-contracts')));
+notify pgrst, 'reload schema';

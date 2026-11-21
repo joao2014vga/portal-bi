@@ -10,6 +10,7 @@
 //   portal:position-physical   posição física por mês e por qualidade
 //   portal:position-contracts  contratos em aberto, contrato a contrato
 //   portal:position-commercial Dashboard Commercial (vendas de exportação; era um Power BI)
+//   portal:position-purchasing Dashboard Purchases (compras por mês, fornecedor, corretor e qualidade)
 import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } from "./ui.js";
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
@@ -208,7 +209,7 @@ const fonteVista = () => { try { return sessionStorage.getItem(CHAVE_FONTE); } c
 const guardarFonteVista = (f) => { try { sessionStorage.setItem(CHAVE_FONTE, f); } catch { /* sem armazenamento: fica a oficial */ } };
 const NOME_FONTE = { planilha: "Spreadsheet", api: "Digisul API" };
 // Painéis em que a oficial é sempre o Digisul, qualquer que seja a de bi_config
-const PAINEIS_SO_API = new Set(["portal:position-commercial", "portal:position-physical"]);
+const PAINEIS_SO_API = new Set(["portal:position-commercial", "portal:position-physical", "portal:position-purchasing"]);
 // Painéis em que só o administrador vê o Digisul: os demais (inclusive quem publica) ficam na planilha
 const PAINEIS_SO_PLANILHA = new Set(["portal:position-overview"]);
 // Painéis que mudam com a data escolhida no topo: só usam o resumo, que cada versão guarda.
@@ -258,7 +259,7 @@ export async function renderPosition(link, alvo, ctx) {
   const painel = {
     "portal:position-overview": painelOverview, "portal:position-physical": painelFisica, "portal:position-contracts": painelContratos,
     "portal:position-sales": painelVendas, "portal:position-purchases": painelCompras, "portal:position-diffs": painelDiffs,
-    "portal:position-commercial": painelComercial,
+    "portal:position-commercial": painelComercial, "portal:position-purchasing": painelComprasDash,
   }[link];
   if (!painel) { alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Unknown Position view</h3></div>`; return; }
   alvo.innerHTML = `<div class="pos">${topo}<div id="posCorpo"></div></div>`;
@@ -2849,4 +2850,419 @@ async function painelComercial(alvo, carga, ctx) {
   };
   document.addEventListener("click", fechar);
   await desenhar();
+}
+
+// =====================================================================
+// DASHBOARD PURCHASES (portal:position-purchasing)
+// Todas as compras (tipo 'compras', histórico inteiro) + o saldo a entregar dos
+// contratos em aberto (tipo 'purchases') + o corretor de cada contrato, que não
+// está no Position: vem ao vivo do Digisul pelo brascof-api (/api/compras-corretores).
+// Mês = mês da emissão do contrato. Diferencial médio ponderado pelas sacas:
+// Arábica na bolsa de NY (¢/lb), Conilon na de Londres (US$/t).
+// Corretagem estimada = valor final (R$) × % cadastrada no Digisul.
+// =====================================================================
+const SEM_CORRETOR = "(no broker)";
+const contratoPaiCompra = (c) => String(c ?? "").match(/^(BR[CV]-\d+\/\d{2})/)?.[1] ?? null;
+
+function medidasCompra(linhas) {
+  const m = { contratos: 0, sacas: 0, sacasA: 0, sacasC: 0, valor: 0, valorA: 0, valorSacasA: 0, valorC: 0, valorSacasC: 0,
+    difA: null, difC: null, aEnt: 0, aEntA: 0, aEntC: 0 };
+  const ctr = new Set(), dA = [0, 0], dC = [0, 0];
+  for (const r of linhas) {
+    const s = r.sacas ?? 0;
+    ctr.add(r.contrato);
+    m.sacas += s; m.valor += r.valor ?? 0; m.aEnt += r._aEnt;
+    if (r._esp === "ARABICA") {
+      m.sacasA += s; m.aEntA += r._aEnt;
+      if (r.valor > 0) { m.valorA += r.valor; m.valorSacasA += s; }
+      if (r._difA != null && s) { dA[0] += r._difA * s; dA[1] += s; }
+    } else if (r._esp === "CONILON") {
+      m.sacasC += s; m.aEntC += r._aEnt;
+      if (r.valor > 0) { m.valorC += r.valor; m.valorSacasC += s; }
+      if (r._difC != null && s) { dC[0] += r._difC * s; dC[1] += s; }
+    }
+  }
+  m.contratos = ctr.size;
+  if (dA[1]) m.difA = dA[0] / dA[1];
+  if (dC[1]) m.difC = dC[0] / dC[1];
+  m.precoA = m.valorSacasA ? m.valorA / m.valorSacasA : null;
+  m.precoC = m.valorSacasC ? m.valorC / m.valorSacasC : null;
+  return m;
+}
+
+// Lista de escolha com caixinhas (mesmo visual das do Dashboard Commercial)
+function listaMulti({ k, rot, ops, sel, fmt, aberta }) {
+  const txt = (v) => (fmt ? fmt(v) : v);
+  const resumo = !sel.size ? tr("All") : sel.size === 1 ? txt([...sel][0]) : `${sel.size} ${tr("selected")}`;
+  return `<div class="pos-mes pos-multi${aberta ? " aberta" : ""}" data-multi="${k}"><span>${esc(tr(rot))}</span>
+    <button type="button" class="pos-multi-b${sel.size ? " ativo" : ""}" aria-haspopup="listbox" aria-expanded="${aberta}"><span>${esc(resumo)}</span><span class="pos-multi-seta" aria-hidden="true">▾</span></button>
+    <div class="pos-multi-p" role="listbox" aria-multiselectable="true">
+      ${ops.length > 8 ? `<input type="search" class="pos-multi-busca" placeholder="${esc(tr("Search…"))}" aria-label="${esc(tr("Search"))}">` : ""}
+      <div class="pos-multi-acoes"><button type="button" data-todos>${esc(tr("Select all"))}</button><button type="button" data-limpar>${esc(tr("Clear"))}</button></div>
+      <div class="pos-multi-ops">${ops.map((v) => `<label><input type="checkbox" value="${esc(v)}" ${sel.has(v) ? "checked" : ""}><span>${esc(txt(v))}</span></label>`).join("")}</div>
+    </div></div>`;
+}
+// estado = { aberta } (compartilhado com quem desenha); aplicar(k, valores) redesenha e devolve a promessa
+function ligarListasMulti(alvo, estado, aplicar) {
+  $$("[data-multi]", alvo).forEach((caixa) => {
+    const k = caixa.dataset.multi, p = $(".pos-multi-p", caixa);
+    $(".pos-multi-b", caixa).addEventListener("click", () => {
+      estado.aberta = estado.aberta === k ? null : k;
+      $$("[data-multi]", alvo).forEach((c) => c.classList.toggle("aberta", c.dataset.multi === estado.aberta));
+      if (estado.aberta) $(".pos-multi-busca", caixa)?.focus();
+    });
+    const aplicarAqui = (valores) => {
+      const rolagem = $(".pos-multi-ops", caixa).scrollTop;
+      aplicar(k, valores).then(() => { const o = $(`[data-multi="${k}"] .pos-multi-ops`, alvo); if (o) o.scrollTop = rolagem; });
+    };
+    $$("input[type=checkbox]", p).forEach((cb) => cb.addEventListener("change", () => aplicarAqui($$("input[type=checkbox]:checked", p).map((x) => x.value))));
+    $("[data-todos]", p).addEventListener("click", () => aplicarAqui($$("input[type=checkbox]", p).filter((x) => !x.closest("label").hidden).map((x) => x.value)));
+    $("[data-limpar]", p).addEventListener("click", () => aplicarAqui([]));
+    $(".pos-multi-busca", p)?.addEventListener("input", (e) => {
+      const q = norm(e.target.value);
+      $$("label", p).forEach((l) => { l.hidden = !!q && !norm(l.textContent).includes(q); });
+    });
+  });
+}
+
+// barras empilhadas Arábica / Conilon por mês + linha do acumulado (eixo da direita)
+async function graficoComprasMes(canvas, { rotulos, arabica, conilon, acumulado }) {
+  const Chart = await carregarChart();
+  const t = tema(canvas);
+  const c = new Chart(canvas, {
+    data: {
+      labels: rotulos,
+      datasets: [
+        { type: "line", label: tr("Accumulated"), data: acumulado, yAxisID: "y2", borderColor: t.tinta2, backgroundColor: t.tinta2, borderWidth: 2,
+          borderDash: [5, 4], pointRadius: 2.5, pointHoverRadius: 5, tension: 0.25, order: 0 },
+        { type: "bar", label: "Arabica", data: arabica, backgroundColor: t.s1, borderRadius: 3, maxBarThickness: 34, stack: "s", order: 1 },
+        { type: "bar", label: "Conilon", data: conilon, backgroundColor: t.s2, borderRadius: 3, maxBarThickness: 34, stack: "s", order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { stacked: true, grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
+        y: { stacked: true, grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) },
+          title: { display: true, text: tr("bags (60 kg)"), color: t.muda, font: { size: 11 } } },
+        y2: { position: "right", grid: { display: false }, border: { display: false }, beginAtZero: true,
+          ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) },
+          title: { display: true, text: tr("accumulated"), color: t.muda, font: { size: 11 } } },
+      },
+      plugins: {
+        legend: { position: "top", align: "start", labels: { color: t.tinta2, boxWidth: 10, boxHeight: 10, padding: 14, font: { size: 12 } } },
+        tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)} ${tr("bags")}` } },
+      },
+    },
+  });
+  graficos.push(c);
+}
+
+// diferencial médio por qualidade (uma espécie por vez: as unidades são diferentes)
+async function graficoDifQualidade(canvas, itens, unidade, aoClicar, selecao) {
+  const Chart = await carregarChart();
+  const t = tema(canvas);
+  const apagada = /^#[0-9a-f]{6}$/i.test(t.s1) ? `${t.s1}55` : t.grade;
+  const c = new Chart(canvas, {
+    type: "bar",
+    data: { labels: itens.map((x) => x.padrao), datasets: [{ data: itens.map((x) => arred(x.dif)),
+      backgroundColor: itens.map((x) => (!selecao.size || selecao.has(x.padrao) ? t.s1 : apagada)), borderRadius: 3, maxBarThickness: 34 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, layout: { padding: { top: 18, bottom: 4 } },
+      onClick: (e, els) => { if (els.length) aoClicar(itens[els[0].index].padrao, e.native?.ctrlKey || e.native?.metaKey); },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
+      scales: {
+        x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
+        y: { grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 } }, grace: "8%" },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: (ctx) => `${tr("Quality")} ${ctx[0].label}`,
+          label: (ctx) => { const x = itens[ctx.dataIndex]; return [` ${tr("Avg diff")}: ${fmtDif(x.dif)} ${unidade}`, ` ${tr("Bags")}: ${fmtN(x.sacas)}`]; },
+        } },
+      },
+    },
+    plugins: [rotulosGrafico],
+  });
+  graficos.push(c);
+}
+
+async function painelComprasDash(alvo, carga, ctx) {
+  alvo.classList.add("pos-comercial"); // séries no verde da marca, Conilon em dourado (css)
+  let dados = null, abertos = [];
+  try {
+    const d = await ctx.api.positionDetalhe(["compras", "purchases"]);
+    dados = d.compras ?? null;
+    abertos = d.purchases ?? [];
+  } catch { /* cai no aviso abaixo */ }
+  if (!dados) {
+    alvo.innerHTML = `<p class="muted pos-nota pos-nota-bloco">${icon("info")} Upload the Position again (or update from Digisul) to build this view — it needs every purchase contract.</p>`;
+    return;
+  }
+  const porContrato = new Map(abertos.map((r) => [r.contrato, r]));
+  for (const r of dados) {
+    r._esp = norm(r.especie);
+    const bolsa = norm(r.bolsa);
+    // diferencial só conta na bolsa da espécie (um contrato de Conilon na BMF tem outra unidade)
+    r._difA = r._esp === "ARABICA" && bolsa === "NY" ? r.diferencial : null;
+    r._difC = r._esp === "CONILON" && bolsa === "LONDRES" ? r.diferencial : null;
+    r._mes = mesIso(r.emissao);
+    r._tipo = tipoPadrao(r.padrao);
+    const aberto = porContrato.get(r.contrato);
+    r._aEnt = aberto?.a_entregar > 0 ? aberto.a_entregar : 0;
+    r._corr = null;
+  }
+
+  // corretores: ao vivo do Digisul; sem eles o resto do painel funciona normalmente
+  let corretoresErro = null, corretoresEm = null;
+  const carregarCorretores = async () => {
+    try {
+      const j = await ctx.api.comprasCorretores();
+      const mapa = j.contratos ?? {};
+      for (const r of dados) {
+        const lista = mapa[r.contrato] ?? mapa[contratoPaiCompra(r.contrato)] ?? null;
+        r._corr = lista?.length ? lista : null;
+      }
+      corretoresEm = j.consultadoEm ?? new Date().toISOString();
+      corretoresErro = null;
+    } catch (e) { corretoresErro = e.message; }
+  };
+  const nomesCorretor = (r) => (r._corr ? [...new Set(r._corr.map((c) => c.nome))] : [SEM_CORRETOR]);
+
+  const alfa = (a, b) => a.localeCompare(b);
+  // [chave, rótulo, valores da linha (lista), ordem]
+  const FILTROS = [
+    ["especie", "Variety", (r) => [r.especie], alfa],
+    ["safra", "Crop", (r) => [r.safra], (a, b) => b.localeCompare(a)],
+    ["tipo", "Quality group", (r) => [r._tipo], ordemTipo],
+    ["padrao", "Quality", (r) => [r.padrao], ordemPadrao],
+    ["fornecedor", "Supplier", (r) => [r.fornecedor], alfa],
+    ["corretor", "Broker", nomesCorretor, alfa],
+    ["modalidade", "Type", (r) => [r.modalidade], alfa],
+  ];
+  const filtro = Object.fromEntries(FILTROS.map(([k]) => [k, new Set()]));
+  const hoje = mesIso(hojeIso());
+  let de = `${hoje.slice(0, 4)}-01`, ate = hoje;
+  let espDif = "ARABICA", visaoMatriz = "mes";
+  const estadoLista = { aberta: null };
+  const noPeriodo = (r) => !!r._mes && r._mes >= de && r._mes <= ate;
+  const passa = (r, exceto) => FILTROS.every(([k, , val]) => k === exceto || !filtro[k].size || val(r).some((v) => filtro[k].has(v)));
+  const selecionar = (k, v, varios) => {
+    const s = filtro[k];
+    if (varios) { if (!s.delete(v)) s.add(v); }
+    else if (s.size === 1 && s.has(v)) s.clear();
+    else { s.clear(); s.add(v); }
+    desenhar();
+  };
+  const marca = (k, v) => (!filtro[k].size ? "" : filtro[k].has(v) ? " on" : " apagado");
+  const kpi = (titulo, valor, sub = "") => `<div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">${esc(titulo)}</span>
+    <span class="pos-kpi-v">${valor}</span>${sub ? `<span class="pos-kpi-s">${sub}</span>` : ""}</div>`;
+  const pctFmt = (v) => (v == null ? "—" : `${fmtN(v, 2)}%`);
+
+  const desenhar = async () => {
+    limparGraficos();
+    const linhas = dados.filter((r) => noPeriodo(r) && passa(r));
+    const m = medidasCompra(linhas);
+    // sacas a entregar: contratos em aberto com os filtros da página, de qualquer data de emissão
+    const mAb = medidasCompra(dados.filter((r) => r._aEnt > 0 && passa(r)));
+    const semFiltro = (k) => dados.filter((r) => noPeriodo(r) && passa(r, k));
+    const opcoes = (k, val, ordem) => [...new Set([...semFiltro(k).flatMap(val).filter(Boolean), ...filtro[k]])].sort(ordem);
+
+    // corretagem: uma linha por corretor do contrato (como no Espelho de Corretagem)
+    const porCorretor = new Map();
+    for (const r of semFiltro("corretor")) {
+      for (const c of r._corr ?? [{ nome: SEM_CORRETOR, pct: null }]) {
+        const o = porCorretor.get(c.nome) ?? porCorretor.set(c.nome, { ctr: new Set(), sacas: 0, corretagem: 0, pctPeso: 0, base: 0 }).get(c.nome);
+        o.ctr.add(r.contrato); o.sacas += r.sacas ?? 0;
+        if (c.pct != null && r.valor > 0) { o.corretagem += (r.valor * c.pct) / 100; o.pctPeso += r.valor * c.pct; o.base += r.valor; }
+      }
+    }
+    let corrValor = 0, corrBase = 0, corrPctPeso = 0, corrSacas = 0;
+    for (const r of linhas) {
+      if (!r._corr || !(r.valor > 0)) continue;
+      corrSacas += r.sacas ?? 0;
+      for (const c of r._corr) { corrValor += (r.valor * c.pct) / 100; corrBase += r.valor; corrPctPeso += r.valor * c.pct; }
+    }
+    const rankCorretores = [...porCorretor].filter(([n]) => n !== SEM_CORRETOR).sort((a, b) => b[1].sacas - a[1].sacas);
+    const semCorr = porCorretor.get(SEM_CORRETOR);
+    const maxCorr = rankCorretores[0]?.[1].sacas ?? 0;
+
+    // fornecedores
+    const porForn = new Map();
+    for (const r of semFiltro("fornecedor")) {
+      const k = r.fornecedor ?? "—";
+      (porForn.get(k) ?? porForn.set(k, []).get(k)).push(r);
+    }
+    const rankForn = [...porForn].map(([nome, rows]) => ({ nome, m: medidasCompra(rows) })).sort((a, b) => b.m.sacas - a.m.sacas);
+    const maxForn = rankForn[0]?.m.sacas ?? 0;
+
+    // maiores contratos e o último emitido no período
+    const topContratos = [...linhas].sort((a, b) => (b.sacas ?? 0) - (a.sacas ?? 0)).slice(0, 15);
+    const maior = topContratos[0];
+    const ultimo = linhas.reduce((u, r) => (!u || (r.emissao ?? "") > (u.emissao ?? "") || (r.emissao === u.emissao && r.contrato > u.contrato) ? r : u), null);
+
+    // por mês (emissão)
+    const meses = mesesEntre(de, ate);
+    const porMes = new Map(meses.map((mes) => [mes, medidasCompra(linhas.filter((r) => r._mes === mes))]));
+    let acc = 0;
+    const acumulado = meses.map((mes) => (acc += porMes.get(mes).sacas));
+
+    // fornecedor × mês (mensal ou acumulado)
+    const mesesComDados = meses.filter((mes) => porMes.get(mes).sacas);
+    const doFornMes = new Map();
+    for (const r of linhas) {
+      const k = `${r.fornecedor ?? "—"}\u0001${r._mes}`;
+      doFornMes.set(k, (doFornMes.get(k) ?? 0) + (r.sacas ?? 0));
+    }
+    const matriz = rankForn.filter((f) => f.m.sacas && linhas.some((r) => (r.fornecedor ?? "—") === f.nome)).map((f) => {
+      let s = 0;
+      const cel = mesesComDados.map((mes) => { const v = doFornMes.get(`${f.nome}\u0001${mes}`) ?? 0; return visaoMatriz === "acc" ? (s += v) : v; });
+      return { nome: f.nome, cel, total: cel.length ? (visaoMatriz === "acc" ? cel.at(-1) : cel.reduce((a, b) => a + b, 0)) : 0 };
+    }).sort((a, b) => b.total - a.total);
+    let sT = 0;
+    const totMes = mesesComDados.map((mes) => (visaoMatriz === "acc" ? (sT += porMes.get(mes).sacas) : porMes.get(mes).sacas));
+
+    // diferencial por qualidade da espécie escolhida
+    const campoDif = espDif === "ARABICA" ? "_difA" : "_difC";
+    const unDif = espDif === "ARABICA" ? "¢/lb" : "US$/t";
+    const porPadrao = new Map();
+    for (const r of semFiltro("padrao")) {
+      if (r[campoDif] == null || !r.padrao || !r.sacas) continue;
+      const o = porPadrao.get(r.padrao) ?? porPadrao.set(r.padrao, { padrao: r.padrao, peso: 0, sacas: 0 }).get(r.padrao);
+      o.peso += r[campoDif] * r.sacas; o.sacas += r.sacas;
+    }
+    const difQual = [...porPadrao.values()].map((o) => ({ ...o, dif: o.peso / o.sacas })).sort((a, b) => ordemPadrao(a.padrao, b.padrao));
+
+    const algumFiltro = FILTROS.some(([k]) => filtro[k].size);
+    const corrNota = corretoresErro
+      ? `<p class="muted pos-nota">${icon("alert")} <span>Brokers could not be loaded from Digisul:</span> <span>${esc(corretoresErro)}</span> <button type="button" class="link" id="cpCorrRetry">Try again</button></p>`
+      : !corretoresEm ? `<p class="muted pos-nota">${icon("clock")} <span>Loading brokers from Digisul…</span></p>` : "";
+    const nomeCorr = (r) => (r._corr ? r._corr.map((c) => c.nome).join(" / ") : corretoresEm ? "—" : "…");
+    const titulo = filtro.fornecedor.size === 1 ? [...filtro.fornecedor][0] : filtro.corretor.size === 1 ? [...filtro.corretor][0] : tr("Dashboard Purchases");
+
+    alvo.innerHTML = `
+    <div class="pos-com-cab">
+      <h2>${esc(titulo)}</h2>
+      ${ultimo ? `<span class="muted"><span>Last contract:</span> <strong>${esc(ultimo.contrato)}</strong> (${esc(fmtData(ultimo.emissao))})</span>` : ""}
+    </div>
+    <div class="pos-filtros">
+      <label class="pos-mes"><span>From</span><input type="month" id="cpDe" value="${de}"></label>
+      <label class="pos-mes"><span>To</span><input type="month" id="cpAte" value="${ate}"></label>
+      ${FILTROS.map(([k, rot, val, ordem]) => listaMulti({ k, rot, ops: opcoes(k, val, ordem), sel: filtro[k], aberta: estadoLista.aberta === k })).join("")}
+      ${algumFiltro ? `<button type="button" class="btn" id="cpLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
+    </div>
+    <p class="muted pos-nota">${icon("info")} <span>Purchases by contract issue date. Click a supplier, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
+    ${corrNota}
+    <div class="pos-kpis">
+      ${kpi("Total contracts", fmtN(m.contratos))}
+      ${kpi("Total bags", fmtN(m.sacas), `Arabica ${fmtN(m.sacasA)} · Conilon ${fmtN(m.sacasC)}`)}
+      ${kpi("Avg diff Arabica", fmtDif(m.difA), "¢/lb · NY · weighted by bags")}
+      ${kpi("Avg diff Conilon", fmtDif(m.difC), "US$/t · London · weighted by bags")}
+      ${kpi("Bags to be delivered", fmtN(mAb.aEnt), `Arabica ${fmtN(mAb.aEntA)} · Conilon ${fmtN(mAb.aEntC)} · ${fmtN(mAb.contratos)} open contracts`)}
+      ${kpi("Avg price Arabica · R$/bag", m.precoA == null ? "—" : fmtN(m.precoA, 2), `Conilon R$ ${m.precoC == null ? "—" : fmtN(m.precoC, 2)}/bag`)}
+      ${kpi("Avg brokerage", corretoresEm ? pctFmt(corrBase ? corrPctPeso / corrBase : null) : corretoresErro ? "—" : "…",
+        corretoresEm ? `${fmtDin(corrValor, "R$")} est. · R$ ${corrSacas ? fmtN(corrValor / corrSacas, 2) : "—"}/bag` : "")}
+      ${kpi("Top contract", maior ? esc(maior.contrato) : "—", maior ? `${fmtN(maior.sacas)} bags · ${esc(maior.fornecedor ?? "—")}` : "")}
+    </div>
+
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>Purchases by month</h2><p class="muted">Bags by contract issue month, Arabica and Conilon, with the running total of the period.</p></div>
+      ${linhas.length ? `<div class="pos-grafico"><canvas id="gCpMes" role="img" aria-label="Purchased bags by month with accumulated total"></canvas></div>` : `<p class="vazio-td">No purchases for these filters.</p>`}
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+        <thead><tr><th>Month</th><th class="num">Contracts</th><th class="num">Arabica</th><th class="num">Conilon</th><th class="num">Total bags</th>
+          <th class="num">Accumulated</th><th class="num">Avg diff Arabica</th><th class="num">Avg diff Conilon</th><th class="num">Value R$</th></tr></thead>
+        <tbody>${meses.map((mes, i) => { const x = porMes.get(mes); return `<tr><td>${esc(rotMes(mes))}</td><td class="num">${fmtN(x.contratos)}</td>
+          ${celNum(x.sacasA)}${celNum(x.sacasC)}${celNum(x.sacas, { forte: true })}<td class="num">${fmtN(acumulado[i])}</td>
+          <td class="num">${fmtDif(x.difA)}</td><td class="num">${fmtDif(x.difC)}</td><td class="num">${x.valor ? fmtDin(x.valor, "R$") : "—"}</td></tr>`; }).join("")}</tbody>
+        <tfoot><tr class="total"><th scope="row">Total</th><td class="num">${fmtN(m.contratos)}</td>${celNum(m.sacasA, { forte: true })}${celNum(m.sacasC, { forte: true })}${celNum(m.sacas, { forte: true })}
+          <td class="num"></td><td class="num forte">${fmtDif(m.difA)}</td><td class="num forte">${fmtDif(m.difC)}</td><td class="num forte">${fmtDin(m.valor, "R$")}</td></tr></tfoot>
+      </table></div>
+    </section>
+
+    <div class="pos-duas">
+      <section class="pos-card">
+        <div class="pos-card-h pos-card-h-linha"><div><h2>Avg diff per quality</h2><p class="muted">${esc(unDif)} · weighted by bags.</p></div>
+          ${segmentos("cpEspDif", [["ARABICA", "Arabica"], ["CONILON", "Conilon"]], espDif)}</div>
+        ${difQual.length ? `<div class="pos-grafico"><canvas id="gCpQual" role="img" aria-label="Average diff per quality"></canvas></div>` : `<p class="vazio-td">No data for these filters.</p>`}
+      </section>
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Top suppliers</h2></div>
+        <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+          <thead><tr><th>Supplier</th><th class="num">Bags</th><th class="num">%</th><th class="num">Contracts</th><th class="num">Avg diff Arabica</th><th class="num">Avg diff Conilon</th><th class="num">To deliver</th></tr></thead>
+          <tbody>${rankForn.length ? rankForn.map(({ nome, m: x }) => `<tr class="pos-clic${marca("fornecedor", nome)}" data-forn="${esc(nome)}"><td>${esc(nome)}</td>
+            <td class="num">${barra(x.sacas, maxForn)}</td><td class="num">${pct(x.sacas, m.sacas)}</td><td class="num">${fmtN(x.contratos)}</td>
+            <td class="num">${fmtDif(x.difA)}</td><td class="num">${fmtDif(x.difC)}</td>${celNum(x.aEnt)}</tr>`).join("")
+            : `<tr><td colspan="7" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+        </table></div>
+      </section>
+    </div>
+
+    <div class="pos-duas">
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Top brokers</h2><p class="muted">A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).</p></div>
+        ${corretoresEm ? `<div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+          <thead><tr><th>Broker</th><th class="num">Bags</th><th class="num">Contracts</th><th class="num">Avg rate</th><th class="num">Brokerage R$</th></tr></thead>
+          <tbody>${rankCorretores.length ? rankCorretores.map(([nome, o]) => `<tr class="pos-clic${marca("corretor", nome)}" data-corr="${esc(nome)}"><td>${esc(nome)}</td>
+            <td class="num">${barra(o.sacas, maxCorr)}</td><td class="num">${fmtN(o.ctr.size)}</td><td class="num">${pctFmt(o.base ? o.pctPeso / o.base : null)}</td>
+            <td class="num">${fmtDin(o.corretagem, "R$")}</td></tr>`).join("")
+            : `<tr><td colspan="5" class="vazio-td">No brokers for these filters.</td></tr>`}</tbody>
+          ${semCorr ? `<tfoot><tr class="pos-clic${marca("corretor", SEM_CORRETOR)}" data-corr="${esc(SEM_CORRETOR)}"><td>Direct (no broker)</td><td class="num">${fmtN(semCorr.sacas)}</td><td class="num">${fmtN(semCorr.ctr.size)}</td><td class="num">—</td><td class="num">—</td></tr></tfoot>` : ""}
+        </table></div>` : `<p class="vazio-td">${corretoresErro ? "Brokers unavailable." : "Loading brokers…"}</p>`}
+      </section>
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Top contracts</h2><p class="muted">The largest contracts of the period.</p></div>
+        <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+          <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th class="num">Bags</th><th class="num">Diff</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
+          <tbody>${topContratos.length ? topContratos.map((r) => `<tr><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td><td>${esc(r.fornecedor ?? "—")}</td>
+            <td>${esc(r.padrao ?? "—")}</td>${celNum(r.sacas)}<td class="num">${fmtDif(r.diferencial)}</td><td class="num">${r.preco ? fmtN(r.preco, 2) : "—"}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("")
+            : `<tr><td colspan="7" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+        </table></div>
+      </section>
+    </div>
+
+    <section class="pos-card">
+      <div class="pos-card-h pos-card-h-linha"><div><h2>Bags per supplier · month by month</h2>
+        <p class="muted">${visaoMatriz === "acc" ? "Running total since the first month of the period." : "Bags purchased in each month."}</p></div>
+        ${segmentos("cpMatriz", [["mes", "Monthly"], ["acc", "Accumulated"]], visaoMatriz)}</div>
+      ${matriz.length ? `<div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+        <thead><tr><th>Supplier</th>${mesesComDados.map((mes) => `<th class="num">${esc(rotMes(mes))}</th>`).join("")}<th class="num">Total</th></tr></thead>
+        <tbody>${matriz.map((f) => `<tr class="pos-clic${marca("fornecedor", f.nome)}" data-forn="${esc(f.nome)}"><td>${esc(f.nome)}</td>${f.cel.map((v) => celNum(v)).join("")}${celNum(f.total, { forte: true })}</tr>`).join("")}</tbody>
+        <tfoot><tr class="total"><th scope="row">Total</th>${totMes.map((v) => celNum(v, { forte: true })).join("")}${celNum(m.sacas, { forte: true })}</tr></tfoot>
+      </table></div>` : `<p class="vazio-td">No data for these filters.</p>`}
+    </section>`;
+
+    ligarListasMulti(alvo, estadoLista, (k, valores) => { filtro[k] = new Set(valores); return desenhar(); });
+    $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); estadoLista.aberta = null; desenhar(); });
+    $("#cpDe", alvo).addEventListener("change", (e) => { if (!e.target.value) return; de = e.target.value; if (de > ate) ate = de; desenhar(); });
+    $("#cpAte", alvo).addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; desenhar(); });
+    $("#cpCorrRetry", alvo)?.addEventListener("click", async () => { corretoresErro = null; await desenhar(); await carregarCorretores(); desenhar(); });
+    ligarSegmentos(alvo, "cpEspDif", (k) => { espDif = k; desenhar(); });
+    ligarSegmentos(alvo, "cpMatriz", (k) => { visaoMatriz = k; desenhar(); });
+    $$("tr[data-forn]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("fornecedor", l.dataset.forn, e.ctrlKey || e.metaKey)));
+    $$("tr[data-corr]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("corretor", l.dataset.corr, e.ctrlKey || e.metaKey)));
+
+    if (linhas.length) {
+      await semQuebrar(graficoComprasMes, $("#gCpMes", alvo), {
+        rotulos: meses.map(rotMes), arabica: meses.map((mes) => arred(porMes.get(mes).sacasA)),
+        conilon: meses.map((mes) => arred(porMes.get(mes).sacasC)), acumulado: acumulado.map(arred),
+      });
+    }
+    if (difQual.length) await semQuebrar(graficoDifQualidade, $("#gCpQual", alvo), difQual, unDif, (p, varios) => selecionar("padrao", p, varios), filtro.padrao);
+  };
+
+  // clique fora da lista aberta fecha (uma vez por página)
+  const fechar = (e) => {
+    if (!alvo.isConnected) { document.removeEventListener("click", fechar); return; }
+    if (estadoLista.aberta && !e.target.closest?.("[data-multi]")) {
+      estadoLista.aberta = null;
+      $$("[data-multi]", alvo).forEach((c) => c.classList.remove("aberta"));
+    }
+  };
+  document.addEventListener("click", fechar);
+  await desenhar();
+  // os corretores chegam depois (consulta ao Digisul): a página já fica utilizável antes
+  await carregarCorretores();
+  if (alvo.isConnected) await desenhar();
 }

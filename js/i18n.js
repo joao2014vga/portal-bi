@@ -279,6 +279,27 @@ const PT = {
   "Click to see the contracts": "Clique para ver os contratos", "Click a number to see the contracts.": "Clique num número para ver os contratos.",
   "all months": "todos os meses", "No contracts.": "Nenhum contrato.",
   "Purchases to fix minus sales to fix (sales count as negative).": "Compras a fixar menos vendas a fixar (as vendas entram negativas).",
+  // Dashboard Purchases
+  "Dashboard Purchases": "Dashboard de Compras", "Accumulated": "Acumulado", "accumulated": "acumulado", "Avg rate": "% média",
+  "Top suppliers": "Top fornecedores", "Top brokers": "Top corretores", "Top contracts": "Top contratos", "Top contract": "Maior contrato",
+  "Brokerage R$": "Corretagem R$", "Avg brokerage": "Corretagem média", "Brokers unavailable.": "Corretores indisponíveis.",
+  "Loading brokers…": "Carregando corretores…", "Loading brokers from Digisul…": "Carregando os corretores do Digisul…",
+  "Brokers could not be loaded from Digisul:": "Não foi possível carregar os corretores do Digisul:",
+  "Direct (no broker)": "Direto (sem corretor)", "No purchases for these filters.": "Nenhuma compra com esses filtros.",
+  "No brokers for these filters.": "Nenhum corretor com esses filtros.",
+  "Purchases by month": "Compras por mês", "Avg price Arabica · R$/bag": "Preço médio Arábica · R$/saca",
+  "¢/lb · NY · weighted by bags": "¢/lb · NY · ponderado pelas sacas", "US$/t · London · weighted by bags": "US$/t · Londres · ponderado pelas sacas",
+  "Bags by contract issue month, Arabica and Conilon, with the running total of the period.":
+    "Sacas pelo mês de emissão do contrato, Arábica e Conilon, com o acumulado do período.",
+  "Purchases by contract issue date. Click a supplier, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.":
+    "Compras pela data de emissão do contrato. Clique num fornecedor, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
+  "A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).":
+    "Contrato com dois corretores conta para os dois. Corretagem = valor final × % cadastrada no Digisul (estimativa).",
+  "The largest contracts of the period.": "Os maiores contratos do período.",
+  "Bags per supplier · month by month": "Sacas por fornecedor · mês a mês",
+  "Running total since the first month of the period.": "Acumulado desde o primeiro mês do período.", "Bags purchased in each month.": "Sacas compradas em cada mês.",
+  "Upload the Position again (or update from Digisul) to build this view — it needs every purchase contract.":
+    "Envie o Position de novo (ou atualize pelo Digisul) para montar esta visão — ela precisa de todos os contratos de compra.",
   // Dashboard Commercial
   "selected": "selecionados", "Search…": "Buscar…", "Search": "Buscar",
   "Click a client, a shipment month or a quality bar to filter the page; Ctrl+click to pick more than one.":

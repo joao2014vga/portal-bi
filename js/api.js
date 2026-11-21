@@ -380,6 +380,19 @@ async function criarApiSupabase() {
       if (!res.ok) throw new Error(j.error || `Digisul data could not be loaded (${res.status}).`);
       return j;
     },
+    // Dashboard Purchases: corretor e % de cada contrato de compra, ao vivo do Digisul pelo brascof-api
+    async comprasCorretores() {
+      const { data: { session } } = await sb.auth.getSession();
+      let res;
+      try {
+        res = await fetch(`${CONFIG.API_BRASCOF}/api/compras-corretores`, { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
+      } catch {
+        throw new Error("Unable to reach the Digisul service. Please try again.");
+      }
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Brokers could not be loaded (${res.status}).`);
+      return j;
+    },
     // grava resumo + contratos e marca os painéis como atualizados, tudo numa transação
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       const { error } = await sb.rpc("bi_position_publicar", { p_data_ref: data_ref, p_nome: nome_arquivo, p_resumo: resumo, p_detalhes: detalhes, p_alerta: alerta });
