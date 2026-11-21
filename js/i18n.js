@@ -284,8 +284,9 @@ const PT = {
   "Supplier / quality / screen": "Fornecedor / qualidade / peneira", "Search contract…": "Buscar contrato…", "Low grade": "Low grade",
   "Purchases by contract issue date. Click a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.":
     "Compras pela data de emissão do contrato. Clique num fornecedor, numa qualidade, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
-  "The Digisul purchase query did not return the component diffs (Bica, MTGB, LTGB, Low grade).":
-    "A consulta de compras do Digisul não trouxe os diferenciais por componente (Bica, MTGB, LTGB, Low grade).", "Accumulated": "Acumulado", "accumulated": "acumulado", "Avg rate": "% média",
+  "Diffs by screen category (GTLB, MTGB, LG) are not available from Digisul yet: the query brascof_pesq_diferencial_peneira must be created there.":
+    "Os diferenciais por categoria de peneira (GTLB, MTGB, LG) ainda não vêm do Digisul: é preciso criar lá a consulta brascof_pesq_diferencial_peneira.",
+  "Diff bica": "Diff bica","Accumulated": "Acumulado", "accumulated": "acumulado", "Avg rate": "% média",
   "Top suppliers": "Top fornecedores", "Top brokers": "Top corretores", "Top contracts": "Top contratos", "Top contract": "Maior contrato",
   "Brokerage R$": "Corretagem R$", "Avg brokerage": "Corretagem média", "Brokers unavailable.": "Corretores indisponíveis.",
   "Loading brokers…": "Carregando corretores…", "Loading brokers from Digisul…": "Carregando os corretores do Digisul…",

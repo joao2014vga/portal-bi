@@ -2862,8 +2862,9 @@ async function painelComercial(alvo, carga, ctx) {
 // Corretagem estimada = valor final (R$) × % cadastrada no Digisul.
 // =====================================================================
 const SEM_CORRETOR = "(no broker)";
-// diferenciais por componente do contrato de compra: [chave, rótulo, sempre na tabela]
-const COMPS_DIF = [["bica", "Bica", true], ["mtgb", "MTGB", true], ["ltgb", "LTGB", true], ["lg", "Low grade", true], ["moka", "Moka", false], ["grinder", "Grinder", false]];
+// "Diferencial por Categoria de Peneiras" do contrato de compra (o Diferencial do Position é o
+// Diferencial Bica). Cada coluna só aparece quando algum contrato da tabela tem o valor.
+const COMPS_DIF = [["ltgb", "GTLB"], ["mtgb", "MTGB"], ["lg", "LG"], ["moka", "Moka"], ["grinder", "Grinder"]];
 const contratoPaiCompra = (c) => String(c ?? "").match(/^(BR[CV]-\d+\/\d{2})/)?.[1] ?? null;
 // Diferencial do Conilon nas compras: parte dos contratos vem do Digisul multiplicada por 100
 // (-2043 = -20,43; -609 = -6,09) e parte já vem certa (-22,98; -4,54). Nenhum diferencial real
@@ -3041,9 +3042,11 @@ async function painelComprasDash(alvo, carga, ctx) {
         r._pen = c.peneira ?? r._pen;
         r._difs = Object.fromEntries(Object.entries(c.dif ?? {}).map(([k, v]) => [k, r._esp === "CONILON" ? difConilonCompra(v) : v]));
       }
-      const temDifs = Object.values(j.campos ?? {}).some((v) => v.startsWith("dif."));
-      difsAviso = !compras ? `Component diffs unavailable: ${j.erroCompras ?? "the service did not return the purchase contracts."}`
-        : !temDifs ? "The Digisul purchase query did not return the component diffs (Bica, MTGB, LTGB, Low grade)." : null;
+      // diferencial por categoria de peneira: depende da consulta brascof_pesq_diferencial_peneira no Digisul
+      const temDifs = dados.some((r) => Object.keys(r._difs).length);
+      difsAviso = temDifs ? null : j.erroDifPeneira
+        ? "Diffs by screen category (GTLB, MTGB, LG) are not available from Digisul yet: the query brascof_pesq_diferencial_peneira must be created there."
+        : null;
       corretoresEm = j.consultadoEm ?? new Date().toISOString();
       corretoresErro = null;
     } catch (e) { corretoresErro = e.message; }
@@ -3123,8 +3126,8 @@ async function painelComprasDash(alvo, carga, ctx) {
     // fornecedor > qualidade > peneira, com o diferencial principal e os por componente
     const campoForn = espForn === "ARABICA" ? "_difA" : "_difC";
     const daEsp = semFiltro("fornecedor").filter((r) => r._esp === espForn);
-    // Moka e Grinder só aparecem quando algum contrato da lista tem
-    const compsVisiveis = COMPS_DIF.filter(([k, , sempre]) => sempre || daEsp.some((r) => r._difs[k] != null));
+    const compsVisiveis = COMPS_DIF.filter(([k]) => daEsp.some((r) => r._difs[k] != null));
+    const compsContratos = COMPS_DIF.filter(([k]) => linhas.some((r) => r._difs[k] != null));
     const medDrill = (rows) => {
       const o = { sacas: 0, ctr: new Set(), aRec: 0, d: [0, 0], c: {} };
       for (const r of rows) {
@@ -3264,7 +3267,7 @@ async function painelComprasDash(alvo, carga, ctx) {
         ${segmentos("cpEspForn", [["ARABICA", "Arabica"], ["CONILON", "Conilon"]], espForn)}</div>
       ${difsAviso ? `<p class="muted pos-nota">${icon("info")} <span>${esc(difsAviso)}</span></p>` : ""}
       <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num pos-com-arvore">
-        <thead><tr><th>Supplier / quality / screen</th><th class="num">Bags</th><th class="num">%</th><th class="num">Contracts</th><th class="num">Diff</th>
+        <thead><tr><th>Supplier / quality / screen</th><th class="num">Bags</th><th class="num">%</th><th class="num">Contracts</th><th class="num">Diff bica</th>
           ${compsVisiveis.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th></tr></thead>
         <tbody>${linhasForn.join("") || `<tr><td colspan="${6 + compsVisiveis.length}" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
         ${linhasForn.length ? `<tfoot><tr class="total"><th scope="row">Total</th>${celNum(totEsp.sacas, { forte: true })}<td class="num">100%</td><td class="num forte">${fmtN(totEsp.ctr.size)}</td>
@@ -3275,13 +3278,13 @@ async function painelComprasDash(alvo, carga, ctx) {
     <section class="pos-card">
       <div class="pos-card-h"><h2>Top contracts</h2><p class="muted">The largest contracts of the period.</p></div>
       <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
-        <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th>Screen</th><th class="num">Bags</th><th class="num">Diff</th>
-          ${COMPS_DIF.slice(0, 4).map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
+        <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th>Screen</th><th class="num">Bags</th><th class="num">Diff bica</th>
+          ${compsContratos.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
         <tbody>${topContratos.length ? topContratos.map((r) => `<tr><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td><td>${esc(r.fornecedor ?? "—")}</td>
           <td>${esc(r.padrao ?? "—")}</td><td>${esc(fmtPeneira(r._pen))}</td>${celNum(r.sacas)}<td class="num">${fmtDif(r._dif)}</td>
-          ${COMPS_DIF.slice(0, 4).map(([c]) => `<td class="num">${corretoresEm ? fmtDif(r._difs[c]) : "…"}</td>`).join("")}${celNum(r._aEnt)}
+          ${compsContratos.map(([c]) => `<td class="num">${corretoresEm ? fmtDif(r._difs[c]) : "…"}</td>`).join("")}${celNum(r._aEnt)}
           <td class="num">${r.preco ? fmtN(r.preco, 2) : "—"}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("")
-          : `<tr><td colspan="13" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+          : `<tr><td colspan="${9 + compsContratos.length}" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
       </table></div>
     </section>
 
