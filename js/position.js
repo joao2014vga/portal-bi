@@ -212,6 +212,9 @@ const NOME_FONTE = { planilha: "Spreadsheet", api: "Digisul API" };
 const PAINEIS_SO_API = new Set(["portal:position-commercial", "portal:position-physical", "portal:position-purchasing"]);
 // Painéis em que só o administrador vê o Digisul: os demais (inclusive quem publica) ficam na planilha
 const PAINEIS_SO_PLANILHA = new Set(["portal:position-overview"]);
+// Painéis só do Digisul, sem nada da planilha no topo: nem a troca de fonte (nem para o admin),
+// nem "New futures trade", nem "Upload Position". Fica só o "Update now".
+const PAINEIS_SO_DIGISUL = new Set(["portal:position-purchasing", "portal:position-commercial"]);
 // Painéis que mudam com a data escolhida no topo: só usam o resumo, que cada versão guarda.
 // Os demais (contratos, vendas, compras…) vêm do detalhe, que existe só para a última versão.
 const PAINEIS_COM_DATA = new Set(["portal:position-overview", "portal:position-physical"]);
@@ -225,9 +228,10 @@ export async function renderPosition(link, alvo, ctx) {
   alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading Position…</div>`;
   let carga, oficial, fonte, datas = [];
   const soPlanilha = PAINEIS_SO_PLANILHA.has(link) && !ctx.admin;
+  const soDigisul = PAINEIS_SO_DIGISUL.has(link);
   try {
     oficial = soPlanilha ? "planilha" : PAINEIS_SO_API.has(link) ? "api" : await ctx.api.positionFonte();
-    fonte = soPlanilha ? "planilha" : (ctx.gerente && fonteVista()) || oficial;
+    fonte = soPlanilha ? "planilha" : soDigisul ? "api" : (ctx.gerente && fonteVista()) || oficial;
     carga = await ctx.api.positionUltima(fonte);
     // data escolhida no topo: a última versão da fonte naquele dia (sem dia escolhido, a mais recente)
     if (carga && PAINEIS_COM_DATA.has(link)) {
@@ -246,7 +250,7 @@ export async function renderPosition(link, alvo, ctx) {
     positionDetalheApi: (tipos) => ctx.api.positionDetalhe(tipos, "api"),
   };
   // historico: a tela mostra um dia que não é o mais recente (sem a composição dos números)
-  const c = { ...ctx, api, fonte, oficial, datas, soPlanilha, historico: !!carga && datas.length > 0 && carga.data_ref !== datas[0] };
+  const c = { ...ctx, api, fonte, oficial, datas, soPlanilha, soDigisul, historico: !!carga && datas.length > 0 && carga.data_ref !== datas[0] };
   const topo = barraTopo(carga, c);
   if (!carga) {
     alvo.innerHTML = `<div class="pos">${topo}<div class="vazio">${icon("chart")}<h3>${fonte === "api" ? "No Digisul update yet" : "No Position uploaded yet"}</h3>
@@ -281,10 +285,10 @@ function barraTopo(carga, ctx) {
       ? `<span>Position as of ${dia} · ${esc(quando)}</span>`
       : `<span>${api ? "No Digisul update yet" : "No Position uploaded yet"}</span>`}<span class="muted">· all figures in 60 kg bags</span></div>
     ${ctx.gerente ? `<div class="pos-acoes">
-      ${ctx.soPlanilha ? "" : `${segmentos("posFonte", Object.entries(NOME_FONTE).map(([k, n]) => [k, k === ctx.oficial ? `${n} · official` : n]), ctx.fonte)}
-      <button class="btn" id="posSync" title="Fetch Digisul and recalculate now">${icon("refresh")}<span>Update now</span></button>`}
-      <button class="btn" id="posFuturo" title="Paste the broker confirmation e-mail">${icon("plus")}<span>New futures trade</span></button>
-      <button class="btn btn-primary" id="posUpload">${icon("upload")}<span>Upload Position</span></button>
+      ${ctx.soPlanilha || ctx.soDigisul ? "" : segmentos("posFonte", Object.entries(NOME_FONTE).map(([k, n]) => [k, k === ctx.oficial ? `${n} · official` : n]), ctx.fonte)}
+      ${ctx.soPlanilha ? "" : `<button class="btn" id="posSync" title="Fetch Digisul and recalculate now">${icon("refresh")}<span>Update now</span></button>`}
+      ${ctx.soDigisul ? "" : `<button class="btn" id="posFuturo" title="Paste the broker confirmation e-mail">${icon("plus")}<span>New futures trade</span></button>
+      <button class="btn btn-primary" id="posUpload">${icon("upload")}<span>Upload Position</span></button>`}
     </div>` : ""}
   </div>
   ${ctx.historico ? `<div class="pos-historico">${icon("clock")}<span>You are viewing the Position of <strong>${esc(fmtData(carga.data_ref))}</strong>, not the latest (${esc(fmtData(ctx.datas[0]))}).
