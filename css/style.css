@@ -716,6 +716,19 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-multi-ops label[hidden] { display: none; }
 .pos-multi-ops input { width: auto; height: auto; margin: 0; }
 .pos-clic.apagado td { opacity: .45; }
+/* Dashboard Sales, aba By client: escolha de um cliente só, 6 indicadores e o grupo ao lado do BC */
+.pos-unico .pos-multi-b { max-width: 320px; }
+.pos-unico .pos-multi-p { min-width: 300px; }
+.pos-unico-op { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 6px; border: 0; border-radius: 6px;
+  background: none; color: var(--texto); font: 400 13px var(--fonte); text-align: left; cursor: pointer; }
+.pos-unico-op:hover { background: var(--sup-2); }
+.pos-unico-op.on { background: color-mix(in srgb, var(--brand) 12%, var(--sup)); color: var(--brand); font-weight: 600; }
+.pos-unico-op[hidden] { display: none; }
+.pos-unico-op .muted { font-size: 12px; font-variant-numeric: tabular-nums; }
+.pos-kpis-fix.pos-kpis-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.pos-com-tipo { font-size: 11px; font-weight: 500; margin-left: 4px; }
+@media (max-width: 1200px) { .pos-kpis-fix.pos-kpis-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .pos-kpis-fix.pos-kpis-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* Nova operação de futuros (colunas A–L da OpenFutures) */
 .fut-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-top: 12px; }
 @media (max-width: 720px) { .fut-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -2012,3 +2012,13 @@ where c.nome = 'Position'
 update public.bi_categorias set nome = 'Position' where nome = 'Position TESTES';
 update public.bi_dashboards set ativo = false
 where link in ('portal:position-contracts', 'portal:position-sales', 'portal:position-purchases', 'portal:position-diffs');
+
+-- =====================================================================
+-- 35. DASHBOARD COMMERCIAL PASSA A SE CHAMAR "Dashboard Sales"
+-- Mesmo painel (link portal:position-commercial), agora com as abas
+-- Sales Overview e By client. Pode rodar de novo.
+-- =====================================================================
+update public.bi_dashboards
+set titulo = 'Dashboard Sales',
+    descricao = 'Export sales: contracts, bags, average diffs, bags per client, a per-client view by quality and screen, and what is left to ship.'
+where link = 'portal:position-commercial' and titulo = 'Dashboard Commercial';

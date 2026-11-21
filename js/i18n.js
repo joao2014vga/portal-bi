@@ -325,7 +325,17 @@ const PT = {
   "selected": "selecionados", "Search…": "Buscar…", "Search": "Buscar",
   "Click a client, a shipment month or a quality bar to filter the page; Ctrl+click to pick more than one.":
     "Clique num cliente, num mês de embarque ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
-  "Dashboard Commercial": "Dashboard Comercial", "Last contract:": "Último contrato:", "Variety": "Espécie", "Clear filters": "Limpar filtros",
+  "Dashboard Commercial": "Dashboard Comercial", "Dashboard Sales": "Dashboard de Vendas", "Last contract:": "Último contrato:",
+  "Sales Overview": "Visão geral das vendas", "By client": "Por cliente", "First contract:": "Primeiro contrato:",
+  "Bags delivered": "Sacas entregues", "Per quality": "Por qualidade", "Quality · screen": "Qualidade · peneira", "% of bags": "% das sacas",
+  "Bags per quality": "Sacas por qualidade", "Delivered and to be delivered.": "Entregue e a entregar.",
+  "To be delivered": "A entregar", "Clear quality": "Limpar qualidade",
+  "Every contract with this client, by BC and screen. ⊞/⊟ opens or closes the screens.":
+    "Todos os contratos com este cliente, por BC e peneira. ⊞/⊟ abre ou fecha as peneiras.",
+  "Pick one client. Click a quality bar or a BC line to filter the numbers; Ctrl+click to pick more than one.":
+    "Escolha um cliente. Clique numa barra de qualidade ou numa linha de BC para filtrar os números; Ctrl+clique para escolher mais de um.",
+  "⊞ opens the quality and the screen.": "⊞ abre a qualidade e a peneira.", "No contracts for this client.": "Nenhum contrato com este cliente.",
+  "Nothing left to ship for this client.": "Nada a embarcar para este cliente.", "No sales yet.": "Nenhuma venda ainda.", "Variety": "Espécie", "Clear filters": "Limpar filtros",
   "Total contracts": "Total de contratos", "Total bags": "Total de sacas", "Avg diff Arabica": "Diff médio Arábica", "Avg diff Conilon": "Diff médio Conilon",
   "Bags to be delivered": "Sacas a entregar", "Bags per client": "Sacas por cliente", "To be shipped": "A embarcar",
   "Avg diff per quality": "Diff médio por qualidade", "Historical diff": "Diff histórico", "By month of the inclusion date.": "Pelo mês da data de inclusão.",

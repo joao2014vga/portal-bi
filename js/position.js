@@ -9,7 +9,7 @@
 //   portal:position-overview   posição por mês de vencimento + variação do dia
 //   portal:position-physical   posição física por mês e por qualidade
 //   portal:position-contracts  contratos em aberto, contrato a contrato
-//   portal:position-commercial Dashboard Commercial (vendas de exportação; era um Power BI)
+//   portal:position-commercial Dashboard Sales (vendas de exportação; era um Power BI): abas Sales Overview e By client
 //   portal:position-purchasing Dashboard Purchases (compras por mês, fornecedor, corretor e qualidade)
 import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } from "./ui.js";
 import {
@@ -155,7 +155,7 @@ async function semQuebrar(fn, canvas, ...args) {
 }
 
 // cores e tinta vêm das variáveis do tema (claro/escuro) no momento do desenho
-// el: lê as variáveis de um painel (ex.: o Dashboard Commercial tem séries no verde da marca)
+// el: lê as variáveis de um painel (ex.: o Dashboard Sales tem séries no verde da marca)
 function tema(el = document.documentElement) {
   const s = getComputedStyle(el);
   const v = (n) => s.getPropertyValue(n).trim();
@@ -1009,7 +1009,7 @@ function cardComparacao(grupo, cmp, info, ctx) {
     <p class="muted pos-nota">${info
       ? `Formulas and futures (${fmtN(info.futuros)} trades) from ${esc(info.nome_arquivo ?? "—")}, uploaded ${esc(tempoRelativo(info.atualizado_em))}${info.enviado_por ? ` by ${esc(info.enviado_por)}` : ""}.`
       : "The spreadsheet formulas and futures have not been saved yet — upload the full spreadsheet once."}</p>
-    <p class="muted pos-nota">Official source: <strong>${NOME_FONTE[ctx.oficial]}</strong> · Dashboard Commercial and Physical Position always use the Digisul API.</p>
+    <p class="muted pos-nota">Official source: <strong>${NOME_FONTE[ctx.oficial]}</strong> · Dashboard Sales and Physical Position always use the Digisul API.</p>
     ${ctx.admin ? `<div><button type="button" class="btn" id="posOficial">${icon("check")}<span>Make ${NOME_FONTE[outraFonte]} the official source</span></button></div>` : ""}
   </section>`;
 }
@@ -1019,7 +1019,7 @@ function trocarFonteOficial(ctx) {
   modal({
     titulo: "Official Position source",
     botao: `Use ${NOME_FONTE[nova]}`,
-    corpo: `<p>Everyone will see the Position from <strong>${NOME_FONTE[nova]}</strong> (Dashboard Commercial and Physical Position stay on the Digisul API)${nova === "api"
+    corpo: `<p>Everyone will see the Position from <strong>${NOME_FONTE[nova]}</strong> (Dashboard Sales and Physical Position stay on the Digisul API)${nova === "api"
       ? ", updated every 2 hours on business days. Keep uploading the spreadsheet (or just the OpenFutures sheet) when futures change."
       : ". The views will only change when the spreadsheet is uploaded."}</p>`,
     async onSubmit() {
@@ -2479,7 +2479,7 @@ async function painelDiffs(alvo, carga, ctx) {
 }
 
 // =====================================================================
-// DASHBOARD COMMERCIAL — antes um relatório do Power BI sobre a aba ExpSales.
+// DASHBOARD SALES (antes Dashboard Commercial) — era um relatório do Power BI sobre a aba ExpSales.
 // Mesmas medidas de lá: diferencial médio = média simples por linha (Conilon ÷ 100),
 // sacas = Sacas, entregues = Saída (sc), a entregar = Saldo (sc), cliente padronizado.
 // =====================================================================
@@ -2589,6 +2589,43 @@ async function graficoHistorico(canvas, { rotulos, arabica, conilon }) {
   graficos.push(c);
 }
 
+// sacas por qualidade (BC): entregue + a entregar empilhados; clique escolhe a qualidade
+async function graficoSacasQualidade(canvas, itens, aoClicar, selecao = new Set()) {
+  const Chart = await carregarChart();
+  const t = tema(canvas);
+  const apaga = (cor) => (/^#[0-9a-f]{6}$/i.test(cor) ? `${cor}55` : t.grade);
+  const cores = (cor) => itens.map((x) => (!selecao.size || selecao.has(x.padrao) ? cor : apaga(cor)));
+  const c = new Chart(canvas, {
+    type: "bar",
+    data: { labels: itens.map((x) => x.padrao), datasets: [
+      { label: tr("Delivered"), data: itens.map((x) => arred(x.m.saida)), backgroundColor: cores(t.s1), borderRadius: 3, maxBarThickness: 34, stack: "s" },
+      { label: tr("To be delivered"), data: itens.map((x) => arred(x.m.saldo)), backgroundColor: cores(t.s2), borderRadius: 3, maxBarThickness: 34, stack: "s" },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      interaction: { mode: "index", intersect: false },
+      onClick: (e, els) => { if (els.length) aoClicar(itens[els[0].index].padrao, e.native?.ctrlKey || e.native?.metaKey); },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
+      scales: {
+        x: { stacked: true, grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
+        y: { stacked: true, grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) } },
+      },
+      plugins: {
+        legend: { position: "bottom", align: "start", labels: { color: t.tinta2, boxWidth: 10, boxHeight: 10, padding: 14, font: { size: 12 } } },
+        tooltip: { callbacks: {
+          title: (ctx) => `${tr("Quality")} ${ctx[0].label}`,
+          label: (ctx) => ` ${ctx.dataset.label}: ${fmtN(ctx.raw)} ${tr("bags")}`,
+          footer: (ctx) => `${tr("Total")}: ${fmtN(itens[ctx[0].dataIndex].m.sacas)} ${tr("bags")}`,
+        } },
+      },
+    },
+  });
+  graficos.push(c);
+}
+
+const CHAVE_ABA_COM = "bi-comercial-aba";      // aba aberta do Dashboard Sales (nesta sessão do navegador)
+const CHAVE_CLI_COM = "bi-comercial-cliente";  // cliente escolhido na aba By client
+
 async function painelComercial(alvo, carga, ctx) {
   alvo.classList.add("pos-comercial"); // séries no verde da marca (css)
   let dados = null;
@@ -2667,7 +2704,7 @@ async function painelComercial(alvo, carga, ctx) {
     });
   };
 
-  const desenhar = async () => {
+  const desenharGeral = async () => {
     limparGraficos();
     const linhas = dados.filter((r) => passa(r));
     const m = medidasComercial(linhas);
@@ -2743,8 +2780,9 @@ async function painelComercial(alvo, carga, ctx) {
         </div></div>`;
     };
     alvo.innerHTML = `
+    ${abasNoPainel()}
     <div class="pos-com-cab">
-      <h2>${esc(filtro.cliente.size === 1 ? [...filtro.cliente][0] : tr("Dashboard Commercial"))}</h2>
+      <h2>${esc(filtro.cliente.size === 1 ? [...filtro.cliente][0] : tr("Dashboard Sales"))}</h2>
       ${ult ? `<span class="muted"><span>Last contract:</span> <strong>${esc(ult.contrato)}</strong> (${esc(fmtData(emissao))})</span>` : ""}
     </div>
     <div class="pos-filtros">
@@ -2813,6 +2851,7 @@ async function painelComercial(alvo, carga, ctx) {
         $$("label", p).forEach((l) => { l.hidden = !!q && !norm(l.textContent).includes(q); });
       });
     });
+    ligarAbasNoPainel();
     $("#comLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); folhasSel.clear(); listaAberta = null; desenhar(); });
     $$("tr[data-cliente]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("cliente", l.dataset.cliente, e.ctrlKey || e.metaKey)));
     $$("tr[data-fk]", alvo).forEach((l) => l.addEventListener("click", (e) => {
@@ -2844,12 +2883,220 @@ async function painelComercial(alvo, carga, ctx) {
       });
     }
   };
+  // ------------------------------------------------------------- aba By client
+  // Um cliente por vez: tudo o que já foi vendido a ele (contratos, sacas, entregue, a entregar,
+  // diff médio) e a divisão por qualidade (BC) e peneira, mais o que falta embarcar mês a mês.
+  // Clicar numa barra de qualidade ou numa linha de BC filtra os números (Ctrl+clique soma).
+  const porSacasCli = [...dados.reduce((mp, r) => (r._cliente ? mp.set(r._cliente, (mp.get(r._cliente) ?? 0) + (r.sacas ?? 0)) : mp), new Map())]
+    .filter(([, v]) => v).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const existeCli = (c) => porSacasCli.some(([k]) => k === c);
+  let cliSel = (() => { try { return sessionStorage.getItem(CHAVE_CLI_COM); } catch { return null; } })();
+  let cliAberto = false;               // lista de clientes aberta
+  const bcCli = new Set();             // qualidades escolhidas na aba
+  const trocadosCli = new Set();       // nós abertos/fechados à mão (padrão: BCs abertos, meses fechados)
+  const escolherCliente = (c) => {
+    cliSel = c; cliAberto = false; bcCli.clear(); trocadosCli.clear();
+    try { sessionStorage.setItem(CHAVE_CLI_COM, c); } catch { /* fica só nesta tela */ }
+    desenhar();
+  };
+  const selecionarBc = (bc, varios) => {
+    if (varios) { if (!bcCli.delete(bc)) bcCli.add(bc); }
+    else if (bcCli.size === 1 && bcCli.has(bc)) bcCli.clear();
+    else { bcCli.clear(); bcCli.add(bc); }
+    desenhar();
+  };
+  const marcaBc = (bc) => (!bcCli.size ? "" : bcCli.has(bc) ? " on" : " apagado");
+
+  // árvore: niveis = [[chave, ordem, rótulo em HTML, clique escolhe a qualidade]]; cols(medidas, linhas) devolve as <td>
+  const arvoreCli = (rows, niveis, estaAberto, cols, nivel, caminho) => {
+    const [chave, ordem, rotulo, clic] = niveis[nivel];
+    const grupos = new Map();
+    for (const r of rows) { const k = chave(r); (grupos.get(k) ?? grupos.set(k, []).get(k)).push(r); }
+    const folha = nivel === niveis.length - 1;
+    return [...grupos.keys()].sort(ordem).flatMap((k) => {
+      const g = grupos.get(k), id = `${caminho}\u0001${k}`, aberto = !folha && estaAberto(id, nivel);
+      const tog = folha ? `<span class="pos-com-folha"></span>`
+        : `<button type="button" class="pos-com-tog" data-no="${esc(id)}" aria-expanded="${aberto}" title="${aberto ? "Collapse" : "Expand"}">${aberto ? "⊟" : "⊞"}</button>`;
+      const attr = clic && k ? ` class="pos-com-n${nivel} pos-clic${marcaBc(k)}" data-bc="${esc(k)}"` : ` class="pos-com-n${nivel}"`;
+      return [`<tr${attr}><td style="padding-left:${10 + nivel * 18}px">${tog}${rotulo(k)}</td>${cols(medidasComercial(g), g)}</tr>`,
+        ...(aberto ? arvoreCli(g, niveis, estaAberto, cols, nivel + 1, id) : [])];
+    });
+  };
+  // diff médio de um conjunto que pode misturar Arábica e Conilon
+  const difMista = (m, rows) => {
+    const temA = rows.some((r) => r._esp === "ARABICA" && r._dif != null), temC = rows.some((r) => r._esp === "CONILON" && r._dif != null);
+    if (temA && temC) return `A ${fmtDif(m.difA)} · C ${fmtDif(m.difC)}`;
+    return fmtDif(temC ? m.difC : m.difA);
+  };
+  const ordemBc = (a, b) => ordemPadrao(a || "~", b || "~");
+  const alfaCli = (a, b) => a.localeCompare(b);
+
+  const desenharCliente = async () => {
+    limparGraficos();
+    if (!cliSel || !existeCli(cliSel)) {
+      // sem cliente guardado: o escolhido na outra aba (se for um só) ou o maior em sacas
+      const daGeral = filtro.cliente.size === 1 ? [...filtro.cliente][0] : null;
+      cliSel = daGeral && existeCli(daGeral) ? daGeral : porSacasCli[0]?.[0] ?? null;
+    }
+    const doCli = dados.filter((r) => r._cliente === cliSel);
+    const linhas = doCli.filter((r) => !bcCli.size || bcCli.has(r.padrao));
+    const m = medidasComercial(linhas);
+    const ult = linhas.reduce((u, r) => (r.inclusao && (!u || r.inclusao > u.inclusao || (r.inclusao === u.inclusao && r.contrato > u.contrato)) ? r : u), null);
+    const emissao = linhas.reduce((x, r) => (r.emissao && (!x || r.emissao > x) ? r.emissao : x), null);
+    const primeira = linhas.reduce((x, r) => (r.emissao && (!x || r.emissao < x) ? r.emissao : x), null);
+
+    // por qualidade: BC > peneira (sempre o cliente inteiro; a escolha fica em destaque)
+    const mCli = medidasComercial(doCli);
+    const pct = (v) => (mCli.sacas ? `${fmtN((v / mCli.sacas) * 100, 1)}%` : "—");
+    const colsQual = (mg, g) => `<td class="num">${fmtN(mg.contratos)}</td>${celNum(mg.sacas)}<td class="num muted">${pct(mg.sacas)}</td>${celNum(mg.saida)}${celNum(mg.saldo)}<td class="num">${difMista(mg, g)}</td>`;
+    const arvQual = arvoreCli(doCli, [
+      [(r) => r.padrao ?? "", ordemBc, (v) => `${esc(v || "—")}${tipoPadrao(v) ? ` <span class="muted pos-com-tipo">${esc(tipoPadrao(v))}</span>` : ""}`, true],
+      [(r) => r.peneira ?? "", alfaCli, (v) => esc(v || "—")],
+    ], (id, n) => (n === 0) !== trocadosCli.has(id), colsQual, 0, "q");
+
+    // a embarcar: mês de embarque > BC > peneira, só combinações com saldo ≥ 1 (como na outra aba)
+    const folha = (r) => [r._emb ?? "", r.padrao ?? "", r.peneira ?? ""].join("\u0001");
+    const saldoFolha = linhas.reduce((mp, r) => mp.set(folha(r), (mp.get(folha(r)) ?? 0) + (r.saldo ?? 0)), new Map());
+    const aEmbarcar = linhas.filter((r) => saldoFolha.get(folha(r)) >= 1);
+    const mE = medidasComercial(aEmbarcar);
+    const colsEmb = (mg, g) => `<td class="num">${fmtN(mg.contratos)}</td>${celNum(mg.saldo)}<td class="num">${difMista(mg, g)}</td>`;
+    const arvEmb = arvoreCli(aEmbarcar, [
+      [(r) => r._emb ?? "", (a, b) => (a || "~").localeCompare(b || "~"), (v) => esc(v ? rotMesLongo(v) : tr("No date"))],
+      [(r) => r.padrao ?? "", ordemBc, (v) => esc(v || "—")],
+      [(r) => r.peneira ?? "", alfaCli, (v) => esc(v || "—")],
+    ], (id) => trocadosCli.has(id), colsEmb, 0, "e");
+
+    // gráficos por qualidade (cliente inteiro, escolha em destaque)
+    const gruposBc = [...doCli.reduce((mp, r) => (r.padrao ? mp.set(r.padrao, [...(mp.get(r.padrao) ?? []), r]) : mp), new Map())]
+      .map(([padrao, rows]) => ({ padrao, m: medidasComercial(rows) }));
+    const porDif = gruposBc.filter((x) => x.m.dif != null).sort((a, b) => b.m.dif - a.m.dif);
+    const porSacas = [...gruposBc].sort((a, b) => ordemPadrao(a.padrao, b.padrao));
+
+    alvo.innerHTML = `
+    ${abasNoPainel()}
+    <div class="pos-com-cab">
+      <h2>${esc(cliSel ?? tr("Dashboard Sales"))}</h2>
+      ${ult ? `<span class="muted"><span>First contract:</span> ${esc(fmtData(primeira))} · <span>Last contract:</span> <strong>${esc(ult.contrato)}</strong> (${esc(fmtData(emissao))})</span>` : ""}
+    </div>
+    <div class="pos-filtros">
+      <div class="pos-mes pos-multi pos-unico${cliAberto ? " aberta" : ""}" id="cliEscolha"><span>Client</span>
+        <button type="button" class="pos-multi-b ativo" aria-haspopup="listbox" aria-expanded="${cliAberto}"><span>${esc(cliSel ?? "—")}</span><span class="pos-multi-seta" aria-hidden="true">▾</span></button>
+        <div class="pos-multi-p" role="listbox">
+          <input type="search" class="pos-multi-busca" placeholder="${esc(tr("Search…"))}" aria-label="${esc(tr("Search"))}">
+          <div class="pos-multi-ops">${porSacasCli.map(([c, v]) => `<button type="button" role="option" class="pos-unico-op${c === cliSel ? " on" : ""}" aria-selected="${c === cliSel}" data-cli="${esc(c)}"><span>${esc(c)}</span><span class="muted">${fmtN(v)}</span></button>`).join("")}</div>
+        </div></div>
+      ${bcCli.size ? `<button type="button" class="btn" id="cliLimparBc">${icon("x")}<span>Clear quality</span></button>` : ""}
+    </div>
+    <p class="muted pos-nota">${icon("info")} <span>Pick one client. Click a quality bar or a BC line to filter the numbers; Ctrl+click to pick more than one.</span></p>
+    ${!cliSel ? `<p class="vazio-td">No sales yet.</p>` : `
+    <div class="pos-kpis pos-kpis-fix pos-kpis-6">
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Total contracts</span><span class="pos-kpi-v">${fmtN(m.contratos)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Total bags</span><span class="pos-kpi-v">${fmtN(m.sacas)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Bags delivered</span><span class="pos-kpi-v">${fmtN(m.saida)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Bags to be delivered</span><span class="pos-kpi-v">${fmtN(m.saldo)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Avg diff Arabica</span><span class="pos-kpi-v">${fmtDif(m.difA)}</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Avg diff Conilon</span><span class="pos-kpi-v">${fmtDif(m.difC)}</span></div>
+    </div>
+    <section class="pos-card">
+      <div class="pos-card-h pos-card-h-linha"><div><h2>Per quality</h2><p class="muted">Every contract with this client, by BC and screen. ⊞/⊟ opens or closes the screens.</p></div>
+        <div class="pos-filtros"><button type="button" class="link" id="cliAbrirTudo">Expand all</button><button type="button" class="link" id="cliFecharTudo">Collapse all</button></div></div>
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num pos-com-arvore">
+        <thead><tr><th>Quality · screen</th><th class="num">Contracts</th><th class="num">Total bags</th><th class="num">% of bags</th><th class="num">Delivered</th><th class="num">Bags to be delivered</th><th class="num">Avg diff</th></tr></thead>
+        <tbody>${arvQual.join("") || `<tr><td colspan="7" class="vazio-td">No contracts for this client.</td></tr>`}</tbody>
+        ${arvQual.length ? `<tfoot><tr class="total"><th scope="row">Total</th><td class="num forte">${fmtN(mCli.contratos)}</td>${celNum(mCli.sacas, { forte: true })}<td class="num forte">100%</td>${celNum(mCli.saida, { forte: true })}${celNum(mCli.saldo, { forte: true })}<td class="num forte">${difMista(mCli, doCli)}</td></tr></tfoot>` : ""}
+      </table></div>
+    </section>
+    <div class="pos-duas">
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Bags per quality</h2><p class="muted">Delivered and to be delivered.</p></div>
+        ${porSacas.length ? `<div class="pos-grafico"><canvas id="gCliSacas" role="img" aria-label="Bags per quality"></canvas></div>` : `<p class="vazio-td">No data.</p>`}
+      </section>
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Avg diff per quality</h2><p class="muted">Simple average of the contract lines; Conilon diffs ÷ 100.</p></div>
+        ${porDif.length ? `<div class="pos-grafico"><canvas id="gCliDif" role="img" aria-label="Average diff per quality"></canvas></div>` : `<p class="vazio-td">No data.</p>`}
+      </section>
+    </div>
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>To be shipped</h2><p class="muted">⊞ opens the quality and the screen.</p></div>
+      <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num pos-com-arvore">
+        <thead><tr><th>Shipment</th><th class="num">Contracts</th><th class="num">Bags to be delivered</th><th class="num">Avg diff</th></tr></thead>
+        <tbody>${arvEmb.join("") || `<tr><td colspan="4" class="vazio-td">Nothing left to ship for this client.</td></tr>`}</tbody>
+        ${arvEmb.length ? `<tfoot><tr class="total"><th scope="row">Total</th><td class="num forte">${fmtN(mE.contratos)}</td>${celNum(mE.saldo, { forte: true })}<td class="num forte">${difMista(mE, aEmbarcar)}</td></tr></tfoot>` : ""}
+      </table></div>
+    </section>`}`;
+
+    ligarAbasNoPainel();
+    const caixa = $("#cliEscolha", alvo);
+    $(".pos-multi-b", caixa).addEventListener("click", () => {
+      cliAberto = !cliAberto;
+      caixa.classList.toggle("aberta", cliAberto);
+      if (cliAberto) { $(".pos-multi-busca", caixa).focus(); $(".pos-unico-op.on", caixa)?.scrollIntoView({ block: "nearest" }); }
+    });
+    const busca = $(".pos-multi-busca", caixa);
+    busca.addEventListener("input", () => {
+      const q = norm(busca.value);
+      $$(".pos-unico-op", caixa).forEach((o) => { o.hidden = !!q && !norm(o.dataset.cli).includes(q); });
+    });
+    busca.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { const o = $$(".pos-unico-op", caixa).find((x) => !x.hidden); if (o) escolherCliente(o.dataset.cli); }
+      if (e.key === "Escape") { cliAberto = false; caixa.classList.remove("aberta"); }
+    });
+    $$(".pos-unico-op", caixa).forEach((o) => o.addEventListener("click", () => escolherCliente(o.dataset.cli)));
+    $("#cliLimparBc", alvo)?.addEventListener("click", () => { bcCli.clear(); desenhar(); });
+    $$("tr[data-bc]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionarBc(l.dataset.bc, e.ctrlKey || e.metaKey)));
+    $$(".pos-com-tog", alvo).forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();  // abrir não filtra
+      if (!trocadosCli.delete(b.dataset.no)) trocadosCli.add(b.dataset.no);
+      desenhar();
+    }));
+    // abrir/fechar todas as qualidades da tabela "Per quality"
+    const idsBc = [...new Set(doCli.map((r) => `q\u0001${r.padrao ?? ""}`))];
+    $("#cliAbrirTudo", alvo)?.addEventListener("click", () => { idsBc.forEach((id) => trocadosCli.delete(id)); desenhar(); });
+    $("#cliFecharTudo", alvo)?.addEventListener("click", () => { idsBc.forEach((id) => trocadosCli.add(id)); desenhar(); });
+
+    if (porSacas.length) await semQuebrar(graficoSacasQualidade, $("#gCliSacas", alvo), porSacas, selecionarBc, bcCli);
+    if (porDif.length) await semQuebrar(graficoQualidades, $("#gCliDif", alvo), porDif, selecionarBc, bcCli);
+  };
+
+  // abas no cabeçalho verde da página (como no Dashboard Purchases)
+  const ABAS_COM = [["geral", "Sales Overview", "chart"], ["cliente", "By client", "users"]];
+  let aba = (() => { try { return sessionStorage.getItem(CHAVE_ABA_COM) === "cliente" ? "cliente" : "geral"; } catch { return "geral"; } })();
+  const montarAbas = () => {
+    const cab = alvo.closest(".visor")?.querySelector("header.cab");
+    if (!cab) return false;
+    cab.querySelector("#comAbas")?.remove();
+    const nav = document.createElement("nav");
+    nav.className = "cab-abas"; nav.id = "comAbas"; nav.setAttribute("role", "tablist");
+    nav.innerHTML = ABAS_COM.map(([k, t, ic]) => `<button type="button" role="tab" data-aba="${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}<span>${esc(tr(t))}</span></button>`).join("");
+    nav.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => trocarAba(b.dataset.aba)));
+    cab.appendChild(nav);
+    return true;
+  };
+  const trocarAba = (k) => {
+    if (k === aba) return;
+    aba = k;
+    try { sessionStorage.setItem(CHAVE_ABA_COM, k); } catch { /* fica só nesta tela */ }
+    listaAberta = null; cliAberto = false;
+    const nav = alvo.closest(".visor")?.querySelector("#comAbas");
+    nav?.querySelectorAll("button").forEach((b) => { const on = b.dataset.aba === k; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+    desenhar();
+  };
+  // sem o cabeçalho (ex.: tela cheia), as abas ficam no topo do painel
+  const abasNoCabecalho = montarAbas();
+  const abasNoPainel = () => (abasNoCabecalho ? "" : `<div class="pos-filtros">${segmentos("comAbasSeg", ABAS_COM.map(([k, t]) => [k, t]), aba)}</div>`);
+  const ligarAbasNoPainel = () => ligarSegmentos(alvo, "comAbasSeg", trocarAba);
+  const desenhar = () => (aba === "cliente" ? desenharCliente() : desenharGeral());
+
   // clique fora da lista aberta fecha (uma vez por página)
   const fechar = (e) => {
     if (!alvo.isConnected) { document.removeEventListener("click", fechar); return; }
     if (listaAberta && !e.target.closest?.("[data-multi]")) {
       listaAberta = null;
       $$("[data-multi]", alvo).forEach((c) => c.classList.remove("aberta"));
+    }
+    if (cliAberto && !e.target.closest?.("#cliEscolha")) {
+      cliAberto = false;
+      $("#cliEscolha", alvo)?.classList.remove("aberta");
     }
   };
   document.addEventListener("click", fechar);
@@ -2874,7 +3121,7 @@ const contratoPaiCompra = (c) => String(c ?? "").match(/^(BR[CV]-\d+\/\d{2})/)?.
 // Diferencial do Conilon nas compras: parte dos contratos vem do Digisul multiplicada por 100
 // (-2043 = -20,43; -609 = -6,09) e parte já vem certa (-22,98; -4,54). Nenhum diferencial real
 // passa de ±25 e o menor multiplicado é 33 (= -0,33): de 30 para cima divide por 100.
-// (Nas vendas todos vêm ×100: o Dashboard Commercial divide todos.)
+// (Nas vendas todos vêm ×100: o Dashboard Sales divide todos.)
 const difConilonCompra = (d) => (d == null ? null : Math.abs(d) >= 30 ? d / 100 : d);
 
 function medidasCompra(linhas) {
@@ -2903,7 +3150,7 @@ function medidasCompra(linhas) {
   return m;
 }
 
-// Lista de escolha com caixinhas (mesmo visual das do Dashboard Commercial)
+// Lista de escolha com caixinhas (mesmo visual das do Dashboard Sales)
 function listaMulti({ k, rot, ops, sel, fmt, aberta }) {
   const txt = (v) => (fmt ? fmt(v) : v);
   const resumo = !sel.size ? tr("All") : sel.size === 1 ? txt([...sel][0]) : `${sel.size} ${tr("selected")}`;
