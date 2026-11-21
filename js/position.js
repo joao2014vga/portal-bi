@@ -2512,6 +2512,13 @@ function medidasComercial(linhas) {
   return m;
 }
 
+// clique num gráfico que redesenha a página: espera o Chart.js terminar de tratar o evento
+// (redesenhar na hora destrói o gráfico no meio do clique e dá erro no console)
+const depoisDoClique = (aoClicar, valor, e) => {
+  const varios = !!(e.native?.ctrlKey || e.native?.metaKey);
+  setTimeout(() => aoClicar(valor, varios), 0);
+};
+
 // valores escritos em cima das barras e dos pontos
 const rotulosGrafico = {
   id: "rotulos",
@@ -2542,7 +2549,7 @@ async function graficoQualidades(canvas, itens, aoClicar, selecao = new Set()) {
     data: { labels: itens.map((x) => x.padrao), datasets: [{ data: itens.map((x) => arred(x.m.dif)), backgroundColor: cores, borderRadius: 3, maxBarThickness: 34 }] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, layout: { padding: { top: 18, bottom: 4 } },
-      onClick: (e, els) => { if (els.length) aoClicar(itens[els[0].index].padrao, e.native?.ctrlKey || e.native?.metaKey); },
+      onClick: (e, els) => { if (els.length) depoisDoClique(aoClicar, itens[els[0].index].padrao, e); },
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
       scales: {
         x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
@@ -2604,7 +2611,7 @@ async function graficoSacasQualidade(canvas, itens, aoClicar, selecao = new Set(
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
       interaction: { mode: "index", intersect: false },
-      onClick: (e, els) => { if (els.length) aoClicar(itens[els[0].index].padrao, e.native?.ctrlKey || e.native?.metaKey); },
+      onClick: (e, els) => { if (els.length) depoisDoClique(aoClicar, itens[els[0].index].padrao, e); },
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
       scales: {
         x: { stacked: true, grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
@@ -3193,22 +3200,27 @@ function ligarListasMulti(alvo, estado, aplicar) {
 }
 
 // barras empilhadas Arábica / Conilon por mês + linha do acumulado (eixo da direita)
-async function graficoComprasMes(canvas, { rotulos, arabica, conilon, acumulado }) {
+// meses e aoClicar(mes, varios): clicar num mês (barra ou coluna) filtra a página; selecao = meses escolhidos (os outros ficam apagados)
+async function graficoComprasMes(canvas, { rotulos, arabica, conilon, acumulado, meses = [], aoClicar, selecao = new Set() }) {
   const Chart = await carregarChart();
   const t = tema(canvas);
+  const apaga = (cor) => (/^#[0-9a-f]{6}$/i.test(cor) ? `${cor}55` : t.grade);
+  const cores = (cor) => meses.length ? meses.map((m) => (!selecao.size || selecao.has(m) ? cor : apaga(cor))) : cor;
   const c = new Chart(canvas, {
     data: {
       labels: rotulos,
       datasets: [
         { type: "line", label: tr("Accumulated"), data: acumulado, yAxisID: "y2", borderColor: t.tinta2, backgroundColor: t.tinta2, borderWidth: 2,
           borderDash: [5, 4], pointRadius: 2.5, pointHoverRadius: 5, tension: 0.25, order: 0 },
-        { type: "bar", label: "Arabica", data: arabica, backgroundColor: t.s1, borderRadius: 3, maxBarThickness: 34, stack: "s", order: 1 },
-        { type: "bar", label: "Conilon", data: conilon, backgroundColor: t.s2, borderRadius: 3, maxBarThickness: 34, stack: "s", order: 1 },
+        { type: "bar", label: "Arabica", data: arabica, backgroundColor: cores(t.s1), borderRadius: 3, maxBarThickness: 34, stack: "s", order: 1 },
+        { type: "bar", label: "Conilon", data: conilon, backgroundColor: cores(t.s2), borderRadius: 3, maxBarThickness: 34, stack: "s", order: 1 },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
       interaction: { mode: "index", intersect: false },
+      onClick: (e, els) => { if (aoClicar && els.length && meses[els[0].index]) depoisDoClique(aoClicar, meses[els[0].index], e); },
+      onHover: (e, els) => { if (aoClicar) e.native.target.style.cursor = els.length ? "pointer" : "default"; },
       scales: {
         x: { stacked: true, grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
         y: { stacked: true, grid: { color: t.grade }, border: { display: false }, ticks: { color: t.muda, font: { size: 11 }, callback: (v) => fmtK(v) },
@@ -3237,7 +3249,7 @@ async function graficoDifQualidade(canvas, itens, unidade, aoClicar, selecao) {
       backgroundColor: itens.map((x) => (!selecao.size || selecao.has(x.padrao) ? t.s1 : apagada)), borderRadius: 3, maxBarThickness: 34 }] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, layout: { padding: { top: 18, bottom: 4 } },
-      onClick: (e, els) => { if (els.length) aoClicar(itens[els[0].index].padrao, e.native?.ctrlKey || e.native?.metaKey); },
+      onClick: (e, els) => { if (els.length) depoisDoClique(aoClicar, itens[els[0].index].padrao, e); },
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
       scales: {
         x: { grid: { display: false }, border: { color: t.grade }, ticks: { color: t.muda, font: { size: 11 } } },
@@ -3337,6 +3349,17 @@ async function painelComprasDash(alvo, carga, ctx) {
   const abertosMesFix = new Set(); // meses da bolsa abertos na aba Fixations
   const estadoLista = { aberta: null };
   const noPeriodo = (r) => !!r._mes && r._mes >= de && r._mes <= ate;
+  // meses clicados no gráfico "Purchases by month" (vazio = o período inteiro): filtram toda a aba
+  const mesSel = new Set();
+  const noMes = (r) => !mesSel.size || mesSel.has(r._mes);
+  const selecionarMes = (mes, varios) => {
+    if (varios) { if (!mesSel.delete(mes)) mesSel.add(mes); }
+    else if (mesSel.size === 1 && mesSel.has(mes)) mesSel.clear();
+    else { mesSel.clear(); mesSel.add(mes); }
+    desenhar();
+  };
+  // período mudou: sai o mês escolhido que ficou de fora
+  const ajustarMesSel = () => { for (const mes of [...mesSel]) if (mes < de || mes > ate) mesSel.delete(mes); };
   // filtro de contrato: parte do número, sem diferenciar maiúsculas ("0459/26", "brc-0459")
   const passaBusca = (r) => !busca || String(r.contrato ?? "").toUpperCase().includes(busca.trim().toUpperCase());
   const passa = (r, exceto) => passaBusca(r) && FILTROS.every(([k, , val]) => k === exceto || !filtro[k].size || val(r).some((v) => filtro[k].has(v)));
@@ -3505,7 +3528,8 @@ async function painelComprasDash(alvo, carga, ctx) {
     ligarAbasNoPainel();
     $$("[data-mesfix]", alvo).forEach((b) => b.addEventListener("click", () => { if (!abertosMesFix.delete(b.dataset.mesfix)) abertosMesFix.add(b.dataset.mesfix); desenhar(); }));
     ligarListasMulti(alvo, estadoLista, (k, valores) => { filtro[k] = new Set(valores); return desenhar(); });
-    $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); busca = ""; estadoLista.aberta = null; desenhar(); });
+    $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); mesSel.clear(); busca = ""; estadoLista.aberta = null; desenhar(); });
+    $("#cpLimparMes", alvo)?.addEventListener("click", () => { mesSel.clear(); desenhar(); });
     const campo =$("#cpContrato", alvo);
     campo.addEventListener("input", () => {
       busca = campo.value;
@@ -3516,16 +3540,18 @@ async function painelComprasDash(alvo, carga, ctx) {
   // ------------------------------------------------------------- aba Purchases Overview
   const desenharGeral = async () => {
     limparGraficos();
-    const linhas = dados.filter((r) => noPeriodo(r) && passa(r));
+    // linhasPer: o período inteiro (o gráfico por mês mostra todos os meses); linhas: só os meses clicados nele
+    const linhasPer = dados.filter((r) => noPeriodo(r) && passa(r));
+    const linhas = linhasPer.filter(noMes);
     const m = medidasCompra(linhas);
     // sacas a receber: contratos em aberto com os filtros da página, de qualquer data de emissão
-    // (o período De/Até não vale aqui); embaixo, de que vencimento a que vencimento eles vão
-    const abertosRec = dados.filter((r) => r._aEnt > 0 && passa(r));
+    // (o período De/Até não vale aqui; um mês clicado no gráfico vale); embaixo, de que vencimento a que vencimento eles vão
+    const abertosRec = dados.filter((r) => r._aEnt > 0 && passa(r) && noMes(r));
     const mAb = medidasCompra(abertosRec);
     const vencsRec = abertosRec.map((r) => r._venc).filter(Boolean).sort();
     const periodoRec = !corretoresEm ? "Due dates: …"
       : vencsRec.length ? `Due ${fmtMes(vencsRec[0])} → ${fmtMes(vencsRec.at(-1))} · any issue date` : "any issue date";
-    const semFiltro = (k) => dados.filter((r) => noPeriodo(r) && passa(r, k));
+    const semFiltro = (k) => dados.filter((r) => noPeriodo(r) && noMes(r) && passa(r, k));
     const opcoes = (k, val, ordem) => [...new Set([...semFiltro(k).flatMap(val).filter(Boolean), ...filtro[k]])].sort(ordem);
 
     // corretagem: uma linha por corretor do contrato (como no Espelho de Corretagem)
@@ -3605,14 +3631,14 @@ async function painelComprasDash(alvo, carga, ctx) {
     const maior = topContratos[0];
     const ultimo = linhas.reduce((u, r) => (!u || (r.emissao ?? "") > (u.emissao ?? "") || (r.emissao === u.emissao && r.contrato > u.contrato) ? r : u), null);
 
-    // por mês (emissão)
+    // por mês (emissão): o período inteiro, com os meses clicados em destaque
     const meses = mesesEntre(de, ate);
-    const porMes = new Map(meses.map((mes) => [mes, medidasCompra(linhas.filter((r) => r._mes === mes))]));
+    const porMes = new Map(meses.map((mes) => [mes, medidasCompra(linhasPer.filter((r) => r._mes === mes))]));
     let acc = 0;
     const acumulado = meses.map((mes) => (acc += porMes.get(mes).sacas));
 
-    // fornecedor × mês (mensal ou acumulado)
-    const mesesComDados = meses.filter((mes) => porMes.get(mes).sacas);
+    // fornecedor × mês (mensal ou acumulado), só os meses escolhidos
+    const mesesComDados = meses.filter((mes) => noMes({ _mes: mes }) && porMes.get(mes).sacas);
     const doFornMes = new Map();
     for (const r of linhas) {
       const k = `${r.fornecedor ?? "—"}\u0001${r._mes}`;
@@ -3637,7 +3663,8 @@ async function painelComprasDash(alvo, carga, ctx) {
     }
     const difQual = [...porPadrao.values()].map((o) => ({ ...o, dif: o.peso / o.sacas })).sort((a, b) => ordemPadrao(a.padrao, b.padrao));
 
-    const algumFiltro = FILTROS.some(([k]) => filtro[k].size);
+    const algumFiltro = FILTROS.some(([k]) => filtro[k].size) || mesSel.size > 0;
+    const nomesMeses = [...mesSel].sort().map(rotMes).join(", ");
     const corrNota = corretoresErro
       ? `<p class="muted pos-nota">${icon("alert")} <span>Brokers could not be loaded from Digisul:</span> <span>${esc(corretoresErro)}</span> <button type="button" class="link" id="cpCorrRetry">Try again</button></p>`
       : !corretoresEm ? `<p class="muted pos-nota">${icon("clock")} <span>Loading brokers from Digisul…</span></p>` : "";
@@ -3654,9 +3681,10 @@ async function painelComprasDash(alvo, carga, ctx) {
       <label class="pos-mes"><span>To</span><input type="month" id="cpAte" value="${ate}"></label>
       ${FILTROS.map(([k, rot, val, ordem]) => listaMulti({ k, rot, ops: opcoes(k, val, ordem), sel: filtro[k], aberta: estadoLista.aberta === k })).join("")}
       <label class="pos-mes"><span>Contract</span><span class="busca sm">${icon("search")}<input type="search" id="cpContrato" placeholder="${esc(tr("Search contract…"))}" value="${esc(busca)}" aria-label="${esc(tr("Search contract…"))}"></span></label>
+      ${mesSel.size ? `<button type="button" class="btn pos-mes-sel" id="cpLimparMes" title="${esc(tr("Show the whole period"))}">${icon("x")}<span>${esc(tr("Month"))}: ${esc(nomesMeses)}</span></button>` : ""}
       ${algumFiltro || busca ? `<button type="button" class="btn" id="cpLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
     </div>
-    <p class="muted pos-nota">${icon("info")} <span>Purchases by contract issue date. Click a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
+    <p class="muted pos-nota">${icon("info")} <span>Purchases by contract issue date. Click a month, a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
     ${corrNota}
     <div class="pos-kpis">
       ${kpi("Total contracts", fmtN(m.contratos))}
@@ -3671,8 +3699,8 @@ async function painelComprasDash(alvo, carga, ctx) {
     </div>
 
     <section class="pos-card">
-      <div class="pos-card-h"><h2>Purchases by month</h2><p class="muted">Bags by contract issue month, Arabica and Conilon, with the running total of the period.</p></div>
-      ${linhas.length ? `<div class="pos-grafico"><canvas id="gCpMes" role="img" aria-label="Purchased bags by month with accumulated total"></canvas></div>` : `<p class="vazio-td">No purchases for these filters.</p>`}
+      <div class="pos-card-h"><h2>Purchases by month</h2><p class="muted">Bags by contract issue month, Arabica and Conilon, with the running total of the period. Click a month to see only its purchases on the whole page.</p></div>
+      ${linhasPer.length ? `<div class="pos-grafico"><canvas id="gCpMes" role="img" aria-label="Purchased bags by month with accumulated total"></canvas></div>` : `<p class="vazio-td">No purchases for these filters.</p>`}
     </section>
 
     <div class="pos-duas">
@@ -3734,7 +3762,8 @@ async function painelComprasDash(alvo, carga, ctx) {
 
     ligarAbasNoPainel();
     ligarListasMulti(alvo, estadoLista, (k, valores) => { filtro[k] = new Set(valores); return desenhar(); });
-    $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); busca = ""; estadoLista.aberta = null; desenhar(); });
+    $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); mesSel.clear(); busca = ""; estadoLista.aberta = null; desenhar(); });
+    $("#cpLimparMes", alvo)?.addEventListener("click", () => { mesSel.clear(); desenhar(); });
     const campoBusca = $("#cpContrato", alvo);
     campoBusca.addEventListener("input", () => {
       busca = campoBusca.value;
@@ -3747,18 +3776,19 @@ async function painelComprasDash(alvo, carga, ctx) {
       desenhar();
     }));
     $$("tr[data-qual]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("padrao", l.dataset.qual, e.ctrlKey || e.metaKey)));
-    $("#cpDe", alvo).addEventListener("change", (e) => { if (!e.target.value) return; de = e.target.value; if (de > ate) ate = de; desenhar(); });
-    $("#cpAte", alvo).addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; desenhar(); });
+    $("#cpDe", alvo).addEventListener("change", (e) => { if (!e.target.value) return; de = e.target.value; if (de > ate) ate = de; ajustarMesSel(); desenhar(); });
+    $("#cpAte", alvo).addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; ajustarMesSel(); desenhar(); });
     $("#cpCorrRetry", alvo)?.addEventListener("click", async () => { corretoresErro = null; await desenhar(); await carregarCorretores(); desenhar(); });
     ligarSegmentos(alvo, "cpEspDif", (k) => { espDif = k; desenhar(); });
     ligarSegmentos(alvo, "cpMatriz", (k) => { visaoMatriz = k; desenhar(); });
     $$("tr[data-forn]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("fornecedor", l.dataset.forn, e.ctrlKey || e.metaKey)));
     $$("tr[data-corr]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("corretor", l.dataset.corr, e.ctrlKey || e.metaKey)));
 
-    if (linhas.length) {
+    if (linhasPer.length) {
       await semQuebrar(graficoComprasMes, $("#gCpMes", alvo), {
         rotulos: meses.map(rotMes), arabica: meses.map((mes) => arred(porMes.get(mes).sacasA)),
         conilon: meses.map((mes) => arred(porMes.get(mes).sacasC)), acumulado: acumulado.map(arred),
+        meses, aoClicar: selecionarMes, selecao: mesSel,
       });
     }
     if (difQual.length) await semQuebrar(graficoDifQualidade, $("#gCpQual", alvo), difQual, unDif, (p, varios) => selecionar("padrao", p, varios), filtro.padrao);

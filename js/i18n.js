@@ -312,6 +312,11 @@ const PT = {
   "¢/lb · NY · weighted by bags": "¢/lb · NY · ponderado pelas sacas", "London · weighted by bags": "Londres · ponderado pelas sacas",
   "Bags by contract issue month, Arabica and Conilon, with the running total of the period.":
     "Sacas pelo mês de emissão do contrato, Arábica e Conilon, com o acumulado do período.",
+  "Bags by contract issue month, Arabica and Conilon, with the running total of the period. Click a month to see only its purchases on the whole page.":
+    "Sacas pelo mês de emissão do contrato, Arábica e Conilon, com o acumulado do período. Clique num mês para ver só as compras dele na página inteira.",
+  "Purchases by contract issue date. Click a month, a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.":
+    "Compras pela data de emissão do contrato. Clique num mês, num fornecedor, numa qualidade, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
+  "Show the whole period": "Mostrar o período inteiro",
   "Purchases by contract issue date. Click a supplier, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.":
     "Compras pela data de emissão do contrato. Clique num fornecedor, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
   "A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).":
