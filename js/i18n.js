@@ -280,7 +280,12 @@ const PT = {
   "all months": "todos os meses", "No contracts.": "Nenhum contrato.",
   "Purchases to fix minus sales to fix (sales count as negative).": "Compras a fixar menos vendas a fixar (as vendas entram negativas).",
   // Dashboard Purchases
-  "Dashboard Purchases": "Dashboard de Compras", "Accumulated": "Acumulado", "accumulated": "acumulado", "Avg rate": "% média",
+  "Dashboard Purchases": "Dashboard de Compras", "Bags to receive": "Sacas a receber", "To receive": "A receber",
+  "Supplier / quality / screen": "Fornecedor / qualidade / peneira", "Search contract…": "Buscar contrato…", "Low grade": "Low grade",
+  "Purchases by contract issue date. Click a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.":
+    "Compras pela data de emissão do contrato. Clique num fornecedor, numa qualidade, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
+  "The Digisul purchase query did not return the component diffs (Bica, MTGB, LTGB, Low grade).":
+    "A consulta de compras do Digisul não trouxe os diferenciais por componente (Bica, MTGB, LTGB, Low grade).", "Accumulated": "Acumulado", "accumulated": "acumulado", "Avg rate": "% média",
   "Top suppliers": "Top fornecedores", "Top brokers": "Top corretores", "Top contracts": "Top contratos", "Top contract": "Maior contrato",
   "Brokerage R$": "Corretagem R$", "Avg brokerage": "Corretagem média", "Brokers unavailable.": "Corretores indisponíveis.",
   "Loading brokers…": "Carregando corretores…", "Loading brokers from Digisul…": "Carregando os corretores do Digisul…",

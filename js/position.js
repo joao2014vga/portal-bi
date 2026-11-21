@@ -2862,6 +2862,8 @@ async function painelComercial(alvo, carga, ctx) {
 // Corretagem estimada = valor final (R$) × % cadastrada no Digisul.
 // =====================================================================
 const SEM_CORRETOR = "(no broker)";
+// diferenciais por componente do contrato de compra: [chave, rótulo, sempre na tabela]
+const COMPS_DIF = [["bica", "Bica", true], ["mtgb", "MTGB", true], ["ltgb", "LTGB", true], ["lg", "Low grade", true], ["moka", "Moka", false], ["grinder", "Grinder", false]];
 const contratoPaiCompra = (c) => String(c ?? "").match(/^(BR[CV]-\d+\/\d{2})/)?.[1] ?? null;
 // Diferencial do Conilon nas compras: parte dos contratos vem do Digisul multiplicada por 100
 // (-2043 = -20,43; -609 = -6,09) e parte já vem certa (-22,98; -4,54). Nenhum diferencial real
@@ -3017,20 +3019,31 @@ async function painelComprasDash(alvo, carga, ctx) {
     r._mes = mesIso(r.emissao);
     r._tipo = tipoPadrao(r.padrao);
     const aberto = porContrato.get(r.contrato);
+    // a receber: saldo dos contratos de compra em aberto (o café que ainda vamos receber)
     r._aEnt = aberto?.a_entregar > 0 ? aberto.a_entregar : 0;
+    r._pen = aberto?.peneira ?? null;
+    r._difs = {};
     r._corr = null;
   }
 
-  // corretores: ao vivo do Digisul; sem eles o resto do painel funciona normalmente
-  let corretoresErro = null, corretoresEm = null;
+  // corretores, peneira e diferenciais por componente: ao vivo do Digisul (brascof-api);
+  // sem eles o resto do painel funciona normalmente
+  let corretoresErro = null, corretoresEm = null, difsAviso = null;
   const carregarCorretores = async () => {
     try {
       const j = await ctx.api.comprasCorretores();
-      const mapa = j.contratos ?? {};
+      const mapa = j.contratos ?? {}, compras = j.compras ?? null;
       for (const r of dados) {
         const lista = mapa[r.contrato] ?? mapa[contratoPaiCompra(r.contrato)] ?? null;
         r._corr = lista?.length ? lista : null;
+        const c = compras?.[r.contrato];
+        if (!c) continue;
+        r._pen = c.peneira ?? r._pen;
+        r._difs = Object.fromEntries(Object.entries(c.dif ?? {}).map(([k, v]) => [k, r._esp === "CONILON" ? difConilonCompra(v) : v]));
       }
+      const temDifs = Object.values(j.campos ?? {}).some((v) => v.startsWith("dif."));
+      difsAviso = !compras ? `Component diffs unavailable: ${j.erroCompras ?? "the service did not return the purchase contracts."}`
+        : !temDifs ? "The Digisul purchase query did not return the component diffs (Bica, MTGB, LTGB, Low grade)." : null;
       corretoresEm = j.consultadoEm ?? new Date().toISOString();
       corretoresErro = null;
     } catch (e) { corretoresErro = e.message; }
@@ -3051,10 +3064,13 @@ async function painelComprasDash(alvo, carga, ctx) {
   const filtro = Object.fromEntries(FILTROS.map(([k]) => [k, new Set()]));
   const hoje = mesIso(hojeIso());
   let de = `${hoje.slice(0, 4)}-01`, ate = hoje;
-  let espDif = "ARABICA", visaoMatriz = "mes";
+  let espDif = "ARABICA", espForn = "ARABICA", visaoMatriz = "mes", busca = "";
+  const abertosForn = new Set(); // nós abertos da árvore fornecedor > qualidade > peneira
   const estadoLista = { aberta: null };
   const noPeriodo = (r) => !!r._mes && r._mes >= de && r._mes <= ate;
-  const passa = (r, exceto) => FILTROS.every(([k, , val]) => k === exceto || !filtro[k].size || val(r).some((v) => filtro[k].has(v)));
+  // filtro de contrato: parte do número, sem diferenciar maiúsculas ("0459/26", "brc-0459")
+  const passaBusca = (r) => !busca || String(r.contrato ?? "").toUpperCase().includes(busca.trim().toUpperCase());
+  const passa = (r, exceto) => passaBusca(r) && FILTROS.every(([k, , val]) => k === exceto || !filtro[k].size || val(r).some((v) => filtro[k].has(v)));
   const selecionar = (k, v, varios) => {
     const s = filtro[k];
     if (varios) { if (!s.delete(v)) s.add(v); }
@@ -3102,7 +3118,51 @@ async function painelComprasDash(alvo, carga, ctx) {
       (porForn.get(k) ?? porForn.set(k, []).get(k)).push(r);
     }
     const rankForn = [...porForn].map(([nome, rows]) => ({ nome, m: medidasCompra(rows) })).sort((a, b) => b.m.sacas - a.m.sacas);
-    const maxForn = rankForn[0]?.m.sacas ?? 0;
+
+    // Top suppliers: uma espécie por vez (as unidades do diferencial são diferentes),
+    // fornecedor > qualidade > peneira, com o diferencial principal e os por componente
+    const campoForn = espForn === "ARABICA" ? "_difA" : "_difC";
+    const daEsp = semFiltro("fornecedor").filter((r) => r._esp === espForn);
+    // Moka e Grinder só aparecem quando algum contrato da lista tem
+    const compsVisiveis = COMPS_DIF.filter(([k, , sempre]) => sempre || daEsp.some((r) => r._difs[k] != null));
+    const medDrill = (rows) => {
+      const o = { sacas: 0, ctr: new Set(), aRec: 0, d: [0, 0], c: {} };
+      for (const r of rows) {
+        const s = r.sacas ?? 0;
+        o.sacas += s; o.ctr.add(r.contrato); o.aRec += r._aEnt;
+        if (r[campoForn] != null && s) { o.d[0] += r[campoForn] * s; o.d[1] += s; }
+        for (const [k] of compsVisiveis) {
+          const v = r._difs[k];
+          if (v != null && s) { const a = (o.c[k] ??= [0, 0]); a[0] += v * s; a[1] += s; }
+        }
+      }
+      return { sacas: o.sacas, ctr: o.ctr, aRec: o.aRec, dif: o.d[1] ? o.d[0] / o.d[1] : null,
+        difs: Object.fromEntries(compsVisiveis.map(([k]) => [k, o.c[k]?.[1] ? o.c[k][0] / o.c[k][1] : null])) };
+    };
+    const totEsp = medDrill(daEsp);
+    const sacasFornEsp = daEsp.reduce((mp, r) => mp.set(r.fornecedor ?? "—", (mp.get(r.fornecedor ?? "—") ?? 0) + (r.sacas ?? 0)), new Map());
+    const maxFornEsp = Math.max(0, ...sacasFornEsp.values());
+    const NIVEIS_FORN = [[(r) => r.fornecedor ?? "—", null], [(r) => r.padrao ?? "—", ordemPadrao], [(r) => r._pen ?? "—", null]]; // null = por sacas
+    const arvoreForn = (rows, nivel, caminho) => {
+      const [chave, ordem] = NIVEIS_FORN[nivel];
+      const grupos = new Map();
+      for (const r of rows) { const k = chave(r); (grupos.get(k) ?? grupos.set(k, []).get(k)).push(r); }
+      const itens = [...grupos].map(([k, g]) => ({ k, g, x: medDrill(g) }))
+        .sort(ordem ? (a, b) => ordem(a.k, b.k) : (a, b) => b.x.sacas - a.x.sacas);
+      return itens.flatMap(({ k, g, x }) => {
+        const id = `${caminho}\u0001${k}`, folha = nivel === NIVEIS_FORN.length - 1, aberto = !folha && abertosForn.has(id);
+        const tog = folha ? `<span class="pos-com-folha"></span>`
+          : `<button type="button" class="pos-com-tog" data-no="${esc(id)}" aria-expanded="${aberto}" title="${aberto ? "Collapse" : "Expand"}">${aberto ? "⊟" : "⊞"}</button>`;
+        const attrs = nivel === 0 ? ` class="pos-com-n0 pos-clic${marca("fornecedor", k)}" data-forn="${esc(k)}"`
+          : nivel === 1 ? ` class="pos-com-n1 pos-clic${marca("padrao", k)}" data-qual="${esc(k)}"` : ` class="pos-com-n2"`;
+        const rot = nivel === 2 ? fmtPeneira(k === "—" ? null : k) : k;
+        return [`<tr${attrs}><td style="padding-left:${10 + nivel * 18}px">${tog}${esc(rot)}</td>
+          <td class="num">${nivel === 0 ? barra(x.sacas, maxFornEsp) : fmtN(x.sacas)}</td><td class="num">${pct(x.sacas, totEsp.sacas)}</td><td class="num">${fmtN(x.ctr.size)}</td>
+          <td class="num">${fmtDif(x.dif)}</td>${compsVisiveis.map(([c]) => `<td class="num">${corretoresEm ? fmtDif(x.difs[c]) : "…"}</td>`).join("")}${celNum(x.aRec)}</tr>`,
+          ...(aberto ? arvoreForn(g, nivel + 1, id) : [])];
+      });
+    };
+    const linhasForn = arvoreForn(daEsp, 0, "");
 
     // maiores contratos e o último emitido no período
     const topContratos = [...linhas].sort((a, b) => (b.sacas ?? 0) - (a.sacas ?? 0)).slice(0, 15);
@@ -3157,16 +3217,17 @@ async function painelComprasDash(alvo, carga, ctx) {
       <label class="pos-mes"><span>From</span><input type="month" id="cpDe" value="${de}"></label>
       <label class="pos-mes"><span>To</span><input type="month" id="cpAte" value="${ate}"></label>
       ${FILTROS.map(([k, rot, val, ordem]) => listaMulti({ k, rot, ops: opcoes(k, val, ordem), sel: filtro[k], aberta: estadoLista.aberta === k })).join("")}
-      ${algumFiltro ? `<button type="button" class="btn" id="cpLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
+      <label class="pos-mes"><span>Contract</span><span class="busca sm">${icon("search")}<input type="search" id="cpContrato" placeholder="${esc(tr("Search contract…"))}" value="${esc(busca)}" aria-label="${esc(tr("Search contract…"))}"></span></label>
+      ${algumFiltro || busca ? `<button type="button" class="btn" id="cpLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
     </div>
-    <p class="muted pos-nota">${icon("info")} <span>Purchases by contract issue date. Click a supplier, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
+    <p class="muted pos-nota">${icon("info")} <span>Purchases by contract issue date. Click a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
     ${corrNota}
     <div class="pos-kpis">
       ${kpi("Total contracts", fmtN(m.contratos))}
       ${kpi("Total bags", fmtN(m.sacas), `Arabica ${fmtN(m.sacasA)} · Conilon ${fmtN(m.sacasC)}`)}
       ${kpi("Avg diff Arabica", fmtDif(m.difA), "¢/lb · NY · weighted by bags")}
       ${kpi("Avg diff Conilon", fmtDif(m.difC), "London · weighted by bags")}
-      ${kpi("Bags to be delivered", fmtN(mAb.aEnt), `Arabica ${fmtN(mAb.aEntA)} · Conilon ${fmtN(mAb.aEntC)} · ${fmtN(mAb.contratos)} open contracts`)}
+      ${kpi("Bags to receive", fmtN(mAb.aEnt), `Arabica ${fmtN(mAb.aEntA)} · Conilon ${fmtN(mAb.aEntC)} · ${fmtN(mAb.contratos)} open contracts`)}
       ${kpi("Avg price Arabica · R$/bag", m.precoA == null ? "—" : fmtN(m.precoA, 2), `Conilon R$ ${m.precoC == null ? "—" : fmtN(m.precoC, 2)}/bag`)}
       ${kpi("Avg brokerage", corretoresEm ? pctFmt(corrBase ? corrPctPeso / corrBase : null) : corretoresErro ? "—" : "…",
         corretoresEm ? `${fmtDin(corrValor, "R$")} est. · R$ ${corrSacas ? fmtN(corrValor / corrSacas, 2) : "—"}/bag` : "")}
@@ -3185,19 +3246,6 @@ async function painelComprasDash(alvo, carga, ctx) {
         ${difQual.length ? `<div class="pos-grafico"><canvas id="gCpQual" role="img" aria-label="Average diff per quality"></canvas></div>` : `<p class="vazio-td">No data for these filters.</p>`}
       </section>
       <section class="pos-card">
-        <div class="pos-card-h"><h2>Top suppliers</h2></div>
-        <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
-          <thead><tr><th>Supplier</th><th class="num">Bags</th><th class="num">%</th><th class="num">Contracts</th><th class="num">Avg diff Arabica</th><th class="num">Avg diff Conilon</th><th class="num">To deliver</th></tr></thead>
-          <tbody>${rankForn.length ? rankForn.map(({ nome, m: x }) => `<tr class="pos-clic${marca("fornecedor", nome)}" data-forn="${esc(nome)}"><td>${esc(nome)}</td>
-            <td class="num">${barra(x.sacas, maxForn)}</td><td class="num">${pct(x.sacas, m.sacas)}</td><td class="num">${fmtN(x.contratos)}</td>
-            <td class="num">${fmtDif(x.difA)}</td><td class="num">${fmtDif(x.difC)}</td>${celNum(x.aEnt)}</tr>`).join("")
-            : `<tr><td colspan="7" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
-        </table></div>
-      </section>
-    </div>
-
-    <div class="pos-duas">
-      <section class="pos-card">
         <div class="pos-card-h"><h2>Top brokers</h2><p class="muted">A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).</p></div>
         ${corretoresEm ? `<div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
           <thead><tr><th>Broker</th><th class="num">Bags</th><th class="num">Contracts</th><th class="num">Avg rate</th><th class="num">Brokerage R$</th></tr></thead>
@@ -3208,16 +3256,34 @@ async function painelComprasDash(alvo, carga, ctx) {
           ${semCorr ? `<tfoot><tr class="pos-clic${marca("corretor", SEM_CORRETOR)}" data-corr="${esc(SEM_CORRETOR)}"><td>Direct (no broker)</td><td class="num">${fmtN(semCorr.sacas)}</td><td class="num">${fmtN(semCorr.ctr.size)}</td><td class="num">—</td><td class="num">—</td></tr></tfoot>` : ""}
         </table></div>` : `<p class="vazio-td">${corretoresErro ? "Brokers unavailable." : "Loading brokers…"}</p>`}
       </section>
-      <section class="pos-card">
-        <div class="pos-card-h"><h2>Top contracts</h2><p class="muted">The largest contracts of the period.</p></div>
-        <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
-          <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th class="num">Bags</th><th class="num">Diff</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
-          <tbody>${topContratos.length ? topContratos.map((r) => `<tr><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td><td>${esc(r.fornecedor ?? "—")}</td>
-            <td>${esc(r.padrao ?? "—")}</td>${celNum(r.sacas)}<td class="num">${fmtDif(r._dif)}</td><td class="num">${r.preco ? fmtN(r.preco, 2) : "—"}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("")
-            : `<tr><td colspan="7" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
-        </table></div>
-      </section>
     </div>
+
+    <section class="pos-card">
+      <div class="pos-card-h pos-card-h-linha"><div><h2>Top suppliers</h2>
+        <p class="muted">⊞ opens the qualities and, inside each one, the screens. Diffs weighted by bags (${espForn === "ARABICA" ? "¢/lb, NY" : "London"}).</p></div>
+        ${segmentos("cpEspForn", [["ARABICA", "Arabica"], ["CONILON", "Conilon"]], espForn)}</div>
+      ${difsAviso ? `<p class="muted pos-nota">${icon("info")} <span>${esc(difsAviso)}</span></p>` : ""}
+      <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num pos-com-arvore">
+        <thead><tr><th>Supplier / quality / screen</th><th class="num">Bags</th><th class="num">%</th><th class="num">Contracts</th><th class="num">Diff</th>
+          ${compsVisiveis.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th></tr></thead>
+        <tbody>${linhasForn.join("") || `<tr><td colspan="${6 + compsVisiveis.length}" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+        ${linhasForn.length ? `<tfoot><tr class="total"><th scope="row">Total</th>${celNum(totEsp.sacas, { forte: true })}<td class="num">100%</td><td class="num forte">${fmtN(totEsp.ctr.size)}</td>
+          <td class="num forte">${fmtDif(totEsp.dif)}</td>${compsVisiveis.map(([c]) => `<td class="num forte">${corretoresEm ? fmtDif(totEsp.difs[c]) : "…"}</td>`).join("")}${celNum(totEsp.aRec, { forte: true })}</tr></tfoot>` : ""}
+      </table></div>
+    </section>
+
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>Top contracts</h2><p class="muted">The largest contracts of the period.</p></div>
+      <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+        <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th>Screen</th><th class="num">Bags</th><th class="num">Diff</th>
+          ${COMPS_DIF.slice(0, 4).map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
+        <tbody>${topContratos.length ? topContratos.map((r) => `<tr><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td><td>${esc(r.fornecedor ?? "—")}</td>
+          <td>${esc(r.padrao ?? "—")}</td><td>${esc(fmtPeneira(r._pen))}</td>${celNum(r.sacas)}<td class="num">${fmtDif(r._dif)}</td>
+          ${COMPS_DIF.slice(0, 4).map(([c]) => `<td class="num">${corretoresEm ? fmtDif(r._difs[c]) : "…"}</td>`).join("")}${celNum(r._aEnt)}
+          <td class="num">${r.preco ? fmtN(r.preco, 2) : "—"}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("")
+          : `<tr><td colspan="13" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+      </table></div>
+    </section>
 
     <section class="pos-card">
       <div class="pos-card-h pos-card-h-linha"><div><h2>Bags per supplier · month by month</h2>
@@ -3231,7 +3297,19 @@ async function painelComprasDash(alvo, carga, ctx) {
     </section>`;
 
     ligarListasMulti(alvo, estadoLista, (k, valores) => { filtro[k] = new Set(valores); return desenhar(); });
-    $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); estadoLista.aberta = null; desenhar(); });
+    $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); busca = ""; estadoLista.aberta = null; desenhar(); });
+    const campoBusca = $("#cpContrato", alvo);
+    campoBusca.addEventListener("input", () => {
+      busca = campoBusca.value;
+      desenhar().then(() => { const n = $("#cpContrato", alvo); n?.focus(); n?.setSelectionRange(busca.length, busca.length); });
+    });
+    ligarSegmentos(alvo, "cpEspForn", (k) => { espForn = k; desenhar(); });
+    $$(".pos-com-tog", alvo).forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation(); // abrir não filtra
+      if (!abertosForn.delete(b.dataset.no)) abertosForn.add(b.dataset.no);
+      desenhar();
+    }));
+    $$("tr[data-qual]", alvo).forEach((l) => l.addEventListener("click", (e) => selecionar("padrao", l.dataset.qual, e.ctrlKey || e.metaKey)));
     $("#cpDe", alvo).addEventListener("change", (e) => { if (!e.target.value) return; de = e.target.value; if (de > ate) ate = de; desenhar(); });
     $("#cpAte", alvo).addEventListener("change", (e) => { if (!e.target.value) return; ate = e.target.value; if (ate < de) de = ate; desenhar(); });
     $("#cpCorrRetry", alvo)?.addEventListener("click", async () => { corretoresErro = null; await desenhar(); await carregarCorretores(); desenhar(); });
