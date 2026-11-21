@@ -1997,3 +1997,18 @@ create policy bi_position_detalhe_select on public.bi_position_detalhe for selec
   or (tipo <> all (array['vendas', 'compras', 'fisica_itens', 'termm_itens', 'comercial']) and tipo not like 'cert\_%'
       and public.bi_ve_painel('portal:position-contracts')));
 notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- 34. ORGANIZAÇÃO: CATEGORIA "Position" E PAINÉIS FORA DE USO
+-- A categoria "Position TESTES" passa a se chamar "Position" (a "Position" vazia,
+-- criada à parte, sai). Open Contracts, Export Sales, Purchases e Export Sale Diffs
+-- ficam desativados: somem da tela de todos e voltam marcando "ativo" na
+-- Administração. O código dos painéis continua no portal. Pode rodar de novo.
+-- =====================================================================
+delete from public.bi_categorias c
+where c.nome = 'Position'
+  and exists (select 1 from public.bi_categorias where nome = 'Position TESTES')
+  and not exists (select 1 from public.bi_dashboards d where d.categoria_id = c.id);
+update public.bi_categorias set nome = 'Position' where nome = 'Position TESTES';
+update public.bi_dashboards set ativo = false
+where link in ('portal:position-contracts', 'portal:position-sales', 'portal:position-purchases', 'portal:position-diffs');
