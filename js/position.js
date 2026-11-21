@@ -2918,7 +2918,7 @@ async function painelComercial(alvo, carga, ctx) {
       const tog = folha ? `<span class="pos-com-folha"></span>`
         : `<button type="button" class="pos-com-tog" data-no="${esc(id)}" aria-expanded="${aberto}" title="${aberto ? "Collapse" : "Expand"}">${aberto ? "⊟" : "⊞"}</button>`;
       const attr = clic && k ? ` class="pos-com-n${nivel} pos-clic${marcaBc(k)}" data-bc="${esc(k)}"` : ` class="pos-com-n${nivel}"`;
-      return [`<tr${attr}><td style="padding-left:${10 + nivel * 18}px">${tog}${rotulo(k)}</td>${cols(medidasComercial(g), g)}</tr>`,
+      return [`<tr${attr}><td style="padding-left:${10 + nivel * 18}px">${tog}${rotulo(k)}</td>${cols(medidasComercial(g), g, folha)}</tr>`,
         ...(aberto ? arvoreCli(g, niveis, estaAberto, cols, nivel + 1, id) : [])];
     });
   };
@@ -2948,7 +2948,14 @@ async function painelComercial(alvo, carga, ctx) {
     // por qualidade: BC > peneira (sempre o cliente inteiro; a escolha fica em destaque)
     const mCli = medidasComercial(doCli);
     const pct = (v) => (mCli.sacas ? `${fmtN((v / mCli.sacas) * 100, 1)}%` : "—");
-    const colsQual = (mg, g) => `<td class="num">${fmtN(mg.contratos)}</td>${celNum(mg.sacas)}<td class="num muted">${pct(mg.sacas)}</td>${celNum(mg.saida)}${celNum(mg.saldo)}<td class="num">${difMista(mg, g)}</td>`;
+    // descrição da qualidade (coluna Qualidade do contrato) na linha da peneira: as diferentes,
+    // da que tem mais sacas para a que tem menos, uma por linha
+    const especificacoes = (g) => {
+      const mp = new Map();
+      for (const r of g) { const q = (r.qualidade ?? "").trim(); if (q) mp.set(q, (mp.get(q) ?? 0) + (r.sacas ?? 0)); }
+      return [...mp].sort((a, b) => b[1] - a[1]).map(([q]) => `<div>${esc(q)}</div>`).join("");
+    };
+    const colsQual = (mg, g, folha) => `<td class="pos-com-espec">${folha ? especificacoes(g) : ""}</td><td class="num">${fmtN(mg.contratos)}</td>${celNum(mg.sacas)}<td class="num muted">${pct(mg.sacas)}</td>${celNum(mg.saida)}${celNum(mg.saldo)}<td class="num">${difMista(mg, g)}</td>`;
     const arvQual = arvoreCli(doCli, [
       [(r) => r.padrao ?? "", ordemBc, (v) => `${esc(v || "—")}${tipoPadrao(v) ? ` <span class="muted pos-com-tipo">${esc(tipoPadrao(v))}</span>` : ""}`, true],
       [(r) => r.peneira ?? "", alfaCli, (v) => esc(v || "—")],
@@ -3001,9 +3008,9 @@ async function painelComercial(alvo, carga, ctx) {
       <div class="pos-card-h pos-card-h-linha"><div><h2>Per quality</h2><p class="muted">Every contract with this client, by BC and screen. ⊞/⊟ opens or closes the screens.</p></div>
         <div class="pos-filtros"><button type="button" class="link" id="cliAbrirTudo">Expand all</button><button type="button" class="link" id="cliFecharTudo">Collapse all</button></div></div>
       <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num pos-com-arvore">
-        <thead><tr><th>Quality · screen</th><th class="num">Contracts</th><th class="num">Total bags</th><th class="num">% of bags</th><th class="num">Delivered</th><th class="num">Bags to be delivered</th><th class="num">Avg diff</th></tr></thead>
-        <tbody>${arvQual.join("") || `<tr><td colspan="7" class="vazio-td">No contracts for this client.</td></tr>`}</tbody>
-        ${arvQual.length ? `<tfoot><tr class="total"><th scope="row">Total</th><td class="num forte">${fmtN(mCli.contratos)}</td>${celNum(mCli.sacas, { forte: true })}<td class="num forte">100%</td>${celNum(mCli.saida, { forte: true })}${celNum(mCli.saldo, { forte: true })}<td class="num forte">${difMista(mCli, doCli)}</td></tr></tfoot>` : ""}
+        <thead><tr><th>Quality · screen</th><th>Quality description</th><th class="num">Contracts</th><th class="num">Total bags</th><th class="num">% of bags</th><th class="num">Delivered</th><th class="num">Bags to be delivered</th><th class="num">Avg diff</th></tr></thead>
+        <tbody>${arvQual.join("") || `<tr><td colspan="8" class="vazio-td">No contracts for this client.</td></tr>`}</tbody>
+        ${arvQual.length ? `<tfoot><tr class="total"><th scope="row">Total</th><td></td><td class="num forte">${fmtN(mCli.contratos)}</td>${celNum(mCli.sacas, { forte: true })}<td class="num forte">100%</td>${celNum(mCli.saida, { forte: true })}${celNum(mCli.saldo, { forte: true })}<td class="num forte">${difMista(mCli, doCli)}</td></tr></tfoot>` : ""}
       </table></div>
     </section>
     <div class="pos-duas">

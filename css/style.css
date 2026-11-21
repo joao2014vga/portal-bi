@@ -727,6 +727,8 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-unico-op .muted { font-size: 12px; font-variant-numeric: tabular-nums; }
 .pos-kpis-fix.pos-kpis-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .pos-com-tipo { font-size: 11px; font-weight: 500; margin-left: 4px; }
+.pos-com-arvore td.pos-com-espec { white-space: normal; min-width: 320px; font-size: 12px; line-height: 1.4; color: var(--texto-2); }
+.pos-com-arvore td.pos-com-espec > div + div { margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--borda); }
 @media (max-width: 1200px) { .pos-kpis-fix.pos-kpis-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .pos-kpis-fix.pos-kpis-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* Nova operação de futuros (colunas A–L da OpenFutures) */

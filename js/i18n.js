@@ -327,7 +327,7 @@ const PT = {
     "Clique num cliente, num mês de embarque ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
   "Dashboard Commercial": "Dashboard Comercial", "Dashboard Sales": "Dashboard de Vendas", "Last contract:": "Último contrato:",
   "Sales Overview": "Visão geral das vendas", "By client": "Por cliente", "First contract:": "Primeiro contrato:",
-  "Bags delivered": "Sacas entregues", "Per quality": "Por qualidade", "Quality · screen": "Qualidade · peneira", "% of bags": "% das sacas",
+  "Bags delivered": "Sacas entregues", "Per quality": "Por qualidade", "Quality · screen": "Qualidade · peneira", "Quality description": "Descrição da qualidade", "% of bags": "% das sacas",
   "Bags per quality": "Sacas por qualidade", "Delivered and to be delivered.": "Entregue e a entregar.",
   "To be delivered": "A entregar", "Clear quality": "Limpar qualidade",
   "Every contract with this client, by BC and screen. ⊞/⊟ opens or closes the screens.":
