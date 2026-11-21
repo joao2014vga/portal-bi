@@ -3254,8 +3254,13 @@ async function painelComprasDash(alvo, carga, ctx) {
     limparGraficos();
     const linhas = dados.filter((r) => noPeriodo(r) && passa(r));
     const m = medidasCompra(linhas);
-    // sacas a entregar: contratos em aberto com os filtros da página, de qualquer data de emissão
-    const mAb = medidasCompra(dados.filter((r) => r._aEnt > 0 && passa(r)));
+    // sacas a receber: contratos em aberto com os filtros da página, de qualquer data de emissão
+    // (o período De/Até não vale aqui); embaixo, de que vencimento a que vencimento eles vão
+    const abertosRec = dados.filter((r) => r._aEnt > 0 && passa(r));
+    const mAb = medidasCompra(abertosRec);
+    const vencsRec = abertosRec.map((r) => r._venc).filter(Boolean).sort();
+    const periodoRec = !corretoresEm ? "Due dates: …"
+      : vencsRec.length ? `Due ${fmtMes(vencsRec[0])} → ${fmtMes(vencsRec.at(-1))} · any issue date` : "any issue date";
     const semFiltro = (k) => dados.filter((r) => noPeriodo(r) && passa(r, k));
     const opcoes = (k, val, ordem) => [...new Set([...semFiltro(k).flatMap(val).filter(Boolean), ...filtro[k]])].sort(ordem);
 
@@ -3394,7 +3399,7 @@ async function painelComprasDash(alvo, carga, ctx) {
       ${kpi("Total bags", fmtN(m.sacas), `Arabica ${fmtN(m.sacasA)} · Conilon ${fmtN(m.sacasC)}`)}
       ${kpi("Avg diff Arabica", fmtDif(m.difA), "¢/lb · NY · weighted by bags")}
       ${kpi("Avg diff Conilon", fmtDif(m.difC), "London · weighted by bags")}
-      ${kpi("Bags to receive", fmtN(mAb.aEnt), `Arabica ${fmtN(mAb.aEntA)} · Conilon ${fmtN(mAb.aEntC)} · ${fmtN(mAb.contratos)} open contracts`)}
+      ${kpi("Bags to receive", fmtN(mAb.aEnt), `Arabica ${fmtN(mAb.aEntA)} · Conilon ${fmtN(mAb.aEntC)} · ${fmtN(mAb.contratos)} open contracts<br><strong>${esc(periodoRec)}</strong>`)}
       ${kpi("Avg price Arabica · R$/bag", m.precoA == null ? "—" : fmtN(m.precoA, 2), `Conilon R$ ${m.precoC == null ? "—" : fmtN(m.precoC, 2)}/bag`)}
       ${kpi("Avg brokerage", corretoresEm ? pctFmt(corrBase ? corrPctPeso / corrBase : null) : corretoresErro ? "—" : "…",
         corretoresEm ? `${fmtDin(corrValor, "R$")} est. · R$ ${corrSacas ? fmtN(corrValor / corrSacas, 2) : "—"}/bag` : "")}
