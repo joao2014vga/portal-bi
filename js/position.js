@@ -3024,6 +3024,7 @@ async function painelComprasDash(alvo, carga, ctx) {
     r._aEnt = aberto?.a_entregar > 0 ? aberto.a_entregar : 0;
     r._pen = aberto?.peneira ?? null;
     r._difs = {};
+    r._venc = null; // vencimento do contrato (vem do Digisul com os corretores)
     r._corr = null;
   }
 
@@ -3040,6 +3041,7 @@ async function painelComprasDash(alvo, carga, ctx) {
         const c = compras?.[r.contrato];
         if (!c) continue;
         r._pen = c.peneira ?? r._pen;
+        r._venc = c.vencimento ?? null;
         r._difs = Object.fromEntries(Object.entries(c.dif ?? {}).map(([k, v]) => [k, r._esp === "CONILON" ? difConilonCompra(v) : v]));
       }
       // diferencial por categoria de peneira: depende da consulta brascof_pesq_diferencial_peneira no Digisul
@@ -3209,6 +3211,10 @@ async function painelComprasDash(alvo, carga, ctx) {
       ? `<p class="muted pos-nota">${icon("alert")} <span>Brokers could not be loaded from Digisul:</span> <span>${esc(corretoresErro)}</span> <button type="button" class="link" id="cpCorrRetry">Try again</button></p>`
       : !corretoresEm ? `<p class="muted pos-nota">${icon("clock")} <span>Loading brokers from Digisul…</span></p>` : "";
     const nomeCorr = (r) => (r._corr ? r._corr.map((c) => c.nome).join(" / ") : corretoresEm ? "—" : "…");
+    // vencimento só para quem ainda tem café a receber; vencido em vermelho
+    const hojeDia = hojeIso();
+    const vencimento = (r) => (!(r._aEnt > 0) ? "" : !corretoresEm ? "…" : !r._venc ? "—"
+      : r._venc < hojeDia ? `<span style="color:var(--critico)" title="${esc(tr("Overdue"))}">${esc(fmtData(r._venc))}</span>` : esc(fmtData(r._venc)));
     const titulo = filtro.fornecedor.size === 1 ? [...filtro.fornecedor][0] : filtro.corretor.size === 1 ? [...filtro.corretor][0] : tr("Dashboard Purchases");
 
     alvo.innerHTML = `
@@ -3279,12 +3285,12 @@ async function painelComprasDash(alvo, carga, ctx) {
       <div class="pos-card-h"><h2>Top contracts</h2><p class="muted">The largest contracts of the period.</p></div>
       <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
         <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th>Screen</th><th class="num">Bags</th><th class="num">Diff bica</th>
-          ${compsContratos.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
+          ${compsContratos.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th><th>Due date</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
         <tbody>${topContratos.length ? topContratos.map((r) => `<tr><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td><td>${esc(r.fornecedor ?? "—")}</td>
           <td>${esc(r.padrao ?? "—")}</td><td>${esc(fmtPeneira(r._pen))}</td>${celNum(r.sacas)}<td class="num">${fmtDif(r._dif)}</td>
-          ${compsContratos.map(([c]) => `<td class="num">${corretoresEm ? fmtDif(r._difs[c]) : "…"}</td>`).join("")}${celNum(r._aEnt)}
+          ${compsContratos.map(([c]) => `<td class="num">${corretoresEm ? fmtDif(r._difs[c]) : "…"}</td>`).join("")}${celNum(r._aEnt)}<td>${vencimento(r)}</td>
           <td class="num">${r.preco ? fmtN(r.preco, 2) : "—"}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("")
-          : `<tr><td colspan="${9 + compsContratos.length}" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
+          : `<tr><td colspan="${10 + compsContratos.length}" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
       </table></div>
     </section>
 
