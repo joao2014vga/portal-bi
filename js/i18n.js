@@ -288,7 +288,7 @@ const PT = {
   "Direct (no broker)": "Direto (sem corretor)", "No purchases for these filters.": "Nenhuma compra com esses filtros.",
   "No brokers for these filters.": "Nenhum corretor com esses filtros.",
   "Purchases by month": "Compras por mês", "Avg price Arabica · R$/bag": "Preço médio Arábica · R$/saca",
-  "¢/lb · NY · weighted by bags": "¢/lb · NY · ponderado pelas sacas", "US$/t · London · weighted by bags": "US$/t · Londres · ponderado pelas sacas",
+  "¢/lb · NY · weighted by bags": "¢/lb · NY · ponderado pelas sacas", "London · weighted by bags": "Londres · ponderado pelas sacas",
   "Bags by contract issue month, Arabica and Conilon, with the running total of the period.":
     "Sacas pelo mês de emissão do contrato, Arábica e Conilon, com o acumulado do período.",
   "Purchases by contract issue date. Click a supplier, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.":

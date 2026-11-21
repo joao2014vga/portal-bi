@@ -2858,11 +2858,16 @@ async function painelComercial(alvo, carga, ctx) {
 // contratos em aberto (tipo 'purchases') + o corretor de cada contrato, que não
 // está no Position: vem ao vivo do Digisul pelo brascof-api (/api/compras-corretores).
 // Mês = mês da emissão do contrato. Diferencial médio ponderado pelas sacas:
-// Arábica na bolsa de NY (¢/lb), Conilon na de Londres (US$/t).
+// Arábica na bolsa de NY (¢/lb), Conilon na de Londres (ver difConilonCompra).
 // Corretagem estimada = valor final (R$) × % cadastrada no Digisul.
 // =====================================================================
 const SEM_CORRETOR = "(no broker)";
 const contratoPaiCompra = (c) => String(c ?? "").match(/^(BR[CV]-\d+\/\d{2})/)?.[1] ?? null;
+// Diferencial do Conilon nas compras: parte dos contratos vem do Digisul multiplicada por 100
+// (-2043 = -20,43; -609 = -6,09) e parte já vem certa (-22,98; -4,54). Nenhum diferencial real
+// passa de ±25 e o menor multiplicado é 33 (= -0,33): de 30 para cima divide por 100.
+// (Nas vendas todos vêm ×100: o Dashboard Commercial divide todos.)
+const difConilonCompra = (d) => (d == null ? null : Math.abs(d) >= 30 ? d / 100 : d);
 
 function medidasCompra(linhas) {
   const m = { contratos: 0, sacas: 0, sacasA: 0, sacasC: 0, valor: 0, valorA: 0, valorSacasA: 0, valorC: 0, valorSacasC: 0,
@@ -3007,7 +3012,8 @@ async function painelComprasDash(alvo, carga, ctx) {
     const bolsa = norm(r.bolsa);
     // diferencial só conta na bolsa da espécie (um contrato de Conilon na BMF tem outra unidade)
     r._difA = r._esp === "ARABICA" && bolsa === "NY" ? r.diferencial : null;
-    r._difC = r._esp === "CONILON" && bolsa === "LONDRES" ? r.diferencial : null;
+    r._difC = r._esp === "CONILON" && bolsa === "LONDRES" ? difConilonCompra(r.diferencial) : null;
+    r._dif = r._esp === "CONILON" ? difConilonCompra(r.diferencial) : r.diferencial;
     r._mes = mesIso(r.emissao);
     r._tipo = tipoPadrao(r.padrao);
     const aberto = porContrato.get(r.contrato);
@@ -3126,7 +3132,7 @@ async function painelComprasDash(alvo, carga, ctx) {
 
     // diferencial por qualidade da espécie escolhida
     const campoDif = espDif === "ARABICA" ? "_difA" : "_difC";
-    const unDif = espDif === "ARABICA" ? "¢/lb" : "US$/t";
+    const unDif = espDif === "ARABICA" ? "¢/lb" : "London";
     const porPadrao = new Map();
     for (const r of semFiltro("padrao")) {
       if (r[campoDif] == null || !r.padrao || !r.sacas) continue;
@@ -3159,7 +3165,7 @@ async function painelComprasDash(alvo, carga, ctx) {
       ${kpi("Total contracts", fmtN(m.contratos))}
       ${kpi("Total bags", fmtN(m.sacas), `Arabica ${fmtN(m.sacasA)} · Conilon ${fmtN(m.sacasC)}`)}
       ${kpi("Avg diff Arabica", fmtDif(m.difA), "¢/lb · NY · weighted by bags")}
-      ${kpi("Avg diff Conilon", fmtDif(m.difC), "US$/t · London · weighted by bags")}
+      ${kpi("Avg diff Conilon", fmtDif(m.difC), "London · weighted by bags")}
       ${kpi("Bags to be delivered", fmtN(mAb.aEnt), `Arabica ${fmtN(mAb.aEntA)} · Conilon ${fmtN(mAb.aEntC)} · ${fmtN(mAb.contratos)} open contracts`)}
       ${kpi("Avg price Arabica · R$/bag", m.precoA == null ? "—" : fmtN(m.precoA, 2), `Conilon R$ ${m.precoC == null ? "—" : fmtN(m.precoC, 2)}/bag`)}
       ${kpi("Avg brokerage", corretoresEm ? pctFmt(corrBase ? corrPctPeso / corrBase : null) : corretoresErro ? "—" : "…",
@@ -3170,15 +3176,6 @@ async function painelComprasDash(alvo, carga, ctx) {
     <section class="pos-card">
       <div class="pos-card-h"><h2>Purchases by month</h2><p class="muted">Bags by contract issue month, Arabica and Conilon, with the running total of the period.</p></div>
       ${linhas.length ? `<div class="pos-grafico"><canvas id="gCpMes" role="img" aria-label="Purchased bags by month with accumulated total"></canvas></div>` : `<p class="vazio-td">No purchases for these filters.</p>`}
-      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
-        <thead><tr><th>Month</th><th class="num">Contracts</th><th class="num">Arabica</th><th class="num">Conilon</th><th class="num">Total bags</th>
-          <th class="num">Accumulated</th><th class="num">Avg diff Arabica</th><th class="num">Avg diff Conilon</th><th class="num">Value R$</th></tr></thead>
-        <tbody>${meses.map((mes, i) => { const x = porMes.get(mes); return `<tr><td>${esc(rotMes(mes))}</td><td class="num">${fmtN(x.contratos)}</td>
-          ${celNum(x.sacasA)}${celNum(x.sacasC)}${celNum(x.sacas, { forte: true })}<td class="num">${fmtN(acumulado[i])}</td>
-          <td class="num">${fmtDif(x.difA)}</td><td class="num">${fmtDif(x.difC)}</td><td class="num">${x.valor ? fmtDin(x.valor, "R$") : "—"}</td></tr>`; }).join("")}</tbody>
-        <tfoot><tr class="total"><th scope="row">Total</th><td class="num">${fmtN(m.contratos)}</td>${celNum(m.sacasA, { forte: true })}${celNum(m.sacasC, { forte: true })}${celNum(m.sacas, { forte: true })}
-          <td class="num"></td><td class="num forte">${fmtDif(m.difA)}</td><td class="num forte">${fmtDif(m.difC)}</td><td class="num forte">${fmtDin(m.valor, "R$")}</td></tr></tfoot>
-      </table></div>
     </section>
 
     <div class="pos-duas">
@@ -3216,7 +3213,7 @@ async function painelComprasDash(alvo, carga, ctx) {
         <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
           <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th class="num">Bags</th><th class="num">Diff</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
           <tbody>${topContratos.length ? topContratos.map((r) => `<tr><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td><td>${esc(r.fornecedor ?? "—")}</td>
-            <td>${esc(r.padrao ?? "—")}</td>${celNum(r.sacas)}<td class="num">${fmtDif(r.diferencial)}</td><td class="num">${r.preco ? fmtN(r.preco, 2) : "—"}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("")
+            <td>${esc(r.padrao ?? "—")}</td>${celNum(r.sacas)}<td class="num">${fmtDif(r._dif)}</td><td class="num">${r.preco ? fmtN(r.preco, 2) : "—"}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("")
             : `<tr><td colspan="7" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
         </table></div>
       </section>
