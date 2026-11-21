@@ -280,7 +280,20 @@ const PT = {
   "all months": "todos os meses", "No contracts.": "Nenhum contrato.",
   "Purchases to fix minus sales to fix (sales count as negative).": "Compras a fixar menos vendas a fixar (as vendas entram negativas).",
   // Dashboard Purchases
-  "Dashboard Purchases": "Dashboard de Compras", "Bags to receive": "Sacas a receber", "To receive": "A receber",
+  "Dashboard Purchases": "Dashboard de Compras", "Purchases Overview": "Visão geral das compras", "Fixations": "Fixações",
+  "Open purchase contracts, any issue date": "Contratos de compra em aberto, de qualquer data de emissão",
+  "Fix by = First Notice Day (FND) of the exchange month: 7 business days before the month in NY, 4 in London (holidays not counted).":
+    "Fixar até = First Notice Day (FND) do mês da bolsa: 7 dias úteis antes do mês em NY, 4 em Londres (sem contar feriados).",
+  "Past the FND": "FND vencido", "To receive and to fix": "A receber e a fixar", "Dollar to fix": "Dólar a fixar", "Fixed price": "Preço fixado",
+  "bags still to receive in contracts with lots to fix": "sacas ainda a receber em contratos com lotes a fixar",
+  "Lots to fix by exchange month": "Lotes a fixar por mês da bolsa", "Ordered by the fixation deadline (FND).": "Em ordem do prazo de fixação (FND).",
+  "Contracts to fix": "Contratos a fixar", "Every open purchase with lots still to fix on the exchange, nearest deadline first.":
+    "Todas as compras em aberto com lotes ainda a fixar na bolsa, do prazo mais próximo para o mais longe.",
+  "Contracts with the exchange price already fixed, coffee still to receive and no USD/BRL rate in Digisul. Earliest due date first.":
+    "Contratos com a bolsa já fixada, café ainda a receber e sem dólar (USD/BRL) no Digisul. Do vencimento mais próximo para o mais longe.",
+  "No lots to fix for these filters.": "Nenhum lote a fixar com esses filtros.", "No dollar to fix for these filters.": "Nenhum dólar a fixar com esses filtros.",
+  "Digisul data could not be loaded:": "Não foi possível carregar os dados do Digisul:", "Digisul data unavailable.": "Dados do Digisul indisponíveis.",
+  "Loading from Digisul…": "Carregando do Digisul…", "none": "nenhum", "Bags to receive": "Sacas a receber", "To receive": "A receber",
   "Supplier / quality / screen": "Fornecedor / qualidade / peneira", "Search contract…": "Buscar contrato…", "Low grade": "Low grade",
   "Purchases by contract issue date. Click a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.":
     "Compras pela data de emissão do contrato. Clique num fornecedor, numa qualidade, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",

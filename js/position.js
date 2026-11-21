@@ -2866,6 +2866,7 @@ async function painelComercial(alvo, carga, ctx) {
 // Corretagem estimada = valor final (R$) × % cadastrada no Digisul.
 // =====================================================================
 const SEM_CORRETOR = "(no broker)";
+const CHAVE_ABA_CP = "bi-compras-aba"; // aba aberta do Dashboard Purchases (nesta sessão do navegador)
 // "Diferencial por Categoria de Peneiras" do contrato de compra (o Diferencial do Position é o
 // Diferencial Bica). Cada coluna só aparece quando algum contrato da tabela tem o valor.
 const COMPS_DIF = [["ltgb", "GTLB"], ["mtgb", "MTGB"], ["lg", "LG"], ["moka", "Moka"], ["grinder", "Grinder"]];
@@ -3030,6 +3031,8 @@ async function painelComprasDash(alvo, carga, ctx) {
     r._difs = {};
     r._venc = null; // vencimento do contrato (vem do Digisul com os corretores)
     r._corr = null;
+    r._ab = aberto ?? null; // linha do contrato em aberto (lotes a fixar, mês da bolsa, quem fixa)
+    r._dolar = null; r._vfix = null; // dólar e valor fixado na bolsa (Digisul)
   }
 
   // corretores, peneira e diferenciais por componente: ao vivo do Digisul (brascof-api);
@@ -3046,6 +3049,8 @@ async function painelComprasDash(alvo, carga, ctx) {
         if (!c) continue;
         r._pen = c.peneira ?? r._pen;
         r._venc = c.vencimento ?? null;
+        r._dolar = c.dolar ?? null;
+        r._vfix = c.valor_fixado ?? null;
         r._difs = Object.fromEntries(Object.entries(c.dif ?? {}).map(([k, v]) => [k, r._esp === "CONILON" ? difConilonCompra(v) : v]));
       }
       // diferencial por categoria de peneira: depende da consulta brascof_pesq_diferencial_peneira no Digisul
@@ -3091,8 +3096,161 @@ async function painelComprasDash(alvo, carga, ctx) {
   const kpi = (titulo, valor, sub = "") => `<div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">${esc(titulo)}</span>
     <span class="pos-kpi-v">${valor}</span>${sub ? `<span class="pos-kpi-s">${sub}</span>` : ""}</div>`;
   const pctFmt = (v) => (v == null ? "—" : `${fmtN(v, 2)}%`);
+  const nomeCorr = (r) => (r._corr ? r._corr.map((c) => c.nome).join(" / ") : corretoresEm ? "—" : "…");
+  // vencimento do contrato: já passou em vermelho, ainda vai vencer (a receber) em verde
+  const hojeDia = hojeIso();
+  const vencimento = (r) => {
+    if (!corretoresEm) return "…";
+    if (!r._venc) return "—";
+    const passou = r._venc < hojeDia;
+    return `<span style="color:var(${passou ? "--critico" : "--ok"});font-weight:600" title="${esc(tr(passou ? "Past due date" : "Due ahead"))}">${esc(fmtData(r._venc))}</span>`;
+  };
 
-  const desenhar = async () => {
+  // abas no cabeçalho verde da página: visão geral das compras e fixações
+  const ABAS_CP = [["geral", "Purchases Overview", "chart"], ["fix", "Fixations", "clock"]];
+  let aba = (() => { try { return sessionStorage.getItem(CHAVE_ABA_CP) === "fix" ? "fix" : "geral"; } catch { return "geral"; } })();
+  const montarAbas = () => {
+    const cab = alvo.closest(".visor")?.querySelector("header.cab");
+    if (!cab) return false;
+    cab.querySelector("#cpAbas")?.remove();
+    const nav = document.createElement("nav");
+    nav.className = "cab-abas"; nav.id = "cpAbas"; nav.setAttribute("role", "tablist");
+    nav.innerHTML = ABAS_CP.map(([k, t, ic]) => `<button type="button" role="tab" data-aba="${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${icon(ic)}<span>${esc(tr(t))}</span></button>`).join("");
+    nav.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => trocarAba(b.dataset.aba)));
+    cab.appendChild(nav);
+    return true;
+  };
+  const trocarAba = (k) => {
+    if (k === aba) return;
+    aba = k;
+    try { sessionStorage.setItem(CHAVE_ABA_CP, k); } catch { /* fica só nesta tela */ }
+    estadoLista.aberta = null;
+    const nav = alvo.closest(".visor")?.querySelector("#cpAbas");
+    nav?.querySelectorAll("button").forEach((b) => { const on = b.dataset.aba === k; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+    desenhar();
+  };
+  // sem o cabeçalho (ex.: tela cheia), as abas ficam no topo do painel
+  const abasNoCabecalho = montarAbas();
+  const abasNoPainel = () => (abasNoCabecalho ? "" : `<div class="pos-filtros">${segmentos("cpAbasSeg", ABAS_CP.map(([k, t]) => [k, t]), aba)}</div>`);
+  const ligarAbasNoPainel = () => ligarSegmentos(alvo, "cpAbasSeg", trocarAba);
+
+  const desenhar = () => (aba === "fix" ? desenharFix() : desenharGeral());
+
+  // ------------------------------------------------------------- aba Fixations
+  // Todos os contratos de compra em aberto (qualquer data de emissão) com os filtros da página.
+  // Bolsa: lotes a fixar, pelo prazo (First Notice Day do mês da bolsa, regra de position-calc).
+  // Dólar: bolsa já fixada, café a receber e o contrato sem dólar no Digisul (câmbio a fixar).
+  const fxCel = (fx) => {
+    if (!fx) return `<td>—</td>`;
+    const [cls, ic, rot] = NIVEL_FX[fx.nivel];
+    return `<td class="nowrap">${esc(fmtData(fx.data))} <span class="fx ${cls ? `fx-${cls}` : ""}">${ic ? icon(ic) : ""}${esc(rot(fx.dias))}</span></td>`;
+  };
+  const nomeBolsa = (b) => ({ NY: "NY", LONDRES: "London" })[norm(b)] ?? (b || "—");
+  const mesBolsa = (iso) => (iso ? `${fmtMes(iso)} (${codigoBolsa(iso.slice(0, 7))})` : "—");
+  const desenharFix = async () => {
+    limparGraficos();
+    const base = (exceto) => dados.filter((r) => r._ab && passa(r, exceto));
+    const linhasAb = base();
+    const opcoesAb = (k, val, ordem) => [...new Set([...base(k).flatMap(val).filter(Boolean), ...filtro[k]])].sort(ordem);
+    const soma = (xs, f) => xs.reduce((s, x) => s + (f(x) || 0), 0);
+
+    // bolsa a fixar, do prazo mais próximo para o mais longe
+    const aFixar = linhasAb.filter((r) => r._ab.lotes_a_fixar > 0).map((r) => ({ r, p: r._ab, fx: prazoFixacao(r._ab, "purchases") }))
+      .sort((a, b) => (a.fx?.data ?? "9999").localeCompare(b.fx?.data ?? "9999") || a.r.contrato.localeCompare(b.r.contrato));
+    const nivel = (n) => aFixar.filter((x) => x.fx?.nivel === n);
+    const lotesDe = (b) => soma(aFixar.filter((x) => norm(x.p.bolsa) === b), (x) => x.p.lotes_a_fixar);
+    const vencidos = nivel("vencido"), urgentes = nivel("urgente"), breves = nivel("breve");
+
+    // por mês da bolsa (o prazo é o mesmo para o mês inteiro)
+    const porMesBolsa = new Map();
+    for (const x of aFixar) {
+      const k = `${norm(x.p.bolsa)}|${x.p.mes_bolsa ?? ""}`;
+      const o = porMesBolsa.get(k) ?? porMesBolsa.set(k, { bolsa: x.p.bolsa, mes: x.p.mes_bolsa, fx: x.fx, ctr: 0, lotes: 0, sacas: 0, aRec: 0 }).get(k);
+      o.ctr++; o.lotes += x.p.lotes_a_fixar; o.sacas += x.p.a_fixar ?? 0; o.aRec += x.r._aEnt;
+    }
+    const meses = [...porMesBolsa.values()].sort((a, b) => (a.fx?.data ?? "9999").localeCompare(b.fx?.data ?? "9999"));
+
+    // dólar a fixar: só quando os dados do Digisul chegaram
+    const dolarAFixar = !corretoresEm ? [] : linhasAb
+      .filter((r) => !(r._ab.lotes_a_fixar > 0) && r._aEnt > 0 && ["NY", "LONDRES"].includes(norm(r.bolsa)) && !(r._dolar > 0))
+      .sort((a, b) => (a._venc ?? "9999").localeCompare(b._venc ?? "9999") || b._aEnt - a._aEnt);
+
+    const kpiNivel = (cls, titulo, xs, sub) => `<div class="pos-kpi pos-kpi-est${xs.length && cls ? ` pos-kpi-${cls}` : ""}"><span class="pos-kpi-t">${esc(titulo)}</span>
+      <span class="pos-kpi-v">${fmtN(xs.length)}</span><span class="pos-kpi-s">${xs.length ? `${fmtLotes(soma(xs, (x) => x.p.lotes_a_fixar))} lots · ${esc(sub)}` : "none"}</span></div>`;
+    const algumFiltro = FILTROS.some(([k]) => filtro[k].size);
+    const vazio = (n, txt) => `<tr><td colspan="${n}" class="vazio-td">${esc(txt)}</td></tr>`;
+
+    alvo.innerHTML = `
+    ${abasNoPainel()}
+    <div class="pos-com-cab"><h2>${esc(tr("Fixations"))}</h2>
+      <span class="muted">${esc(tr("Open purchase contracts, any issue date"))}</span></div>
+    <div class="pos-filtros">
+      ${FILTROS.map(([k, rot, val, ordem]) => listaMulti({ k, rot, ops: opcoesAb(k, val, ordem), sel: filtro[k], aberta: estadoLista.aberta === k })).join("")}
+      <label class="pos-mes"><span>Contract</span><span class="busca sm">${icon("search")}<input type="search" id="cpContrato" placeholder="${esc(tr("Search contract…"))}" value="${esc(busca)}" aria-label="${esc(tr("Search contract…"))}"></span></label>
+      ${algumFiltro || busca ? `<button type="button" class="btn" id="cpLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
+    </div>
+    <p class="muted pos-nota">${icon("info")} <span>Fix by = First Notice Day (FND) of the exchange month: 7 business days before the month in NY, 4 in London (holidays not counted).</span></p>
+    ${corretoresErro ? `<p class="muted pos-nota">${icon("alert")} <span>Digisul data could not be loaded:</span> <span>${esc(corretoresErro)}</span></p>` : ""}
+    <div class="pos-kpis">
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Lots to fix</span><span class="pos-kpi-v">${fmtLotes(lotesDe("NY") + lotesDe("LONDRES"))}</span>
+        <span class="pos-kpi-s">NY ${fmtLotes(lotesDe("NY"))} · London ${fmtLotes(lotesDe("LONDRES"))} · ${fmtN(soma(aFixar, (x) => x.p.a_fixar))} bags · ${fmtN(aFixar.length)} contracts</span></div>
+      ${kpiNivel("critico", "Past the FND", vencidos, "fix now")}
+      ${kpiNivel("alerta", `FND within ${ALERTA_DIAS} days`, urgentes, "contracts")}
+      ${kpiNivel("", `FND in ${ALERTA_DIAS + 1}–${AVISO_DIAS} days`, breves, "contracts")}
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">To receive and to fix</span><span class="pos-kpi-v">${fmtN(soma(aFixar, (x) => x.r._aEnt))}</span>
+        <span class="pos-kpi-s">bags still to receive in contracts with lots to fix</span></div>
+      <div class="pos-kpi pos-kpi-est"><span class="pos-kpi-t">Dollar to fix</span><span class="pos-kpi-v">${corretoresEm ? fmtN(dolarAFixar.length) : corretoresErro ? "—" : "…"}</span>
+        <span class="pos-kpi-s">${corretoresEm ? `${fmtN(soma(dolarAFixar, (r) => r._aEnt))} bags to receive · exchange fixed, no USD/BRL` : ""}</span></div>
+    </div>
+
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>Lots to fix by exchange month</h2><p class="muted">Ordered by the fixation deadline (FND).</p></div>
+      <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+        <thead><tr><th>Exchange</th><th>Month</th><th>Fix by (FND)</th><th class="num">Contracts</th><th class="num">Lots to fix</th><th class="num">Bags to fix</th><th class="num">To receive</th></tr></thead>
+        <tbody>${meses.length ? meses.map((o) => `<tr><td>${esc(nomeBolsa(o.bolsa))}</td><td>${esc(mesBolsa(o.mes))}</td>${fxCel(o.fx)}
+          <td class="num">${fmtN(o.ctr)}</td><td class="num">${fmtLotes(o.lotes)}</td>${celNum(o.sacas)}${celNum(o.aRec)}</tr>`).join("") : vazio(7, "No lots to fix for these filters.")}</tbody>
+        ${meses.length ? `<tfoot><tr class="total"><th scope="row" colspan="3">Total</th><td class="num forte">${fmtN(aFixar.length)}</td>
+          <td class="num forte">${fmtLotes(soma(meses, (o) => o.lotes))}</td>${celNum(soma(meses, (o) => o.sacas), { forte: true })}${celNum(soma(meses, (o) => o.aRec), { forte: true })}</tr></tfoot>` : ""}
+      </table></div>
+    </section>
+
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>Contracts to fix</h2><p class="muted">Every open purchase with lots still to fix on the exchange, nearest deadline first.</p></div>
+      <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+        <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th>Exchange</th><th>Month</th><th>Fix by (FND)</th><th class="num">Lots</th><th class="num">Fixed</th>
+          <th class="num">To fix</th><th class="num">Bags to fix</th><th class="num">To receive</th><th>Due date</th><th>Fixed by</th><th class="num">Diff</th><th>Broker</th></tr></thead>
+        <tbody>${aFixar.length ? aFixar.map(({ r, p, fx }) => `<tr class="${fx?.nivel === "vencido" ? "linha-alerta" : ""}"><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td>
+          <td>${esc(r.fornecedor ?? "—")}</td><td>${esc(r.padrao ?? "—")}</td><td>${esc(nomeBolsa(p.bolsa))}</td><td>${esc(mesBolsa(p.mes_bolsa))}</td>${fxCel(fx)}
+          <td class="num">${fmtLotes(p.lotes)}</td><td class="num">${fmtLotes(p.lotes_fixados)}</td><td class="num forte">${fmtLotes(p.lotes_a_fixar)}</td>
+          ${celNum(p.a_fixar)}${celNum(r._aEnt)}<td>${vencimento(r)}</td><td>${esc(QUEM_FIXA.purchases[norm(p.fixador)] ?? p.fixador ?? "—")}</td>
+          <td class="num">${fmtDif(r._dif)}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("") : vazio(15, "No lots to fix for these filters.")}</tbody>
+      </table></div>
+    </section>
+
+    <section class="pos-card">
+      <div class="pos-card-h"><h2>Dollar to fix</h2><p class="muted">Contracts with the exchange price already fixed, coffee still to receive and no USD/BRL rate in Digisul. Earliest due date first.</p></div>
+      ${!corretoresEm ? `<p class="vazio-td">${corretoresErro ? "Digisul data unavailable." : "Loading from Digisul…"}</p>`
+        : `<div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+        <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th>Exchange</th><th>Month</th><th class="num">Fixed price</th><th class="num">To receive</th><th>Due date</th><th>Broker</th></tr></thead>
+        <tbody>${dolarAFixar.length ? dolarAFixar.map((r) => `<tr><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td><td>${esc(r.fornecedor ?? "—")}</td>
+          <td>${esc(r.padrao ?? "—")}</td><td>${esc(nomeBolsa(r.bolsa))}</td><td>${esc(mesBolsa(r._ab.mes_bolsa))}</td>
+          <td class="num">${r._vfix ? fmtN(r._vfix, 2) : "—"}</td>${celNum(r._aEnt)}<td>${vencimento(r)}</td><td>${esc(nomeCorr(r))}</td></tr>`).join("") : vazio(9, "No dollar to fix for these filters.")}</tbody>
+        ${dolarAFixar.length ? `<tfoot><tr class="total"><th scope="row" colspan="6">Total · ${esc(contratos(dolarAFixar.length))}</th>${celNum(soma(dolarAFixar, (r) => r._aEnt), { forte: true })}<td></td><td></td></tr></tfoot>` : ""}
+      </table></div>`}
+    </section>`;
+
+    ligarAbasNoPainel();
+    ligarListasMulti(alvo, estadoLista, (k, valores) => { filtro[k] = new Set(valores); return desenhar(); });
+    $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); busca = ""; estadoLista.aberta = null; desenhar(); });
+    const campo = $("#cpContrato", alvo);
+    campo.addEventListener("input", () => {
+      busca = campo.value;
+      desenhar().then(() => { const n = $("#cpContrato", alvo); n?.focus(); n?.setSelectionRange(busca.length, busca.length); });
+    });
+  };
+
+  // ------------------------------------------------------------- aba Purchases Overview
+  const desenharGeral = async () => {
     limparGraficos();
     const linhas = dados.filter((r) => noPeriodo(r) && passa(r));
     const m = medidasCompra(linhas);
@@ -3214,18 +3372,10 @@ async function painelComprasDash(alvo, carga, ctx) {
     const corrNota = corretoresErro
       ? `<p class="muted pos-nota">${icon("alert")} <span>Brokers could not be loaded from Digisul:</span> <span>${esc(corretoresErro)}</span> <button type="button" class="link" id="cpCorrRetry">Try again</button></p>`
       : !corretoresEm ? `<p class="muted pos-nota">${icon("clock")} <span>Loading brokers from Digisul…</span></p>` : "";
-    const nomeCorr = (r) => (r._corr ? r._corr.map((c) => c.nome).join(" / ") : corretoresEm ? "—" : "…");
-    // vencimento de todos os contratos: já passou em vermelho, ainda vai vencer (a receber) em verde
-    const hojeDia = hojeIso();
-    const vencimento = (r) => {
-      if (!corretoresEm) return "…";
-      if (!r._venc) return "—";
-      const passou = r._venc < hojeDia;
-      return `<span style="color:var(${passou ? "--critico" : "--ok"});font-weight:600" title="${esc(tr(passou ? "Past due date" : "Due ahead"))}">${esc(fmtData(r._venc))}</span>`;
-    };
     const titulo = filtro.fornecedor.size === 1 ? [...filtro.fornecedor][0] : filtro.corretor.size === 1 ? [...filtro.corretor][0] : tr("Dashboard Purchases");
 
     alvo.innerHTML = `
+    ${abasNoPainel()}
     <div class="pos-com-cab">
       <h2>${esc(titulo)}</h2>
       ${ultimo ? `<span class="muted"><span>Last contract:</span> <strong>${esc(ultimo.contrato)}</strong> (${esc(fmtData(ultimo.emissao))})</span>` : ""}
@@ -3313,6 +3463,7 @@ async function painelComprasDash(alvo, carga, ctx) {
       </table></div>` : `<p class="vazio-td">No data for these filters.</p>`}
     </section>`;
 
+    ligarAbasNoPainel();
     ligarListasMulti(alvo, estadoLista, (k, valores) => { filtro[k] = new Set(valores); return desenhar(); });
     $("#cpLimpar", alvo)?.addEventListener("click", () => { FILTROS.forEach(([k]) => filtro[k].clear()); busca = ""; estadoLista.aberta = null; desenhar(); });
     const campoBusca = $("#cpContrato", alvo);
