@@ -219,10 +219,10 @@ export async function renderCert(link, alvo, ctx) {
   const vendaPorContrato = new Map(base.vendas.map((r) => [r.contrato, { mes: mesVenda(r), cliente: clienteDoAlerta(r), sacas: r.sacas }]));
 
   // a aba fica a mesma quando a página recarrega depois de salvar algo
-  let aba = ["exportacoes", "produtor"].includes(abaAberta.get(link)) ? abaAberta.get(link) : "posicao";
+  let aba = ["exportacoes", "compras", "produtor"].includes(abaAberta.get(link)) ? abaAberta.get(link) : "posicao";
   let busca = buscaAberta.get(link) ?? "", mes = "";
-  let venceDe = "", venceAte = "", filtroExp = "";
-  const abertos = new Set(), expAbertas = new Set();
+  let venceDe = "", venceAte = "", filtroExp = "", filtroBrc = "";
+  const abertos = new Set(), expAbertas = new Set(), brcAbertas = new Set();
   // produtores fora da soma "Selected": começa sem o produtor bloqueado
   const desmarcados = new Set(hist.produtores.filter((x) => x.bloqueado).map((x) => x.nome));
   const editar = ctx.gerente && vinculos !== null;
@@ -353,7 +353,8 @@ export async function renderCert(link, alvo, ctx) {
     buscaAberta.set(link, busca);
     const t = busca.trim().toLowerCase();
     const abas = `<nav class="cab-abas" role="tablist" id="certAba">${[["posicao", "Long / short"],
-      ["exportacoes", `${cert.codigo} exports (${exportacoes.filter((r) => r._conta).length})`], ["produtor", "By producer"]].map(([k, rot]) =>
+      ["exportacoes", `${cert.codigo} exports (${exportacoes.filter((r) => r._conta).length})`], ["compras", `By BRC purchase (${hist.linhas.length})`],
+      ["produtor", "By producer"]].map(([k, rot]) =>
       `<button type="button" role="tab" data-k="${k}" class="${k === aba ? "on" : ""}" aria-selected="${k === aba}">${esc(rot)}</button>`).join("")}</nav>`;
 
     // compra necessária: quanto falta para cobrir as entregas até o mês (o clicado na
@@ -403,7 +404,7 @@ export async function renderCert(link, alvo, ctx) {
         </table></div>
       </div>`;
 
-    const corpo = { exportacoes: () => corpoExportacoes(t), produtor: () => corpoProdutor(t) }[aba] ?? corpoPosicao;
+    const corpo = { exportacoes: () => corpoExportacoes(t), compras: () => corpoCompras(t), produtor: () => corpoProdutor(t) }[aba] ?? corpoPosicao;
     alvo.innerHTML = `<div class="pos">
       ${cabecalhoPagina({
         titulo: `${cert.nome} (${cert.codigo})`,
@@ -433,6 +434,7 @@ export async function renderCert(link, alvo, ctx) {
     fb?.addEventListener("input", () => { busca = fb.value; desenhar(); const n = $("#certBusca", alvo); n.focus(); n.setSelectionRange(busca.length, busca.length); });
     $("#certMes", alvo)?.addEventListener("change", (e) => { mes = e.target.value; desenhar(); });
     $("#certFiltroExp", alvo)?.addEventListener("change", (e) => { filtroExp = e.target.value; desenhar(); });
+    $("#certFiltroBrc", alvo)?.addEventListener("change", (e) => { filtroBrc = e.target.value; desenhar(); });
     // indicadores: abrem a aba (com o filtro) dos contratos que formam o número
     const IR = {
       inicial: () => { irPara("produtor"); venceDe = ""; venceAte = cert.inicio ? mesAnterior(cert.inicio) : ""; },
@@ -475,8 +477,9 @@ export async function renderCert(link, alvo, ctx) {
     }));
     abrirFechar("produtor", abertos);
     abrirFechar("exp", expAbertas);
+    abrirFechar("brc", brcAbertas);
     $("#certAbrirTodos", alvo)?.addEventListener("click", (e) => {
-      const [chave, conjunto] = aba === "produtor" ? ["produtor", abertos] : ["exp", expAbertas];
+      const [chave, conjunto] = aba === "produtor" ? ["produtor", abertos] : aba === "compras" ? ["brc", brcAbertas] : ["exp", expAbertas];
       if (e.currentTarget.dataset.abrir) $$(`[data-${chave}]`, alvo).forEach((tr) => conjunto.add(tr.dataset[chave])); else conjunto.clear();
       desenhar();
     });
@@ -493,6 +496,7 @@ export async function renderCert(link, alvo, ctx) {
     $("#certIncluir", alvo)?.addEventListener("click", () => abrirInclusao(compras, vendas, cert, ctx));
     $("#certImportar", alvo)?.addEventListener("click", () => abrirImportacao(cert, ctx, hist.linhas.filter((h) => h._origem === "planilha").length, hist.novos.length));
     $("#certExportar", alvo)?.addEventListener("click", (ev) => exportarExcel(ev.currentTarget, { cert, hist, meses, inicial, fimHistorico, vendaPorContrato }));
+    $("#certExportarBrc", alvo)?.addEventListener("click", (ev) => exportarUsoBrc(ev.currentTarget, cert, listaCompras(t), usosDaCompra));
     $("#certImagem", alvo)?.addEventListener("click", (ev) => salvarImagem(ev.currentTarget, {
       cert, atualizado: base.atualizado_em, meses, inicial, fimHistorico, atual, saldoFinal, excluido: hist.excluido,
       comprado: soma(cc, "_sacas"), nCompras: cc.length, vendido: soma(vc, "_sacas"), nVendas: vc.length,
@@ -555,6 +559,79 @@ export async function renderCert(link, alvo, ctx) {
                 <td class="cert-acoes">${editar ? `<button type="button" class="link" data-desvincular="${esc(JSON.stringify([r.contrato, h._chave]))}" title="Remove this link: the bags go back to the leftover of the purchase">${icon("x")}Unlink</button>` : ""}</td>${editar ? "<td></td>" : ""}</tr>`).join("")
               : `<tr class="cert-brc"><td colspan="${colunas}" class="muted">No BRC purchase linked yet.${editar && r._conta ? " Use “Link” to choose the purchases." : ""}</td></tr>`) : ""}`;
         }).join("") : `<tr><td colspan="${colunas}" class="vazio-td">No exports match these filters.</td></tr>`}</tbody>
+      </table></div>`;
+  };
+
+  // usos de uma compra BRC: os BRAS da planilha, os vinculados pelo portal e, se o "usado"
+  // da planilha passa da soma dos BRAS dela, a diferença (usada antes do portal, sem BRAS)
+  const usosDaCompra = (h) => {
+    const daPlanilha = h.vinculos ?? [];
+    const us = [...daPlanilha.map((v) => ({ v, quem: null })), ...h._novos.map((v) => ({ v, quem: quemLancou(v) }))].map(({ v, quem }) => {
+      const d = vendaPorContrato.get(v.venda);
+      return { venda: v.venda, sacas: Number(v.sacas) || 0, cliente: d?.cliente ?? null, mes: d?.mes ?? null, quem, portal: !!quem, autor: quem ? v.autor : null, data: quem ? v.created_at : null };
+    });
+    const semBras = (Number(h.usado) || 0) - daPlanilha.reduce((s, v) => s + (Number(v.sacas) || 0), 0);
+    if (semBras >= 0.5) us.push({ venda: null, sacas: semBras, cliente: null, mes: null, quem: null, portal: false });
+    return us;
+  };
+
+  // Aba By BRC purchase: cada compra BRC com as sacas do contrato, quanto já foi usado
+  // e a sobra; o "+" mostra os BRAS para onde as sacas foram (da planilha e do portal)
+  const FILTROS_BRC = {
+    "": () => true,
+    sobra: (h) => h._sobra >= 0.5,
+    usado: (h) => Math.abs(h._sobra) < 0.5,
+    passou: (h) => h._sobra <= -0.5,
+    sem: (h) => h._usado < 0.5,
+  };
+  const listaCompras = (t) => hist.linhas.filter(FILTROS_BRC[filtroBrc] ?? FILTROS_BRC[""])
+    .filter((h) => !t || [h.compra, h.id_cert, h.fornecedor, h.fazenda, ...usosDaCompra(h).map((u) => u.venda)]
+      .some((x) => String(x ?? "").toLowerCase().includes(t)))
+    .sort((a, b) => String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")) || a.compra.localeCompare(b.compra, "en", { numeric: true }));
+  const corpoCompras = (t) => {
+    if (!hist.linhas.length) return `<div class="vazio">${icon("file")}<h3>No BRC purchases yet</h3><p>Import the control spreadsheet in the By producer tab.</p></div>`;
+    const lista = listaCompras(t);
+    const todosAbertos = lista.length && lista.every((h) => brcAbertas.has(h._chave));
+    const colunas = 9 + (editar ? 1 : 0);
+    return `<div class="pos-filtros">
+        <label class="busca sm">${icon("search")}<input type="search" id="certBusca" placeholder="Search BRC, producer or BRAS…" value="${esc(busca)}"></label>
+        <select id="certFiltroBrc" aria-label="Filter">
+          <option value="">All BRC purchases</option>
+          <option value="sobra" ${filtroBrc === "sobra" ? "selected" : ""}>With leftover</option>
+          <option value="usado" ${filtroBrc === "usado" ? "selected" : ""}>Fully used</option>
+          <option value="passou" ${filtroBrc === "passou" ? "selected" : ""}>Used more than the contract</option>
+          <option value="sem" ${filtroBrc === "sem" ? "selected" : ""}>Not used yet</option></select>
+        ${lista.length ? `<button type="button" class="btn" id="certAbrirTodos" data-abrir="${todosAbertos ? "" : "1"}">${todosAbertos ? "Collapse all" : "Expand all"}</button>
+          <button type="button" class="btn" id="certExportarBrc" title="Download this list: one row per BRC purchase and one per export it went to">${icon("download")}<span>Export to Excel</span></button>` : ""}
+      </div>
+      <div class="pos-resumo">
+        <span><strong>${fmtN(lista.length)}</strong> ${lista.length === 1 ? "BRC purchase" : "BRC purchases"}</span>
+        <span><strong>${fmtN(lista.reduce((s, h) => s + (Number(h.sacas) || 0), 0))}</strong> bags</span>
+        <span><strong>${fmtN(soma(lista, "_usado"))}</strong> used in exports</span>
+        <span><strong>${fmtN(soma(lista, "_sobra"))}</strong> leftover</span>
+      </div>
+      <div class="tabela-wrap pos-tabela pos-contratos"><table class="tabela tabela-num cert-exportacoes">
+        <thead><tr><th>BRC contract</th><th>Producer</th><th>Farm</th><th>Due date</th><th class="num">Bags</th><th class="num">Used</th><th class="num">Leftover</th><th class="num">Exports</th><th></th>${editar ? "<th></th>" : ""}</tr></thead>
+        <tbody>${lista.length ? lista.map((h) => {
+          const us = usosDaCompra(h);
+          const aberto = brcAbertas.has(h._chave);
+          const nBras = new Set(us.filter((u) => u.venda).map((u) => u.venda)).size;
+          return `<tr class="clicavel cert-prod ${h._bloqueado ? "cert-bloqueado" : ""}" data-brc="${esc(h._chave)}" aria-expanded="${aberto}">
+              <td><span class="cert-mais">${aberto ? "−" : "+"}</span>${esc(h.compra)}${h.id_cert ? ` <span class="muted">· ${esc(h.id_cert)}</span>` : ""}</td>
+              <td>${esc(h.fornecedor ?? "—")}${h._bloqueado ? ` <span class="pill pill-critico" title="Over the volume we can use: the leftover is not counted">Over limit</span>` : ""}</td>
+              <td>${esc(h.fazenda ?? "—")}</td><td>${esc(h.vencimento ? fmtData(h.vencimento.slice(0, 10)) : "—")}</td>
+              ${num(Number(h.sacas) || 0)}${num(h._usado)}
+              <td class="num forte ${h._sobra <= -0.5 ? "neg" : ""}">${h._sobra <= -0.5 ? `<span class="pill pill-critico" title="More bags used than the contract">${esc(fmtN(-h._sobra))} over</span>` : Math.abs(h._sobra) < 0.5 ? `<span class="zero">–</span>` : esc(fmtN(h._sobra))}</td>
+              <td class="num">${nBras ? fmtN(nBras) : `<span class="zero">–</span>`}</td>
+              <td>${h._origem === "planilha" && !h.alterado_por ? "" : origemHist(h)}</td>
+              ${editar ? `<td class="cert-acoes">${h._sobra >= 0.5 ? `<button type="button" class="link" data-usar="${esc(h._chave)}" title="Use bags of this leftover in an export">${icon("link")}Use</button>` : ""}</td>` : ""}</tr>
+            ${aberto ? (us.length ? us.map((u) => `<tr class="cert-brc" ${u.quem ? `title="${esc(`Linked in the portal · ${u.quem}`)}"` : ""}>
+                <td>${u.venda ? `${esc(u.venda)}${u.quem ? ` <span class="pill">Portal</span>` : ""}` : `<span class="muted">Used before the portal (no export in the spreadsheet)</span>`}</td>
+                <td>${esc(u.cliente ?? "")}</td><td></td><td>${esc(u.mes ? fmtMes(u.mes + "-01") : "")}</td><td></td>${num(u.sacas)}<td></td><td></td><td></td>
+                ${editar ? `<td class="cert-acoes">${u.venda ? `<button type="button" class="link" data-desvincular="${esc(JSON.stringify([u.venda, h._chave]))}" title="Remove this link: the bags go back to the leftover of the purchase">${icon("x")}Unlink</button>` : ""}</td>` : ""}</tr>`).join("")
+              : `<tr class="cert-brc"><td colspan="${colunas}" class="muted">Not used in any export yet.</td></tr>`) : ""}`;
+        }).join("") : `<tr><td colspan="${colunas}" class="vazio-td">No BRC purchases match these filters.</td></tr>`}</tbody>
+        ${lista.length ? `<tfoot><tr><td colspan="4">Total</td>${num(lista.reduce((s, h) => s + (Number(h.sacas) || 0), 0))}${num(soma(lista, "_usado"))}${num(soma(lista, "_sobra"), true)}<td></td><td></td>${editar ? "<td></td>" : ""}</tr></tfoot>` : ""}
       </table></div>`;
   };
 
@@ -1063,6 +1140,47 @@ async function exportarExcel(botao, { cert, hist, meses, inicial, fimHistorico, 
     XLSX.utils.book_append_sheet(wb, produtores, T("By producer").slice(0, 31));
     XLSX.utils.book_append_sheet(wb, posicao, T("Position").slice(0, 31));
     XLSX.writeFile(wb, `${cert.codigo} ${T("History")} ${hojeIso()}.xlsx`);
+  } catch (e) {
+    toast(e.message, "erro");
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+// Excel da aba By BRC purchase (com a busca e o filtro da tela): uma linha por compra
+// BRC e uma por exportação para onde as sacas foram
+async function exportarUsoBrc(botao, cert, lista, usosDaCompra) {
+  botao.disabled = true;
+  try {
+    const XLSX = await carregarXlsx();
+    const T = (s) => traduzir(s);
+    const data = (iso) => (iso ? new Date(`${iso.slice(0, 10)}T12:00:00`) : null);
+    const n = (v) => Math.round((Number(v) || 0) * 100) / 100;
+    const aba = (cab, linhas, larguras) => {
+      const ws = XLSX.utils.aoa_to_sheet([cab.map(T), ...linhas], { cellDates: true, dateNF: "dd/mm/yyyy" });
+      ws["!cols"] = larguras.map((wch) => ({ wch }));
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: linhas.length, c: cab.length - 1 } }) };
+      for (const [ref, c] of Object.entries(ws)) if (ref[0] !== "!" && c.t === "n" && !/^[A-Z]+1$/.test(ref)) c.z ??= "#,##0;(#,##0)";
+      return ws;
+    };
+    const usos = new Map(lista.map((h) => [h, usosDaCompra(h)]));
+    const compras = aba(["BRC contract", "CP ID", "Producer", "Farm", "Due date", "Bags", "Used", "Leftover", "Exports", "Over limit"],
+      [...lista.map((h) => [h.compra, h.id_cert ?? "", h.fornecedor ?? "", h.fazenda ?? "", data(h.vencimento), n(h.sacas), n(h._usado), n(h._sobra),
+        new Set(usos.get(h).filter((u) => u.venda).map((u) => u.venda)).size, h._bloqueado ? T("Yes") : ""]),
+        [T("Total"), "", "", "", null, n(lista.reduce((s, h) => s + (Number(h.sacas) || 0), 0)), n(soma(lista, "_usado")), n(soma(lista, "_sobra")), null, ""]],
+      [18, 12, 34, 18, 12, 10, 10, 10, 9, 10]);
+    const porExportacao = aba(["BRC contract", "Producer", "Farm", "BRC bags", "Export", "Client (alert)", "Shipment", "Bags used", "Source", "Linked by", "Date"],
+      lista.flatMap((h) => usos.get(h).map((u) => [h.compra, h.fornecedor ?? "", h.fazenda ?? "", n(h.sacas),
+        u.venda ?? T("Used before the portal (no export in the spreadsheet)"), u.cliente ?? "", u.mes ? data(`${u.mes}-01`) : null, n(u.sacas),
+        T(u.portal ? "Portal" : "Spreadsheet"), u.autor ?? "", u.data ? data(u.data) : null])),
+      [18, 34, 18, 10, 20, 30, 12, 10, 12, 22, 12]);
+    // embarque é mês: mostra "nov/2026"
+    for (const [ref, c] of Object.entries(porExportacao)) if (/^G\d+$/.test(ref) && ref !== "G1" && c.v != null) c.z = "mmm/yyyy";
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, compras, T("By BRC purchase").slice(0, 31));
+    XLSX.utils.book_append_sheet(wb, porExportacao, T("Used in exports").slice(0, 31));
+    XLSX.writeFile(wb, `${cert.codigo} ${T("By BRC purchase")} ${hojeIso()}.xlsx`);
   } catch (e) {
     toast(e.message, "erro");
   } finally {
