@@ -321,6 +321,9 @@ const PT = {
     "Compras pela data de emissão do contrato. Clique num fornecedor, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
   "A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).":
     "Contrato com dois corretores conta para os dois. Corretagem = valor final × % cadastrada no Digisul (estimativa).",
+  "Only contracts already fully delivered. A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).":
+    "Só contratos já entregues por inteiro. Contrato com dois corretores conta para os dois. Corretagem = valor final × % cadastrada no Digisul (estimativa).",
+  "Not counted (still to be delivered):": "Fora da conta (ainda a entregar):",
   "The largest contracts of the period.": "Os maiores contratos do período.",
   "Bags per supplier · month by month": "Sacas por fornecedor · mês a mês",
   "Running total since the first month of the period.": "Acumulado desde o primeiro mês do período.", "Bags purchased in each month.": "Sacas compradas em cada mês.",

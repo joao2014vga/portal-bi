@@ -3137,6 +3137,10 @@ const contratoPaiCompra = (c) => String(c ?? "").match(/^(BR[CV]-\d+\/\d{2})/)?.
 // passa de ±25 e o menor multiplicado é 33 (= -0,33): de 30 para cima divide por 100.
 // (Nas vendas todos vêm ×100: o Dashboard Sales divide todos.)
 const difConilonCompra = (d) => (d == null ? null : Math.abs(d) >= 30 ? d / 100 : d);
+// Contrato a fixar que ainda não entregou nada vem do Digisul com preço provisório (R$ 0,01 a 0,60
+// por saca): não conta no preço médio. Nenhum preço real de café chega perto de R$ 100/saca.
+const PRECO_MIN_SACA = 100;
+const temPrecoCompra = (r) => r.valor > 0 && r.sacas > 0 && r.valor / r.sacas >= PRECO_MIN_SACA;
 
 function medidasCompra(linhas) {
   const m = { contratos: 0, sacas: 0, sacasA: 0, sacasC: 0, valor: 0, valorA: 0, valorSacasA: 0, valorC: 0, valorSacasC: 0,
@@ -3148,11 +3152,11 @@ function medidasCompra(linhas) {
     m.sacas += s; m.valor += r.valor ?? 0; m.aEnt += r._aEnt;
     if (r._esp === "ARABICA") {
       m.sacasA += s; m.aEntA += r._aEnt;
-      if (r.valor > 0) { m.valorA += r.valor; m.valorSacasA += s; }
+      if (temPrecoCompra(r)) { m.valorA += r.valor; m.valorSacasA += s; }
       if (r._difA != null && s) { dA[0] += r._difA * s; dA[1] += s; }
     } else if (r._esp === "CONILON") {
       m.sacasC += s; m.aEntC += r._aEnt;
-      if (r.valor > 0) { m.valorC += r.valor; m.valorSacasC += s; }
+      if (temPrecoCompra(r)) { m.valorC += r.valor; m.valorSacasC += s; }
       if (r._difC != null && s) { dC[0] += r._difC * s; dC[1] += s; }
     }
   }
@@ -3554,18 +3558,21 @@ async function painelComprasDash(alvo, carga, ctx) {
     const semFiltro = (k) => dados.filter((r) => noPeriodo(r) && noMes(r) && passa(r, k));
     const opcoes = (k, val, ordem) => [...new Set([...semFiltro(k).flatMap(val).filter(Boolean), ...filtro[k]])].sort(ordem);
 
-    // corretagem: uma linha por corretor do contrato (como no Espelho de Corretagem)
+    // corretagem: uma linha por corretor do contrato (como no Espelho de Corretagem), só com os
+    // contratos já entregues por inteiro (os a entregar ainda podem estar sem preço, a fixar)
     const porCorretor = new Map();
+    let corrFora = 0; // sacas dos contratos a entregar, que ficam fora do Top brokers
     for (const r of semFiltro("corretor")) {
+      if (r._aEnt > 0) { corrFora += r.sacas ?? 0; continue; }
       for (const c of r._corr ?? [{ nome: SEM_CORRETOR, pct: null }]) {
         const o = porCorretor.get(c.nome) ?? porCorretor.set(c.nome, { ctr: new Set(), sacas: 0, corretagem: 0, pctPeso: 0, base: 0 }).get(c.nome);
         o.ctr.add(r.contrato); o.sacas += r.sacas ?? 0;
-        if (c.pct != null && r.valor > 0) { o.corretagem += (r.valor * c.pct) / 100; o.pctPeso += r.valor * c.pct; o.base += r.valor; }
+        if (c.pct != null && temPrecoCompra(r)) { o.corretagem += (r.valor * c.pct) / 100; o.pctPeso += r.valor * c.pct; o.base += r.valor; }
       }
     }
     let corrValor = 0, corrBase = 0, corrPctPeso = 0, corrSacas = 0;
     for (const r of linhas) {
-      if (!r._corr || !(r.valor > 0)) continue;
+      if (!r._corr || r._aEnt > 0 || !temPrecoCompra(r)) continue;
       corrSacas += r.sacas ?? 0;
       for (const c of r._corr) { corrValor += (r.valor * c.pct) / 100; corrBase += r.valor; corrPctPeso += r.valor * c.pct; }
     }
@@ -3710,7 +3717,8 @@ async function painelComprasDash(alvo, carga, ctx) {
         ${difQual.length ? `<div class="pos-grafico"><canvas id="gCpQual" role="img" aria-label="Average diff per quality"></canvas></div>` : `<p class="vazio-td">No data for these filters.</p>`}
       </section>
       <section class="pos-card">
-        <div class="pos-card-h"><h2>Top brokers</h2><p class="muted">A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).</p></div>
+        <div class="pos-card-h"><h2>Top brokers</h2><p class="muted"><span>Only contracts already fully delivered. A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).</span>
+          ${corrFora ? ` <span>Not counted (still to be delivered):</span> <span>${fmtN(corrFora)}</span> <span>bags</span>` : ""}</p></div>
         ${corretoresEm ? `<div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
           <thead><tr><th>Broker</th><th class="num">Bags</th><th class="num">Contracts</th><th class="num">Avg rate</th><th class="num">Brokerage R$</th></tr></thead>
           <tbody>${rankCorretores.length ? rankCorretores.map(([nome, o]) => `<tr class="pos-clic${marca("corretor", nome)}" data-corr="${esc(nome)}"><td>${esc(nome)}</td>
