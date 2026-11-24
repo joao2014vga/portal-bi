@@ -14,7 +14,7 @@
 import { esc, $, $$, icon, toast, modal, tempoRelativo, dataBR, dataHoraBR } from "./ui.js";
 import {
   ABAS, COLS_TERMM, norm, num, arred, montarPosition, extrairModelo, extrairFuturos, aplicarPtax,
-  prazoFixacao, alertasFixacao, textoAlertaFixacao, textoFixacaoPerdida, textoForaDaMatriz, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
+  prazoFixacao, alertasFixacao, textoAlertaFixacao, textoFixacaoPerdida, semContrapartida, textoSemContrapartida, textoForaDaMatriz, CAMPO_MES, ALERTA_DIAS, AVISO_DIAS, pegadaPosition, alteracoesPosition,
   calcularPosition, basesDaGrade, ABA_CAMBIO, encadearComposicao,
 } from "./position-calc.js";
 import { t as tr, LOCALE, IDIOMA } from "./i18n.js";
@@ -354,7 +354,7 @@ function ligarTopo(alvo, ctx) {
       }
       // contratos vencidos ou a vencer em 15 dias viram notificação para quem vê o Open Contracts
       await ctx.api.publicarPosition({ data_ref: lida.data_ref, resumo: lida.resumo, detalhes: lida.detalhes, nome_arquivo: file.name,
-        alerta: [textoFixacaoPerdida(lida.resumo.alteracoes, fmtN), textoForaDaMatriz(lida.resumo.fisica?.fora, fmtN), textoAlertaFixacao(lida.detalhes, fmtN)].filter(Boolean).join(" · ") || null });
+        alerta: [textoFixacaoPerdida(lida.resumo.alteracoes, fmtN), textoSemContrapartida(lida.resumo.alteracoes, fmtN), textoForaDaMatriz(lida.resumo.fisica?.fora, fmtN), textoAlertaFixacao(lida.detalhes, fmtN)].filter(Boolean).join(" · ") || null });
       toast(`Position of ${fmtData(lida.data_ref)} published.`);
       lida.avisos.forEach((a) => toast(a, "erro"));
       // fórmulas e futuros desta planilha passam a valer para a atualização pelo Digisul
@@ -874,6 +874,28 @@ function cardAlteracoes(resumo, filtro, rotulo) {
           — to fix was <strong>${fmtN(p.antes)}</strong>, now <strong>${fmtN(p.agora)}</strong>${p.sacas_agora > p.sacas_antes ? ` (contract bags ${fmtN(p.sacas_antes)} → ${fmtN(p.sacas_agora)})` : ""}
           ${p.contratos.length ? `<span style="opacity:.85">(${p.contratos.map((c) => `${esc(c.chave)}: ${fmtN(c.antes ?? 0)} → ${fmtN(c.agora ?? 0)}`).join(" · ")})</span>` : ""}</div>`).join("")}
       </div></div>` : "";
+  // estoque e compras sem contrapartida: lote que sumiu sem venda baixar, compra que baixou sem lote
+  const semG = semContrapartida(alt).filter(passa);
+  const NOME_SEC = Object.fromEntries(SECOES_ALT);
+  const ROT_SEM = { e: "Lot", c: "Purchase", v: "Export sale", i: "Domestic sale" };
+  const alertaSem = semG.length ? `<div class="pos-alerta pos-sem" role="alert" style="margin:4px 0 10px">${icon("alert")}
+      <div>${semG.map((g) => {
+        const fora = g.sem_contrapartida > 0;
+        const conta = `lots out <strong>${fmtN(Math.round(g.lotes_saiu))}</strong> + purchases closed without a lot <strong>${fmtN(Math.round(g.compras_sem_lote))}</strong>,
+          against sales shipped <strong>${fmtN(Math.round(g.vendas))}</strong> + new lots / blends <strong>${fmtN(Math.round(g.lotes_novos))}</strong>`;
+        return `<div style="margin-bottom:6px"><strong>${fora ? "Coffee out without a destination" : "Shipped without a source"} · ${fmtN(Math.round(Math.abs(g.sem_contrapartida)))} bags</strong>
+          <span class="muted">(${esc(NOME_SEC[g.grupo] ?? "Other")})</span> — ${fora
+            ? "coffee left inventory or purchases and no sale went down to match"
+            : "sales went down (or lots appeared) and no lot or purchase went out to match"}: ${conta}.
+          ${fora ? "Check in Digisul where it went: shipment not posted in the sale, transfer, blend, or a purchase closed without the lot entry." : "Check in Digisul which lot or purchase supplied it."}
+          ${g.itens.length ? `<div class="tabela-wrap" style="margin-top:6px"><table class="tabela tabela-num">
+            <thead><tr><th>Type</th><th>Lot / contract</th><th>${fora ? "Purchase / supplier" : "Counterparty"}</th><th>Quality</th><th>Change</th><th class="num">Bags</th></tr></thead>
+            <tbody>${g.itens.map((x) => `<tr><td>${ROT_SEM[x.tipo]}</td><td>${esc(x.chave)}</td><td>${esc(x.parceiro ?? "—")}</td><td>${esc(x.padrao ?? "—")}</td>
+              <td class="muted">${esc(x.nota ?? "")}</td>${celNum(x.sacas, { forte: true })}</tr>`).join("")}</tbody>
+          </table></div>${Math.abs(g.itens.reduce((s, x) => s + x.sacas, 0) - Math.abs(g.sem_contrapartida)) >= 1
+            ? `<p class="muted" style="margin:4px 0 0">Items without a match of the same size; the ${fmtN(Math.round(Math.abs(g.sem_contrapartida)))} bags are among them.</p>` : ""}` : ""}</div>`;
+      }).join("")}
+      </div></div>` : "";
   return `<section class="pos-card">
     <div class="pos-card-h pos-card-h-linha"><div><h2>${esc(titulo)} · ${esc(rotulo)}</h2>
       <p class="muted">${modo === "dia" ? "Contracts and lots that changed against the last position of the previous day, and the effect on the physical position (bags)."
@@ -886,6 +908,7 @@ function cardAlteracoes(resumo, filtro, rotulo) {
       ${!movs.length && !fixs.length ? `<span class="muted">No changes.</span>` : ""}
     </div>
     ${alertaPerdida}
+    ${alertaSem}
     ${resumoAlteracoes(itens)}
     ${alteracoesAbertas && contratos.length ? `<div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
       <thead><tr><th>Type</th><th>Contract</th><th>Counterparty</th><th>Quality</th><th class="num">Before</th><th class="num">Now</th><th class="num">Physical effect</th><th>What happened</th></tr></thead>
