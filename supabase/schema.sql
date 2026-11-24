@@ -2022,3 +2022,145 @@ update public.bi_dashboards
 set titulo = 'Dashboard Sales',
     descricao = 'Export sales: contracts, bags, average diffs, bags per client, a per-client view by quality and screen, and what is left to ship.'
 where link = 'portal:position-commercial' and titulo = 'Dashboard Commercial';
+
+-- =====================================================================
+-- 36. CONTRATOS FUTUROS (contrato de compra e venda em Word e controle da ClickSign)
+-- Card portal:contratos-futuros. Os contratos vêm ao vivo do Digisul pelo brascof-api
+-- (/api/contratos-futuros: modalidade "Futuro", emitidos a partir de 2026). Aqui fica:
+--   bi_ctr_futuros     o controle de cada contrato: gerado → enviado (ClickSign) → assinado,
+--                      com quem e quando; "dispensado" = não precisa do documento.
+--                      `dados` guarda os campos do último documento gerado (refaz igual).
+--   bi_ctr_vendedores  qualificação de cada vendedor no contrato (CPF/CNPJ, IE, município),
+--                      pelo nome do fornecedor no Digisul; preenchida com os contratos já feitos.
+--   bi_ctr_modelos     o modelo do contrato (.docx em base64) com os marcadores {{...}}.
+-- Vê e trabalha quem tem o card; o modelo só o admin troca. Pode rodar de novo.
+-- =====================================================================
+create table if not exists public.bi_ctr_futuros (
+  contrato      text primary key,
+  status        text not null default 'gerado' check (status in ('gerado', 'enviado', 'assinado', 'dispensado')),
+  email         text,
+  dados         jsonb,
+  obs           text,
+  origem        text not null default 'portal' check (origem in ('portal', 'planilha')),
+  gerado_em     timestamptz,
+  gerado_por    text,
+  enviado_em    timestamptz,
+  enviado_por   text,
+  assinado_em   timestamptz,
+  assinado_por  text,
+  atualizado_em timestamptz not null default now(),
+  atualizado_por text,
+  updated_by    uuid default auth.uid() references public.bi_perfis (id) on delete set null
+);
+
+create table if not exists public.bi_ctr_vendedores (
+  nome          text primary key,             -- fornecedor como vem do Digisul
+  documento     text,                         -- CPF ou CNPJ
+  ie            text,
+  cidade        text,
+  uf            text,
+  qualificacao  text,                         -- o texto depois do nome no contrato
+  email         text,
+  atualizado_em timestamptz not null default now(),
+  atualizado_por text
+);
+
+create table if not exists public.bi_ctr_modelos (
+  id            text primary key,             -- 'futuro'
+  nome_arquivo  text,
+  conteudo      text not null,                -- .docx em base64
+  atualizado_em timestamptz not null default now(),
+  atualizado_por text
+);
+
+-- quem mudou e quando: sempre o usuário logado (não vem do navegador). No controle, cada
+-- passo guarda quando aconteceu; gerar de novo (dados diferentes) atualiza o gerado_em.
+-- Importação da planilha (origem 'planilha', ou sem usuário no SQL Editor): as datas ficam
+-- como vieram (vazias), porque a planilha não diz quando cada passo aconteceu.
+create or replace function public.bi_ctr_autor()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  quem text := (select nullif(nome, '') from public.bi_perfis where id = auth.uid());
+  antes text;
+begin
+  new.atualizado_em := now();
+  new.atualizado_por := coalesce(quem, new.atualizado_por);
+  -- (ifs separados: o plpgsql não pode ler new.origem nas tabelas que não têm a coluna)
+  if tg_table_name <> 'bi_ctr_futuros' or auth.uid() is null then return new; end if;
+  if tg_op = 'INSERT' and new.origem = 'planilha' then return new; end if;
+  if tg_op = 'UPDATE' then antes := old.status; end if;
+  new.updated_by := auth.uid();
+  if new.dados is not null and (tg_op = 'INSERT' or new.dados is distinct from old.dados) then
+    new.gerado_em := now(); new.gerado_por := coalesce(quem, new.gerado_por);
+  end if;
+  -- as datas de envio e assinatura marcam a mudança de status (não uma edição qualquer)
+  if new.status in ('enviado', 'assinado') and new.enviado_em is null and coalesce(antes, '') not in ('enviado', 'assinado') then
+    new.enviado_em := now(); new.enviado_por := coalesce(quem, new.enviado_por);
+  end if;
+  if new.status = 'assinado' and new.assinado_em is null and coalesce(antes, '') <> 'assinado' then
+    new.assinado_em := now(); new.assinado_por := coalesce(quem, new.assinado_por);
+  end if;
+  -- voltou um passo: limpa o que deixou de valer
+  if new.status in ('gerado', 'dispensado') then new.enviado_em := null; new.enviado_por := null; end if;
+  if new.status <> 'assinado' then new.assinado_em := null; new.assinado_por := null; end if;
+  return new;
+end;
+$$;
+drop trigger if exists bi_ctr_futuros_autor on public.bi_ctr_futuros;
+create trigger bi_ctr_futuros_autor before insert or update on public.bi_ctr_futuros
+  for each row execute function public.bi_ctr_autor();
+drop trigger if exists bi_ctr_vendedores_autor on public.bi_ctr_vendedores;
+create trigger bi_ctr_vendedores_autor before insert or update on public.bi_ctr_vendedores
+  for each row execute function public.bi_ctr_autor();
+drop trigger if exists bi_ctr_modelos_autor on public.bi_ctr_modelos;
+create trigger bi_ctr_modelos_autor before insert or update on public.bi_ctr_modelos
+  for each row execute function public.bi_ctr_autor();
+
+alter table public.bi_ctr_futuros    enable row level security;
+alter table public.bi_ctr_vendedores enable row level security;
+alter table public.bi_ctr_modelos    enable row level security;
+
+drop policy if exists bi_ctr_futuros_select on public.bi_ctr_futuros;
+create policy bi_ctr_futuros_select on public.bi_ctr_futuros for select to authenticated
+  using (public.bi_ve_painel('portal:contratos-futuros'));
+drop policy if exists bi_ctr_futuros_insert on public.bi_ctr_futuros;
+create policy bi_ctr_futuros_insert on public.bi_ctr_futuros for insert to authenticated
+  with check (public.bi_ve_painel('portal:contratos-futuros'));
+drop policy if exists bi_ctr_futuros_update on public.bi_ctr_futuros;
+create policy bi_ctr_futuros_update on public.bi_ctr_futuros for update to authenticated
+  using (public.bi_ve_painel('portal:contratos-futuros')) with check (public.bi_ve_painel('portal:contratos-futuros'));
+drop policy if exists bi_ctr_futuros_delete on public.bi_ctr_futuros;
+create policy bi_ctr_futuros_delete on public.bi_ctr_futuros for delete to authenticated
+  using (public.bi_is_admin());
+
+drop policy if exists bi_ctr_vendedores_select on public.bi_ctr_vendedores;
+create policy bi_ctr_vendedores_select on public.bi_ctr_vendedores for select to authenticated
+  using (public.bi_ve_painel('portal:contratos-futuros'));
+drop policy if exists bi_ctr_vendedores_insert on public.bi_ctr_vendedores;
+create policy bi_ctr_vendedores_insert on public.bi_ctr_vendedores for insert to authenticated
+  with check (public.bi_ve_painel('portal:contratos-futuros'));
+drop policy if exists bi_ctr_vendedores_update on public.bi_ctr_vendedores;
+create policy bi_ctr_vendedores_update on public.bi_ctr_vendedores for update to authenticated
+  using (public.bi_ve_painel('portal:contratos-futuros')) with check (public.bi_ve_painel('portal:contratos-futuros'));
+
+drop policy if exists bi_ctr_modelos_select on public.bi_ctr_modelos;
+create policy bi_ctr_modelos_select on public.bi_ctr_modelos for select to authenticated
+  using (public.bi_ve_painel('portal:contratos-futuros'));
+drop policy if exists bi_ctr_modelos_admin on public.bi_ctr_modelos;
+create policy bi_ctr_modelos_admin on public.bi_ctr_modelos for all to authenticated
+  using (public.bi_is_admin()) with check (public.bi_is_admin());
+
+-- Card na categoria do Dashboard Purchases. Depois é só liberar o acesso em Administração → Usuários.
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select coalesce((select categoria_id from public.bi_dashboards where link = 'portal:position-purchasing'),
+                (select id from public.bi_categorias order by ordem, id limit 1)),
+       'Future Contracts', 'Future purchase contracts from Digisul: generate the contract in Word and track what was sent through ClickSign and signed.',
+       'portal:contratos-futuros', 'manual', true, 10
+where not exists (select 1 from public.bi_dashboards d where d.link = 'portal:contratos-futuros');
+notify pgrst, 'reload schema';
+
+-- Para conferir:
+--   select status, origem, count(*) from public.bi_ctr_futuros group by 1, 2 order by 1, 2;
+--   select count(*), count(documento), count(qualificacao), count(email) from public.bi_ctr_vendedores;

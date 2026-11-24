@@ -1105,3 +1105,25 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-comercial { --serie-1: #2f7d57; --serie-2: #c8962e; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pos-comercial { --serie-1: #4fa77a; --serie-2: #d9ab4a; } }
 :root[data-theme="dark"] .pos-comercial { --serie-1: #4fa77a; --serie-2: #d9ab4a; }
+
+/* Future Contracts (contratos futuros de compra) */
+.ctr-tabela .btn-sm { height: 30px; padding: 0 10px; font-size: 12.5px; }
+.ctr-tabela .nowrap { white-space: nowrap; }
+.ctr-tabela select.ctr-status { height: 30px; width: auto; padding: 2px 26px 2px 8px; font-size: 12.5px; font-weight: 600; border-radius: 20px; }
+.ctr-status.fazer { background: var(--alerta-bg); color: var(--alerta); border-color: transparent; }
+.ctr-status.gerado { background: var(--brand-claro); color: var(--brand); border-color: transparent; }
+.ctr-status.assinado { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.ctr-status.dispensado { color: var(--texto-3); }
+.modal.ctr-modal { max-width: min(980px, 96vw); }
+.ctr-digisul { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: var(--sup-2); border: 1px solid var(--borda); font-size: 13px; color: var(--texto-2); }
+.ctr-digisul strong { color: var(--texto); }
+.ctr-nota { font-size: 12.5px; margin: 0; }
+.ctr-nota code { font-size: 12px; background: var(--sup-2); padding: 1px 5px; border-radius: 4px; }
+.ctr-form .ctr-larga { grid-column: 1 / -1; }
+.ctr-form small { font-size: 12px; }
+.ctr-form textarea { font-size: 13px; line-height: 1.45; }
+.ctr-erros { margin: 0; padding-left: 18px; color: var(--critico); font-size: 13px; }
+.ctr-erros:empty { display: none; }
+.ctr-acoes-extra { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ctr-acoes-extra .muted { font-size: 12.5px; }
+@media (max-width: 700px) { .ctr-form { grid-template-columns: 1fr; } }

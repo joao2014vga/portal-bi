@@ -69,6 +69,11 @@ function erroCompradores(msg = "") {
   if (/row-level security|permission denied/i.test(msg)) return "Your user cannot upload the buyer bids spreadsheet. Ask the administrator to allow it.";
   return traduzErro(msg);
 }
+function erroCtr(msg = "") {
+  if (/bi_ctr_|schema cache|does not exist/i.test(msg)) return "Future contracts are not set up yet: run section 36 of supabase/schema.sql in the Supabase SQL Editor.";
+  if (/row-level security|permission denied/i.test(msg)) return "Your user cannot change the future contracts. Ask the administrator for access to the card.";
+  return traduzErro(msg);
+}
 function erroPrecos(msg = "") {
   if (/bi_precos|schema cache|does not exist/i.test(msg)) return "The price list is not set up yet: run section 26 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/row-level security|permission denied/i.test(msg)) return "Your user cannot change this price list. Ask the administrator for access to it.";
@@ -573,6 +578,51 @@ async function criarApiSupabase() {
     },
     pararNotificacoes() { sb.removeAllChannels(); },
 
+    // ----------------------------------------------------------- contratos futuros (seção 36)
+    // contratos "Futuro" ao vivo do Digisul pelo brascof-api (fresco = sem o cache de 2 min)
+    async contratosFuturosDigisul(fresco = false) {
+      const { data: { session } } = await sb.auth.getSession();
+      let res;
+      try {
+        res = await fetch(`${CONFIG.API_BRASCOF}/api/contratos-futuros${fresco ? "?fresh=1" : ""}`,
+          { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
+      } catch {
+        throw new Error("Unable to reach the Digisul service. Please try again.");
+      }
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Digisul contracts could not be loaded (${res.status}).`);
+      return j;
+    },
+    async ctrControle() {
+      const { data, error } = await sb.from("bi_ctr_futuros").select("*");
+      if (error) throw new Error(erroCtr(error.message));
+      return data;
+    },
+    async ctrVendedores() {
+      const { data, error } = await sb.from("bi_ctr_vendedores").select("*");
+      if (error) throw new Error(erroCtr(error.message));
+      return data;
+    },
+    // um registro ou uma lista (importação da planilha)
+    async ctrSalvar(linhas) {
+      const { data, error } = await sb.from("bi_ctr_futuros").upsert([].concat(linhas), { onConflict: "contrato" }).select();
+      if (error) throw new Error(erroCtr(error.message));
+      return data;
+    },
+    async ctrSalvarVendedor(linhas) {
+      const { error } = await sb.from("bi_ctr_vendedores").upsert([].concat(linhas), { onConflict: "nome" });
+      if (error) throw new Error(erroCtr(error.message));
+    },
+    // modelo do contrato (.docx em base64); null = ainda não enviado
+    async ctrModelo(id = "futuro") {
+      const { data, error } = await sb.from("bi_ctr_modelos").select("id, nome_arquivo, conteudo, atualizado_em, atualizado_por").eq("id", id).maybeSingle();
+      if (error) throw new Error(erroCtr(error.message));
+      return data;
+    },
+    async ctrSalvarModelo({ id = "futuro", nome_arquivo, conteudo }) {
+      const { error } = await sb.from("bi_ctr_modelos").upsert({ id, nome_arquivo, conteudo }, { onConflict: "id" });
+      if (error) throw new Error(erroCtr(error.message));
+    },
     async enviarImagem(file) {
       const ext = (file.name.split(".").pop() || "png").toLowerCase();
       const caminho = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
