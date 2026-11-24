@@ -6,11 +6,14 @@
 //
 // Páginas (link cadastrado em bi_dashboards):
 //   portal:cert-cp   C.A.F.E. Practices
+//   portal:cert-4c   4C
 import { esc, $, $$, icon, toast, modal, confirmar, tempoRelativo, cabecalho as cabecalhoPagina } from "./ui.js";
 import { fmtN, fmtMes, fmtData, ligarSegmentos, vigiarNegativos, carregarXlsx } from "./position.js";
 import { t as traduzir, LOCALE } from "./i18n.js";
 
 export const ehPainelCert = (link) => /^portal:cert-/.test(link ?? "");
+// "C.A.F.E. Practices (CP)"; quando o nome já é o código, só "4C"
+const nomeCert = (c) => (c.nome === c.codigo ? c.nome : `${c.nome} (${c.codigo})`);
 
 // Contrato entra quando o certificador tem o certificado, mesmo junto com outros
 // ("RAINFOREST ALIANCE,EUDR,CAFE PRATICES"). Até 30/10/2026 a exportação não trazia o
@@ -29,6 +32,12 @@ const CERTS = {
     // a regra vale para os contratos emitidos até `ate`: em 30/10/2026 o Digisul passou a
     // trazer a certificação das exportações, e os contratos novos contam só por ela
     venda: { cliente: /STARBUCK|\bSBUX\b|\bSTBX\b/i, descricao: /C\.?\s?A\.?\s?F\.?\s?E\.?\s+PRA[CT]?TICES|\bCP\b/i, ate: "2026-10-30" },
+  },
+  "portal:cert-4c": {
+    // sem planilha de controle: o saldo começa na primeira compra 4C do Digisul e soma
+    // tudo até hoje ("4C SERVICES GMBH", às vezes com EUDR / Rainforest junto)
+    codigo: "4C", nome: "4C", inicio: null,
+    re: /\b4\s*C\b/i,
   },
 };
 
@@ -221,7 +230,7 @@ export async function renderCert(link, alvo, ctx) {
   // a aba fica a mesma quando a página recarrega depois de salvar algo
   let aba = ["exportacoes", "compras", "produtor"].includes(abaAberta.get(link)) ? abaAberta.get(link) : "posicao";
   let busca = buscaAberta.get(link) ?? "", mes = "";
-  let venceDe = "", venceAte = "", filtroExp = "", filtroBrc = "";
+  let venceDe = "", venceAte = "", filtroExp = "", filtroBrc = "", produtorBrc = "";
   const abertos = new Set(), expAbertas = new Set(), brcAbertas = new Set();
   // produtores fora da soma "Selected": começa sem o produtor bloqueado
   const desmarcados = new Set(hist.produtores.filter((x) => x.bloqueado).map((x) => x.nome));
@@ -407,7 +416,7 @@ export async function renderCert(link, alvo, ctx) {
     const corpo = { exportacoes: () => corpoExportacoes(t), compras: () => corpoCompras(t), produtor: () => corpoProdutor(t) }[aba] ?? corpoPosicao;
     alvo.innerHTML = `<div class="pos">
       ${cabecalhoPagina({
-        titulo: `${cert.nome} (${cert.codigo})`,
+        titulo: nomeCert(cert),
         data: base.atualizado_em ? new Date(base.atualizado_em).toLocaleDateString(LOCALE, { day: "numeric", month: "short", year: "numeric" }) : "",
         sub: `Digisul data updated <strong>${esc(tempoRelativo(base.atualizado_em))}</strong>
           ${cert.inicio ? `<span>· contracts starting <span>${esc(fmtMes(cert.inicio + "-01"))}</span></span>` : ""}
@@ -435,6 +444,7 @@ export async function renderCert(link, alvo, ctx) {
     $("#certMes", alvo)?.addEventListener("change", (e) => { mes = e.target.value; desenhar(); });
     $("#certFiltroExp", alvo)?.addEventListener("change", (e) => { filtroExp = e.target.value; desenhar(); });
     $("#certFiltroBrc", alvo)?.addEventListener("change", (e) => { filtroBrc = e.target.value; desenhar(); });
+    $("#certProdutorBrc", alvo)?.addEventListener("change", (e) => { produtorBrc = e.target.value; desenhar(); });
     // indicadores: abrem a aba (com o filtro) dos contratos que formam o número
     const IR = {
       inicial: () => { irPara("produtor"); venceDe = ""; venceAte = cert.inicio ? mesAnterior(cert.inicio) : ""; },
@@ -585,6 +595,7 @@ export async function renderCert(link, alvo, ctx) {
     sem: (h) => h._usado < 0.5,
   };
   const listaCompras = (t) => hist.linhas.filter(FILTROS_BRC[filtroBrc] ?? FILTROS_BRC[""])
+    .filter((h) => !produtorBrc || h._produtor === produtorBrc)
     .filter((h) => !t || [h.compra, h.id_cert, h.fornecedor, h.fazenda, ...usosDaCompra(h).map((u) => u.venda)]
       .some((x) => String(x ?? "").toLowerCase().includes(t)))
     .sort((a, b) => String(a.vencimento ?? "").localeCompare(String(b.vencimento ?? "")) || a.compra.localeCompare(b.compra, "en", { numeric: true }));
@@ -601,6 +612,9 @@ export async function renderCert(link, alvo, ctx) {
           <option value="usado" ${filtroBrc === "usado" ? "selected" : ""}>Fully used</option>
           <option value="passou" ${filtroBrc === "passou" ? "selected" : ""}>Used more than the contract</option>
           <option value="sem" ${filtroBrc === "sem" ? "selected" : ""}>Not used yet</option></select>
+        <select id="certProdutorBrc" aria-label="Producer">
+          <option value="">All producers</option>${[...new Set(hist.linhas.map((h) => h._produtor))].sort((a, b) => a.localeCompare(b)).map((p) =>
+            `<option value="${esc(p)}" ${p === produtorBrc ? "selected" : ""}>${esc(p)}</option>`).join("")}</select>
         ${lista.length ? `<button type="button" class="btn" id="certAbrirTodos" data-abrir="${todosAbertos ? "" : "1"}">${todosAbertos ? "Collapse all" : "Expand all"}</button>
           <button type="button" class="btn" id="certExportarBrc" title="Download this list: one row per BRC purchase and one per export it went to">${icon("download")}<span>Export to Excel</span></button>` : ""}
       </div>
@@ -626,8 +640,8 @@ export async function renderCert(link, alvo, ctx) {
               <td>${h._origem === "planilha" && !h.alterado_por ? "" : origemHist(h)}</td>
               ${editar ? `<td class="cert-acoes">${h._sobra >= 0.5 ? `<button type="button" class="link" data-usar="${esc(h._chave)}" title="Use bags of this leftover in an export">${icon("link")}Use</button>` : ""}</td>` : ""}</tr>
             ${aberto ? (us.length ? us.map((u) => `<tr class="cert-brc" ${u.quem ? `title="${esc(`Linked in the portal · ${u.quem}`)}"` : ""}>
-                <td>${u.venda ? `${esc(u.venda)}${u.quem ? ` <span class="pill">Portal</span>` : ""}` : `<span class="muted">Used before the portal (no export in the spreadsheet)</span>`}</td>
-                <td>${esc(u.cliente ?? "")}</td><td></td><td>${esc(u.mes ? fmtMes(u.mes + "-01") : "")}</td><td></td>${num(u.sacas)}<td></td><td></td><td></td>
+                <td>${u.venda ? `${esc(u.venda)}${u.cliente ? ` <span class="muted">· ${esc(u.cliente)}</span>` : ""}${u.quem ? ` <span class="pill">Portal</span>` : ""}` : `<span class="muted">Used before the portal (no export in the spreadsheet)</span>`}</td>
+                <td>${esc(h.fornecedor ?? "—")}</td><td>${esc(h.fazenda ?? "")}</td><td>${esc(u.mes ? fmtMes(u.mes + "-01") : "")}</td><td></td>${num(u.sacas)}<td></td><td></td><td></td>
                 ${editar ? `<td class="cert-acoes">${u.venda ? `<button type="button" class="link" data-desvincular="${esc(JSON.stringify([u.venda, h._chave]))}" title="Remove this link: the bags go back to the leftover of the purchase">${icon("x")}Unlink</button>` : ""}</td>` : ""}</tr>`).join("")
               : `<tr class="cert-brc"><td colspan="${colunas}" class="muted">Not used in any export yet.</td></tr>`) : ""}`;
         }).join("") : `<tr><td colspan="${colunas}" class="vazio-td">No BRC purchases match these filters.</td></tr>`}</tbody>
@@ -1251,7 +1265,7 @@ async function salvarImagemVendas(botao, d) {
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
         <img src="assets/logo_brascof.png" alt="" style="height:40px">
         <div style="flex:1">
-          <div style="font-size:19px;font-weight:700;color:${cor.brand}">${esc(d.cert.nome)} (${esc(d.cert.codigo)}) · Export sales</div>
+          <div style="font-size:19px;font-weight:700;color:${cor.brand}">${esc(nomeCert(d.cert))} · Export sales</div>
           <div style="font-size:12px;color:${cor.texto2}">${esc(d.titulo.replace(/^.*?·\s*/, "Shipment "))} · Digisul data as of ${esc(quandoEn(d.atualizado))} · all figures in 60 kg bags</div>
         </div>
       </div>
@@ -1319,7 +1333,7 @@ async function salvarImagem(botao, d) {
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
         <img src="assets/logo_brascof.png" alt="" style="height:40px">
         <div style="flex:1">
-          <div style="font-size:19px;font-weight:700;color:${cor.brand}">${esc(d.cert.nome)} (${esc(d.cert.codigo)}) · Long / short position</div>
+          <div style="font-size:19px;font-weight:700;color:${cor.brand}">${esc(nomeCert(d.cert))} · Long / short position</div>
           <div style="font-size:12px;color:${cor.texto2}">Digisul data as of ${esc(quando)}${d.cert.inicio ? ` · contracts starting ${mesEn(d.cert.inicio)}` : ""} · all figures in 60 kg bags</div>
         </div>
       </div>

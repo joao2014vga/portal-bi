@@ -903,6 +903,13 @@ select c.id, 'C.A.F.E. Practices (CP)', 'Long/short position of the CP certifica
 from public.bi_categorias c
 where c.nome = 'Certificates'
   and not exists (select 1 from public.bi_dashboards d where d.link = 'portal:cert-cp');
+
+insert into public.bi_dashboards (categoria_id, titulo, descricao, link, frequencia, ativo, ordem)
+select c.id, '4C', 'Long/short position of the 4C certificate by month, with the certified purchases and export sales, contract by contract.',
+       'portal:cert-4c', 'diaria', true, 2
+from public.bi_categorias c
+where c.nome = 'Certificates'
+  and not exists (select 1 from public.bi_dashboards d where d.link = 'portal:cert-4c');
 -- ---------------------------------------------------------------------
 -- 12. POSIÇÃO FÍSICA: O QUE FORMA CADA NÚMERO DA MATRIZ
 -- A composição da matriz por padrão (tipo 'fisica_itens') é lida por quem vê a
