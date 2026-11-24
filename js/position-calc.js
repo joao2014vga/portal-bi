@@ -473,6 +473,122 @@ export function textoFixacaoPerdida(alt, fmtN = (v) => v.toLocaleString("en-US",
   return `Fixation lost: ${fmtN(Math.round(total))} bags back to "to fix" without a new trade (${l.map((p) => `${p.familia} ${fmtN(Math.round(p.perdida))}`).join(", ")}). Check the fixation in Digisul`;
 }
 
+// Café sem contrapartida (a partir dos itens de alteracoes). Por grupo (Exportável, Low Grade, Conilon),
+// o café que saiu tem de ir para algum lugar:
+//   origens = lotes que saíram + compras que baixaram o "a entregar" sem lote novo ligado a elas
+//   destinos = vendas que baixaram (por família de contrato: divisão não conta) + lotes novos que não
+//              vieram de compra (ligas, rebenefício)
+//   sem contrapartida = origens − destinos
+// positivo: café saiu do estoque/compra e nenhuma venda baixou (some do net diff);
+// negativo: venda baixou ou lote apareceu sem origem. A compra que vai direto para o embarque
+// (compra baixa e venda baixa no mesmo dia) se anula. Só acusa a partir de TOL_SEM sacas.
+const TOL_SEM = 50;
+const ESPECIE_GRUPO = { EXP: "A", "LOW GRADE": "A", CONILON: "C" };
+// subconjunto de itens (sacas) que soma alvo ± margem; null se não houver (até 24 itens, somas inteiras)
+function subconjunto(itens, alvo, margem) {
+  const lista = itens.slice(0, 24), max = Math.round(alvo + margem);
+  let somas = new Map([[0, []]]);
+  for (let i = 0; i < lista.length; i++) {
+    const q = Math.round(lista[i].sacas);
+    if (q <= 0) continue;
+    const novas = new Map(somas);
+    for (const [s, idx] of somas) {
+      const t = s + q;
+      if (t > max || novas.has(t)) continue;
+      const usa = [...idx, i];
+      if (Math.abs(t - alvo) <= margem) return usa.map((k) => lista[k]);
+      novas.set(t, usa);
+    }
+    somas = novas;
+  }
+  return null;
+}
+// casa origens com destinos: 1:1, depois uma origem = soma de destinos, depois um destino = soma de origens
+function casarQuantidades(origens, destinos, tol) {
+  const O = [...origens].sort((a, b) => b.sacas - a.sacas), D = [...destinos].sort((a, b) => b.sacas - a.sacas);
+  const tira = (lista, itens) => itens.forEach((x) => lista.splice(lista.indexOf(x), 1));
+  for (const o of [...O]) {
+    const d = D.find((x) => Math.abs(x.sacas - o.sacas) <= tol(o.sacas));
+    if (d) { tira(D, [d]); tira(O, [o]); }
+  }
+  for (const o of [...O]) {
+    const sub = D.length > 1 ? subconjunto(D, o.sacas, tol(o.sacas)) : null;
+    if (sub?.length > 1) { tira(D, sub); tira(O, [o]); }
+  }
+  for (const d of [...D]) {
+    const sub = O.length > 1 ? subconjunto(O, d.sacas, tol(d.sacas)) : null;
+    if (sub?.length > 1) { tira(O, sub); tira(D, [d]); }
+  }
+  return [O, D];
+}
+export function semContrapartida(alt) {
+  const movs = (alt?.itens ?? []).filter((x) => !x.fixacao);
+  if (!movs.length) return [];
+  const lotes = movs.filter((x) => x.tipo === "e");
+  const tol = (q) => Math.max(5, Math.abs(q) * 0.01);
+  const g0 = (x) => x.grupo ?? null;
+  // compras: baixa líquida por família contra os lotes novos ligados a ela (lote.contrato = compra)
+  const usados = new Set(), sobra = new Map(), comprasSemLote = [];
+  const famC = new Map();
+  for (const x of movs.filter((y) => y.tipo === "c")) {
+    const f = familiaContrato(x.chave);
+    const o = famC.get(f) ?? famC.set(f, { familia: f, d: 0, itens: [] }).get(f);
+    o.d += x.antes - x.agora; o.itens.push(x);
+  }
+  for (const o of famC.values()) {
+    const ligados = lotes.filter((l) => l.efeito > 0 && l.parceiro && familiaContrato(l.parceiro) === o.familia);
+    const entrou = ligados.reduce((s, l) => s + l.efeito, 0);
+    ligados.forEach((l) => usados.add(l));
+    const x = o.itens[0];
+    if (o.d - entrou >= 0.5) {
+      comprasSemLote.push({ tipo: "c", chave: o.familia, parceiro: x.parceiro, padrao: x.padrao, grupo: g0(x), sacas: arred(o.d - entrou),
+        nota: entrou ? `to deliver −${arred(o.d)}, lots in ${arred(entrou)}` : `to deliver ${o.itens.map((c) => `${c.antes} → ${c.agora}`).join(", ")}` });
+    }
+    // lote de compra além da baixa (café de entrega anterior): conta como destino livre
+    if (entrou - Math.max(0, o.d) >= 0.5) {
+      const g = g0(ligados[0]);
+      sobra.set(g, (sobra.get(g) ?? 0) + entrou - Math.max(0, o.d));
+    }
+  }
+  const res = [];
+  for (const grupo of [...new Set(movs.map(g0))]) {
+    const doG = movs.filter((x) => g0(x) === grupo);
+    const saiu = doG.filter((x) => x.tipo === "e" && x.efeito < 0)
+      .map((l) => ({ tipo: "e", chave: l.chave, parceiro: l.parceiro, padrao: l.padrao, sacas: arred(-l.efeito), nota: `${l.antes} → ${l.agora}` }));
+    const compras = comprasSemLote.filter((c) => c.grupo === grupo);
+    const novos = doG.filter((x) => x.tipo === "e" && x.efeito > 0 && !usados.has(x))
+      .map((l) => ({ tipo: "e", chave: l.chave, parceiro: l.parceiro, padrao: l.padrao, sacas: arred(l.efeito), nota: `${l.antes} → ${l.agora}` }));
+    // vendas: baixa líquida por família (venda dividida não é embarque)
+    const famV = new Map();
+    for (const x of doG.filter((y) => y.tipo === "v" || y.tipo === "i")) {
+      const f = `${x.tipo}|${familiaContrato(x.chave)}`;
+      const o = famV.get(f) ?? famV.set(f, { tipo: x.tipo, chave: familiaContrato(x.chave), parceiro: x.parceiro, padrao: x.padrao, sacas: 0 }).get(f);
+      o.sacas += x.antes - x.agora;
+    }
+    const vendas = [...famV.values()].filter((o) => o.sacas >= 0.5).map((o) => ({ ...o, sacas: arred(o.sacas) }));
+    const soma = (l) => l.reduce((s, x) => s + x.sacas, 0);
+    const qOrig = soma(saiu) + soma(compras), qDest = soma(vendas) + soma(novos) + (sobra.get(grupo) ?? 0);
+    const sem = arred(qOrig - qDest);
+    if (Math.abs(sem) < TOL_SEM) continue;
+    // tira o que se casa (lote/compra ≈ venda/lote novo, também em somas); o resto é onde procurar
+    const [origensLivres, destinosLivres] = casarQuantidades([...saiu, ...compras], [...vendas, ...novos], tol);
+    res.push({ grupo, especie: ESPECIE_GRUPO[grupo] ?? doG[0].especie, sem_contrapartida: sem,
+      lotes_saiu: arred(soma(saiu)), compras_sem_lote: arred(soma(compras)), vendas: arred(soma(vendas)), lotes_novos: arred(soma(novos) + (sobra.get(grupo) ?? 0)),
+      // positivo: origens sem destino (lotes e compras); negativo: destinos sem origem (vendas e lotes novos)
+      itens: (sem > 0 ? origensLivres : destinosLivres).sort((a, b) => b.sacas - a.sacas) });
+  }
+  return res.sort((a, b) => Math.abs(b.sem_contrapartida) - Math.abs(a.sem_contrapartida));
+}
+
+// texto da notificação (sino); null quando está tudo casado
+export function textoSemContrapartida(alt, fmtN = (v) => v.toLocaleString("en-US", { maximumFractionDigits: 0 })) {
+  const fora = semContrapartida(alt).filter((g) => g.sem_contrapartida > 0);
+  if (!fora.length) return null;
+  const total = fora.reduce((s, g) => s + g.sem_contrapartida, 0);
+  const lista = fora.flatMap((g) => g.itens).sort((a, b) => b.sacas - a.sacas).slice(0, 5).map((x) => `${x.chave} ${fmtN(Math.round(x.sacas))}`);
+  return `Coffee out without a destination: ${fmtN(Math.round(total))} bags left inventory or purchases and no sale went down (${lista.join(", ")}). Check in Digisul`;
+}
+
 export function alteracoesPosition(atual, anterior, desde) {
   if (!atual || !anterior) return null;
   const itens = [];
