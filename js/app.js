@@ -19,6 +19,7 @@ const estado = { perfil: null, precisaSenha: ACAO_URL, sistemas: null, arquivos:
 
 // ADM ou "File manager": sobe e gerencia os arquivos para download
 const gerenciaArquivos = () => !!(estado.perfil?.is_admin || estado.perfil?.gerencia_arquivos);
+const publicaPosition = () => !!(estado.perfil?.is_admin || estado.perfil?.publica_position);
 
 // Sistema integrado: "painel" cujo link fica no mesmo endereço do portal
 // (ex.: o Informativo). Abre dentro do portal usando o mesmo login e
@@ -294,7 +295,7 @@ const CHAVE_LEMBRETE = "portalbi_lembrete_position"; // fechado: some por 1 hora
 const lembreteFechado = () => { try { return Date.now() - Number(sessionStorage.getItem(CHAVE_LEMBRETE) || 0) < 3600e3; } catch { return false; } };
 
 async function lembretePosition() {
-  if (!estado.perfil?.is_admin || MODO_DEMO || !api.positionUltimoEnvio || lembreteFechado()) return "";
+  if (!publicaPosition() || MODO_DEMO || !api.positionUltimoEnvio || lembreteFechado()) return "";
   const agora = new Date();
   if (agora.getDay() === 0 || agora.getDay() === 6 || agora.getHours() < HORA_LEMBRETE_POSITION) return "";
   let ultimo, pub;
@@ -328,7 +329,7 @@ function ligarLembrete() {
 
 // com o portal aberto antes das 15:00, o aviso aparece sozinho na hora, sem recarregar
 function agendarLembrete() {
-  if (estado.lembreteAgendado || !estado.perfil?.is_admin || MODO_DEMO) return;
+  if (estado.lembreteAgendado || !publicaPosition() || MODO_DEMO) return;
   estado.lembreteAgendado = true;
   const hora = new Date();
   hora.setHours(HORA_LEMBRETE_POSITION, 0, 5, 0);
@@ -587,7 +588,8 @@ async function telaDashboard(id) {
     const render = ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : ehPainelPrecos(d.link) ? renderPrecos : ehPainelShipment(d.link) ? renderShipment : ehPainelCompradores(d.link) ? renderCompradores : ehPainelContratos(d.link) ? renderContratos : renderPosition;
     // Position e Certificado: publicar, importar e ajustar é só do admin (o File manager só cuida do Files)
     const admin = !!estado.perfil?.is_admin;
-    await render(d.link, $("#frame"), { api, gerente: admin, admin, recarregar, titulo: d.titulo });
+    // revisor ("Position publisher"): vê a Position como o admin e publica o dia, sem os envios
+    await render(d.link, $("#frame"), { api, gerente: admin, admin, revisor: publicaPosition(), recarregar, titulo: d.titulo });
   }
 }
 
@@ -892,6 +894,7 @@ async function formUsuario(u, dashs, cats) {
       <label class="switch"><input type="checkbox" name="is_admin" ${u?.is_admin ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Administrator</label>
       ${novo ? "" : `<label class="switch"><input type="checkbox" name="ativo" ${u.ativo ? "checked" : ""} ${eu ? "disabled" : ""}><span></span>Access active</label>`}
       ${!novo && "gerencia_arquivos" in u ? `<label class="switch" title="Can upload and manage files, without being an administrator"><input type="checkbox" name="gerencia_arquivos" ${u.gerencia_arquivos ? "checked" : ""}><span></span>File manager (uploads files)</label>` : ""}
+      ${!novo && "publica_position" in u ? `<label class="switch" title="Sees the Position like an administrator (live version, every date, spreadsheet × Digisul) and publishes the day users see"><input type="checkbox" name="publica_position" ${u.publica_position ? "checked" : ""}><span></span>Position publisher (reviews and publishes)</label>` : ""}
       ${novo ? `<div class="col-2">${campoSenhaProvisoria()}
         <p class="dica">${icon("key")} No e-mail is sent: share this password with the user. They will be required to change it at first sign-in.
           If the e-mail already has an account (e.g. the Daily Report), access is granted and they keep their current password.</p></div>` : ""}
@@ -923,6 +926,7 @@ async function formUsuario(u, dashs, cats) {
         await api.salvarUsuario({
           id: u.id, nome, is_admin: eu ? u.is_admin : f.is_admin.checked, ativo: eu ? true : f.ativo.checked,
           gerencia_arquivos: f.gerencia_arquivos ? f.gerencia_arquivos.checked : undefined,
+          publica_position: f.publica_position ? f.publica_position.checked : undefined,
         }, dashboards);
         toast("User updated.");
         if (eu) estado.perfil = null;

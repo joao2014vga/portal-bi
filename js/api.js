@@ -175,9 +175,9 @@ async function criarApiSupabase() {
       return perfis.map((p) => ({ ...p, ...(status[p.id] ?? { confirmado: null, trocar_senha: null, ultimo_acesso: null }) }));
     },
     async criarUsuario(u) { return edge("criar", u); },
-    async salvarUsuario({ id, nome, is_admin, ativo, gerencia_arquivos }, dashboards) {
+    async salvarUsuario({ id, nome, is_admin, ativo, gerencia_arquivos, publica_position }, dashboards) {
       // gerencia_arquivos só vai quando a coluna existe no banco (schema.sql)
-      const dados = { nome, is_admin, ativo, ...(gerencia_arquivos !== undefined ? { gerencia_arquivos } : {}) };
+      const dados = { nome, is_admin, ativo, ...(gerencia_arquivos !== undefined ? { gerencia_arquivos } : {}), ...(publica_position !== undefined ? { publica_position } : {}) };
       check(await sb.from("bi_perfis").update(dados).eq("id", id));
       if (dashboards) await sincronizar("bi_acessos", "user_id", id, "dashboard_id", dashboards);
     },

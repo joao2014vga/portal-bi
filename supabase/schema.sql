@@ -2203,7 +2203,7 @@ declare
   v_n int := 0;
   c record;
 begin
-  if not public.bi_is_admin() then
+  if not public.bi_publica_position() then
     raise exception 'Access denied';
   end if;
   v_quem := (select nullif(split_part(nome, ' ', 1), '') from public.bi_perfis where id = auth.uid());
@@ -2235,3 +2235,31 @@ $$;
 revoke all on function public.bi_position_publicar_dia(date) from public, anon;
 grant execute on function public.bi_position_publicar_dia(date) to authenticated;
 -- (bi_position_publicar, do upload da planilha, passou a não notificar o Overview quando há Position publicada)
+
+-- =====================================================================
+-- 38. "POSITION PUBLISHER": vê a Position como o admin e publica o dia (sem ser admin)
+-- =====================================================================
+alter table public.bi_perfis add column if not exists publica_position boolean not null default false;
+grant select (publica_position), update (publica_position) on public.bi_perfis to authenticated;
+
+create or replace function public.bi_protege_perfil()
+ returns trigger language plpgsql security definer set search_path to 'public'
+as $function$
+begin
+  if auth.uid() is not null and not public.bi_is_admin() then
+    new.is_admin := old.is_admin;
+    new.gerencia_arquivos := old.gerencia_arquivos;
+    new.publica_position := old.publica_position;
+    new.ativo    := old.ativo;
+    new.email    := old.email;
+  end if;
+  return new;
+end;
+$function$;
+
+create or replace function public.bi_publica_position()
+ returns boolean language sql stable security definer set search_path to 'public'
+as $$
+  select coalesce((select (p.is_admin or p.publica_position) and p.ativo from public.bi_perfis p where p.id = auth.uid()), false);
+$$;
+-- e bi_position_publicar_dia (seção 37) passa a checar public.bi_publica_position() em vez de bi_is_admin()
