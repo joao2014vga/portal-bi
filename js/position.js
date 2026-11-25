@@ -226,18 +226,31 @@ export async function renderPosition(link, alvo, ctx) {
   limparGraficos();
   vigiarNegativos(alvo);
   alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading Position…</div>`;
-  let carga, oficial, fonte, datas = [];
+  let carga, oficial, fonte, datas = [], publicada = null, ultima = null;
   const soPlanilha = PAINEIS_SO_PLANILHA.has(link) && !ctx.admin;
   const soDigisul = PAINEIS_SO_DIGISUL.has(link);
   try {
     oficial = soPlanilha ? "planilha" : PAINEIS_SO_API.has(link) ? "api" : await ctx.api.positionFonte();
     fonte = soPlanilha ? "planilha" : soDigisul ? "api" : (ctx.gerente && fonteVista()) || oficial;
-    carga = await ctx.api.positionUltima(fonte);
+    carga = ultima = await ctx.api.positionUltima(fonte);
     // data escolhida no topo: a última versão da fonte naquele dia (sem dia escolhido, a mais recente)
     if (carga && PAINEIS_COM_DATA.has(link)) {
-      datas = (await ctx.api.positionDatas?.(fonte).catch(() => null)) ?? [];
+      [datas, publicada] = await Promise.all([
+        ctx.api.positionDatas?.(fonte).catch(() => null),
+        ctx.api.positionPublicada?.(fonte).catch(() => null),
+      ]);
+      datas = datas ?? [];
       const pedida = dataVista();
-      if (pedida && pedida !== carga.data_ref && datas.includes(pedida)) carga = (await ctx.api.positionUltima(fonte, pedida)) ?? carga;
+      if (publicada && !ctx.admin) {
+        // usuários: a Position que o admin publicou (congelada) e os dias anteriores a ela
+        datas = [publicada.data_ref, ...datas.filter((d) => d < publicada.data_ref)];
+        carga = pedida && pedida < publicada.data_ref && datas.includes(pedida)
+          ? (await ctx.api.positionUltima(fonte, pedida)) ?? publicada : publicada;
+      } else if (pedida === "pub" && publicada) {
+        carga = publicada;  // admin conferindo o que os usuários veem
+      } else if (pedida && pedida !== carga.data_ref && datas.includes(pedida)) {
+        carga = (await ctx.api.positionUltima(fonte, pedida)) ?? carga;
+      }
     }
   } catch (e) {
     alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Position data is not available</h3><p>${esc(e.message)}</p></div>`;
@@ -245,12 +258,18 @@ export async function renderPosition(link, alvo, ctx) {
   }
   // a mesma API, presa à fonte que está na tela
   const api = {
-    ...ctx.api, positionDetalhe: (tipos) => ctx.api.positionDetalhe(tipos, fonte), positionHistorico: () => ctx.api.positionHistorico(fonte),
+    ...ctx.api, positionDetalhe: (tipos) => ctx.api.positionDetalhe(tipos, fonte),
+    // usuários: a evolução vai só até o dia publicado (com os números congelados dele)
+    positionHistorico: () => ctx.api.positionHistorico(fonte).then((h) => (!publicada || ctx.admin ? h
+      : h.filter((x) => x.data_ref < publicada.data_ref).concat(publicada.resumo?.kpis ? [{ id: publicada.id, data_ref: publicada.data_ref, kpis: publicada.resumo.kpis }] : []))),
     // dados que só existem pela API (logística), qualquer que seja a fonte na tela
     positionDetalheApi: (tipos) => ctx.api.positionDetalhe(tipos, "api"),
   };
   // historico: a tela mostra um dia que não é o mais recente (sem a composição dos números)
-  const c = { ...ctx, api, fonte, oficial, datas, soPlanilha, soDigisul, historico: !!carga && datas.length > 0 && carga.data_ref !== datas[0] };
+  // congelada: a versão publicada já não é a que está no banco (o Digisul atualizou depois)
+  const congelada = !!carga?.publicada && (carga.id !== ultima?.id || carga.created_at !== ultima?.created_at);
+  const c = { ...ctx, api, fonte, oficial, datas, soPlanilha, soDigisul, publicada, ultima,
+    historico: !!carga && datas.length > 0 && (carga.data_ref !== datas[0] || congelada) };
   const topo = barraTopo(carga, c);
   if (!carga) {
     alvo.innerHTML = `<div class="pos">${topo}<div class="vazio">${icon("chart")}<h3>${fonte === "api" ? "No Digisul update yet" : "No Position uploaded yet"}</h3>
@@ -273,13 +292,28 @@ export async function renderPosition(link, alvo, ctx) {
 
 function barraTopo(carga, ctx) {
   const api = ctx.fonte === "api";
-  const quando = !carga ? "" : api
+  const pub = ctx.publicada;
+  const quando = !carga ? "" : carga.publicada && !ctx.admin
+    ? `published ${tempoRelativo(carga.publicado_em)}${carga.publicado_por ? ` by ${carga.publicado_por}` : ""}`
+    : api
     ? `updated from Digisul ${tempoRelativo(carga.created_at)}${carga.enviado_por === "Manual" ? " (manual)" : ""}`
     : `uploaded ${tempoRelativo(carga.created_at)}${carga.enviado_por ? ` by ${carga.enviado_por}` : ""}`;
-  // dia da Position: com mais de uma versão, vira um seletor (Overview e Physical Position)
-  const dia = carga && ctx.datas?.length > 1
-    ? `<select id="posDia" class="pos-dia" aria-label="Position date">${ctx.datas.map((d, i) => `<option value="${d}" ${d === carga.data_ref ? "selected" : ""}>${esc(fmtData(d))}${i === 0 ? " · latest" : ""}</option>`).join("")}</select>`
+  // dia da Position: com mais de uma versão, vira um seletor (Overview e Physical Position).
+  // O admin tem também a versão publicada (o que os usuários veem), separada da do banco.
+  const opcaoPub = ctx.admin && pub
+    ? `<option value="pub" ${carga?.publicada ? "selected" : ""}>${esc(fmtData(pub.data_ref))} · published to users</option>` : "";
+  const dia = carga && (ctx.datas?.length > 1 || opcaoPub)
+    ? `<select id="posDia" class="pos-dia" aria-label="Position date">${opcaoPub}${ctx.datas.map((d, i) => `<option value="${d}" ${d === carga.data_ref && (!carga.publicada || !ctx.admin) ? "selected" : ""}>${esc(fmtData(d))}${i === 0 ? (ctx.admin || !pub ? " · latest" : " · published") : ""}</option>`).join("")}</select>`
     : carga ? `<strong>${esc(fmtData(carga.data_ref))}</strong>` : "";
+  // admin: o que os usuários estão vendo e o botão para publicar o dia da tela
+  const podePublicar = ctx.admin && carga && ctx.datas?.length > 0;
+  const mesmaDaPub = pub && !carga?.publicada && pub.id === carga?.id && pub.created_at === carga?.created_at;
+  const faixaPub = !podePublicar ? "" : `<div class="pos-publicacao ${pub ? "" : "pos-pub-nenhuma"}">${icon("users")}
+    <span>${pub
+      ? `Users see the <strong>Position of ${esc(fmtData(pub.data_ref))}</strong>, published ${esc(tempoRelativo(pub.publicado_em))}${pub.publicado_por ? ` by ${esc(pub.publicado_por)}` : ""}${carga.publicada ? " — this is the version on screen." : mesmaDaPub ? " — the same version on screen." : "."}`
+      : "Nothing published yet: users see the latest Position, changing with every Digisul update."}</span>
+    ${carga.publicada || mesmaDaPub ? "" : `<button type="button" class="btn btn-primary btn-sm" id="posPublicar" data-dia="${carga.data_ref}" data-hora="${esc(api ? dataHoraBR(carga.created_at) : "")}">${icon("megaphone")}<span>Publish ${esc(fmtData(carga.data_ref))} to users</span></button>`}
+  </div>`;
   return `<div class="pos-topo">
     <div class="pos-data">${icon("clock")}${carga
       ? `<span>Position as of ${dia} · ${esc(quando)}</span>`
@@ -291,9 +325,10 @@ function barraTopo(carga, ctx) {
       <button class="btn btn-primary" id="posUpload">${icon("upload")}<span>Upload Position</span></button>`}
     </div>` : ""}
   </div>
-  ${ctx.historico ? `<div class="pos-historico">${icon("clock")}<span>You are viewing the Position of <strong>${esc(fmtData(carga.data_ref))}</strong>, not the latest (${esc(fmtData(ctx.datas[0]))}).
+  ${faixaPub}
+  ${ctx.historico && carga.data_ref !== ctx.datas[0] && !carga.publicada ? `<div class="pos-historico">${icon("clock")}<span>You are viewing the Position of <strong>${esc(fmtData(carga.data_ref))}</strong>, not the ${pub && !ctx.admin ? "published one" : "latest"} (${esc(fmtData(ctx.datas[0]))}).
     Clicking a number to see its contracts only works on the latest Position.</span>
-    <button type="button" class="link" id="posDiaUltima">Back to the latest</button></div>` : ""}`;
+    <button type="button" class="link" id="posDiaUltima">Back to the ${pub && !ctx.admin ? "published one" : "latest"}</button></div>` : ""}`;
 }
 
 function ligarTopo(alvo, ctx) {
@@ -301,6 +336,22 @@ function ligarTopo(alvo, ctx) {
   // dia da Position (a mais recente não fica guardada: amanhã a tela abre no dia novo)
   $("#posDia", alvo)?.addEventListener("change", (e) => { guardarDataVista(e.target.value === ctx.datas[0] ? null : e.target.value); ctx.recarregar(); });
   $("#posDiaUltima", alvo)?.addEventListener("click", () => { guardarDataVista(null); ctx.recarregar(); });
+  // publicar o dia da tela: os usuários passam a ver essa Position, congelada como está agora
+  $("#posPublicar", alvo)?.addEventListener("click", (ev) => {
+    const { dia, hora } = ev.currentTarget.dataset;
+    modal({
+      titulo: `Publish the Position of ${fmtData(dia)}`,
+      botao: "Publish to users",
+      corpo: `<p>Everyone without admin access will see the <strong>Position of ${esc(fmtData(dia))}</strong> in Position Overview and Physical Position,
+        frozen as it is now${hora ? ` (Digisul update of ${esc(hora)})` : ""}.</p>
+        <p class="muted">Later Digisul updates and spreadsheet uploads are seen only by admins until you publish again. Users get a notification.</p>`,
+      async onSubmit() {
+        await ctx.api.publicarDiaPosition(dia);
+        toast(`Position of ${fmtData(dia)} published to users.`);
+        ctx.recarregar();
+      },
+    });
+  });
   $("#posSync", alvo)?.addEventListener("click", async (ev) => {
     const b = ev.currentTarget;
     b.disabled = true;
@@ -322,7 +373,7 @@ function ligarTopo(alvo, ctx) {
     titulo: "Upload Position",
     botao: "Read and publish",
     corpo: `<p class="muted">Choose the daily <strong>Brascof Position Overview</strong> spreadsheet (.xlsm or .xlsx).
-      It is read in your browser — macros are never run — and the Position views are updated for everyone with access.</p>
+      It is read in your browser — macros are never run. Once a Position has been published, users keep seeing it until you publish the new day.</p>
       <p class="muted">Futures are not in Digisul: when only the futures changed, a file with just the <strong>OpenFutures</strong> sheet is enough.</p>
       <label class="campo"><span>Spreadsheet *</span><input type="file" name="arquivo" accept=".xlsm,.xlsx" required></label>`,
     async onSubmit(f) {

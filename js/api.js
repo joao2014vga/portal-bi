@@ -44,6 +44,7 @@ function montarCarga(c) {
 const semColunaFonte = (error) => /fonte/i.test(error?.message ?? "") && /does not exist|column/i.test(error.message);
 
 function erroPosition(msg = "") {
+  if (/bi_position_publicada|publicar_dia/i.test(msg)) return "Publishing the Position is not set up yet: run section 37 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/bi_position_modelo|bi_config|salvar_modelo|definir_fonte|publicar_api/i.test(msg)) return "The Digisul update is not set up yet: run section 9 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/bi_position|schema cache|does not exist|Could not find the function/i.test(msg)) return "Position is not set up yet: run section 7 of supabase/schema.sql in the Supabase SQL Editor.";
   if (/Access denied/i.test(msg)) return "Only administrators and file managers can upload the Position.";
@@ -270,6 +271,27 @@ async function criarApiSupabase() {
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (error) throw new Error(erroPosition(error.message));
       return data?.created_at ?? null;
+    },
+    // Position publicada pelo admin (cópia congelada): o que os demais usuários veem no Overview
+    // e na Physical Position. null = nada publicado ainda (todos veem a última versão)
+    async positionPublicada(fonte) {
+      const { data, error } = await sb.from("bi_position_publicada")
+        .select(`carga_id, data_ref, nome_arquivo, enviado_por, created_at, publicado_em, publicado_por, ${PARTES_RESUMO}`)
+        .eq("fonte", fonte).maybeSingle();
+      if (error || !data) return null;
+      return { ...montarCarga(data), id: data.carga_id, publicada: true };
+    },
+    // a publicação mais recente (de qualquer fonte), para o lembrete das 15:00
+    async positionPublicacao() {
+      const { data, error } = await sb.from("bi_position_publicada").select("data_ref, publicado_em, publicado_por")
+        .order("publicado_em", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error(erroPosition(error.message));
+      return data ?? null;
+    },
+    // publica para os usuários a Position do dia (a última versão de cada fonte até esse dia)
+    async publicarDiaPosition(data_ref) {
+      const { error } = await sb.rpc("bi_position_publicar_dia", { p_data_ref: data_ref });
+      if (error) throw new Error(erroPosition(error.message));
     },
     // pegada da última versão de um dia anterior (null = não há);
     // sem data_ref: a versão mais recente, de qualquer dia ("desde a última atualização")

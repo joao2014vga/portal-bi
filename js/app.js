@@ -297,15 +297,23 @@ async function lembretePosition() {
   if (!estado.perfil?.is_admin || MODO_DEMO || !api.positionUltimoEnvio || lembreteFechado()) return "";
   const agora = new Date();
   if (agora.getDay() === 0 || agora.getDay() === 6 || agora.getHours() < HORA_LEMBRETE_POSITION) return "";
-  let ultimo;
-  try { ultimo = await api.positionUltimoEnvio("planilha"); } catch { return ""; }
-  if (ultimo && new Date(ultimo).toDateString() === agora.toDateString()) return "";
+  let ultimo, pub;
+  try {
+    [ultimo, pub] = await Promise.all([api.positionUltimoEnvio("planilha"), api.positionPublicacao ? api.positionPublicacao().catch(() => null) : null]);
+  } catch { return ""; }
+  const hoje = (d) => !!d && new Date(d).toDateString() === agora.toDateString();
+  // com Position publicada, o aviso só some quando o dia é publicado; antes disso, com o upload
+  if (pub ? hoje(pub.publicado_em) : hoje(ultimo)) return "";
   if (estado.posOverview === undefined) {
     estado.posOverview = (await api.dashboards().catch(() => [])).find((d) => d.ativo && d.link === "portal:position-overview")?.id ?? null;
   }
+  const texto = !pub
+    ? `<strong>Position Overview not updated today.</strong> <span>It is past ${HORA_LEMBRETE_POSITION}:00 and today's spreadsheet has not been uploaded${ultimo ? ` (last upload ${esc(tempoRelativo(ultimo))})` : ""}. Upload it so everyone sees the latest Position.</span>`
+    : `<strong>Position not published today.</strong> <span>It is past ${HORA_LEMBRETE_POSITION}:00 and users still see the Position of ${esc(dataBR(pub.data_ref + "T12:00:00"))} (published ${esc(tempoRelativo(pub.publicado_em))}).
+      ${hoje(ultimo) ? "" : "Upload today's spreadsheet, "}${hoje(ultimo) ? "Review" : "review"} the Position and click “Publish … to users”.</span>`;
   return `<div class="banner banner-alerta banner-lembrete" data-lembrete-position>
     ${icon("alert")}
-    <div><strong>Position Overview not updated today.</strong> <span>It is past ${HORA_LEMBRETE_POSITION}:00 and today's spreadsheet has not been uploaded${ultimo ? ` (last upload ${esc(tempoRelativo(ultimo))})` : ""}. Upload it so everyone sees the latest Position.</span>
+    <div>${texto}
     ${estado.posOverview ? ` <a href="#/d/${estado.posOverview}">Go to Position Overview</a>` : ""}</div>
     <button class="btn-icon" data-fecha-lembrete title="Hide for one hour" aria-label="Hide for one hour">${icon("x")}</button>
   </div>`;

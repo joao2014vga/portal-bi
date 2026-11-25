@@ -792,6 +792,12 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .pos-historico { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -4px 0 14px; padding: 10px 14px; border-radius: 10px;
   background: var(--alerta-bg); color: var(--alerta); font-size: 13.5px; }
 .pos-historico .link { color: inherit; text-decoration: underline; font-size: 13.5px; margin-left: auto; }
+/* Position publicada: o que os usuários veem (faixa só do admin) */
+.pos-publicacao { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin: -4px 0 14px; padding: 8px 10px 8px 14px; border-radius: 10px;
+  background: var(--ok-bg); color: var(--ok); font-size: 13.5px; }
+.pos-publicacao .ic { width: 16px; height: 16px; flex: none; }
+.pos-publicacao.pos-pub-nenhuma { background: var(--alerta-bg); color: var(--alerta); }
+.pos-publicacao .btn { margin-left: auto; height: 30px; padding: 0 12px; font-size: 12.5px; }
 
 /* ---------------------------------------------------------------- Price list ("Prices updated")
    A folha na tela tem a mesma cara da imagem enviada: faixa verde com a logo,

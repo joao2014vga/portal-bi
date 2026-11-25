@@ -2171,3 +2171,67 @@ notify pgrst, 'reload schema';
 -- Para conferir:
 --   select status, origem, count(*) from public.bi_ctr_futuros group by 1, 2 order by 1, 2;
 --   select count(*), count(documento), count(qualificacao), count(email) from public.bi_ctr_vendedores;
+
+-- =====================================================================
+-- 37. POSITION PUBLICADA (o dia que os usuários veem no Overview e na Physical Position)
+-- O admin escolhe o dia e publica: o resumo é copiado (congelado), porque a versão do
+-- Digisul de um dia é reescrita a cada sincronização. Sem publicação, todos veem a última.
+-- =====================================================================
+create table if not exists public.bi_position_publicada (
+  fonte text primary key check (fonte in ('planilha', 'api')),
+  carga_id bigint,
+  data_ref date not null,
+  nome_arquivo text,
+  enviado_por text,
+  created_at timestamptz,
+  resumo jsonb not null,
+  publicado_em timestamptz not null default now(),
+  publicado_por text
+);
+alter table public.bi_position_publicada enable row level security;
+drop policy if exists bi_position_publicada_select on public.bi_position_publicada;
+create policy bi_position_publicada_select on public.bi_position_publicada for select using (public.bi_ve_painel('portal:position-'::text));
+grant select on public.bi_position_publicada to authenticated;
+
+create or replace function public.bi_position_publicar_dia(p_data_ref date)
+returns date
+language plpgsql security definer set search_path to 'public'
+as $$
+declare
+  v_fonte text;
+  v_quem text;
+  v_n int := 0;
+  c record;
+begin
+  if not public.bi_is_admin() then
+    raise exception 'Access denied';
+  end if;
+  v_quem := (select nullif(split_part(nome, ' ', 1), '') from public.bi_perfis where id = auth.uid());
+  foreach v_fonte in array array['planilha', 'api'] loop
+    select id, data_ref, nome_arquivo, enviado_por, created_at, resumo into c
+      from public.bi_position_cargas
+     where fonte = v_fonte and data_ref <= p_data_ref
+     order by data_ref desc, id desc limit 1;
+    if found then
+      insert into public.bi_position_publicada (fonte, carga_id, data_ref, nome_arquivo, enviado_por, created_at, resumo, publicado_em, publicado_por)
+      values (v_fonte, c.id, c.data_ref, c.nome_arquivo, c.enviado_por, c.created_at, c.resumo, now(), v_quem)
+      on conflict (fonte) do update set carga_id = excluded.carga_id, data_ref = excluded.data_ref, nome_arquivo = excluded.nome_arquivo,
+        enviado_por = excluded.enviado_por, created_at = excluded.created_at, resumo = excluded.resumo,
+        publicado_em = excluded.publicado_em, publicado_por = excluded.publicado_por;
+      v_n := v_n + 1;
+    end if;
+  end loop;
+  if v_n = 0 then
+    raise exception 'There is no Position on or before %', p_data_ref;
+  end if;
+  -- data nos cards; a notificação (sino) sai só do Overview
+  perform set_config('bi.sem_notificacao', '1', true);
+  update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-physical';
+  perform set_config('bi.sem_notificacao', '', true);
+  update public.bi_dashboards set atualizado_em = now() where link = 'portal:position-overview';
+  return p_data_ref;
+end;
+$$;
+revoke all on function public.bi_position_publicar_dia(date) from public, anon;
+grant execute on function public.bi_position_publicar_dia(date) to authenticated;
+-- (bi_position_publicar, do upload da planilha, passou a não notificar o Overview quando há Position publicada)
