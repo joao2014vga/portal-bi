@@ -902,6 +902,9 @@ export function certificadosDaApi(api) {
       preco: p["Média Final (R$)"], valor: p["Valor Final (R$)"], diferencial: p["Diferencial"], bolsa: p["Bolsa"],
       mes_bolsa: paraIso(p["Mês Bolsa"]), fixacao: p["Status Fixação"] ?? p["Fixação"],
       padrao: p["Padrão"], especie: p["Espécie"], safra: p["Safra"], certificado: p["Certificador"],
+      // conferência da regra "entrega lançada direto como lote": os campos de entrega do Digisul
+      ...(z(a.Entregue_sc) === 0 && a.Filial_do_Lote
+        ? { bruto_entrega: Object.fromEntries(Object.entries(a).filter(([k]) => /entreg|devol|lote|said|filial|nota|saldo/i.test(k))) } : {}),
     };
   }).filter(Boolean);
   const vendas = (api.exportacao ?? []).map((a) => {
