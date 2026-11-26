@@ -763,8 +763,10 @@ function expSales(a) {
 function purchases(a) {
   const aFixar = a.Fixacao === "A Fixar";
   const sacasT = r2(z(a.Sacas_Total_BC ?? a["Sacas Total"]));
-  // entrega lançada direto como lote na filial: a consulta não soma em "Entregue", a tela sim
-  const entregaPorLote = z(a.Entregue_sc) === 0 && !!a.Filial_do_Lote;
+  // entrega lançada direto como lote na filial: a consulta não soma em "Entregue", a tela sim.
+  // Com nota de saída (Devoluções) a entrada foi estornada: vale o "A Entregar" do Digisul
+  // (ex.: BRC-0503/26, entrada e saída de 1.280 sc — a tela mostra Entregue 0).
+  const entregaPorLote = z(a.Entregue_sc) === 0 && !!a.Filial_do_Lote && z(a.Devoluoes_sc) === 0;
   const entregue = entregaPorLote ? sacasT : r2(z(a.Entregue_sc));
   const aEntregar = entregaPorLote ? 0 : r2(z(a.A_Entregar_BC));
   let qf, qaf, ql, lf, laf, status = null;
@@ -902,9 +904,6 @@ export function certificadosDaApi(api) {
       preco: p["Média Final (R$)"], valor: p["Valor Final (R$)"], diferencial: p["Diferencial"], bolsa: p["Bolsa"],
       mes_bolsa: paraIso(p["Mês Bolsa"]), fixacao: p["Status Fixação"] ?? p["Fixação"],
       padrao: p["Padrão"], especie: p["Espécie"], safra: p["Safra"], certificado: p["Certificador"],
-      // conferência da regra "entrega lançada direto como lote": os campos de entrega do Digisul
-      ...(z(a.Entregue_sc) === 0 && a.Filial_do_Lote
-        ? { bruto_entrega: Object.fromEntries(Object.entries(a).filter(([k]) => /entreg|devol|lote|said|filial|nota|saldo/i.test(k))) } : {}),
     };
   }).filter(Boolean);
   const vendas = (api.exportacao ?? []).map((a) => {
