@@ -1040,6 +1040,10 @@ const PT = {
   "The Futuro date of the contract in Digisul": "A data Futuro do contrato no Digisul",
   "Due date passed with bags still to deliver": "Vencimento passou e ainda há saldo a entregar",
   "Due date passed with more than 20% of the contract still to deliver": "Vencimento passou e ainda falta entregar mais de 20% do contrato",
+  "Futuro date passed with more than 20% of the contract still to deliver; the due date is the new date":
+    "A data futuro passou e ainda falta entregar mais de 20% do contrato; o vencimento é a data nova",
+  "The Futuro date passed: the coffee is late and now expected on the due date": "A data futuro passou: o café está atrasado e agora é esperado no vencimento",
+  "Rescheduled": "Remarcado", "passed": "passou",
   "{n} overdue: due date passed with more than 20% of the contract still to deliver": "{n} atrasados: vencimento passou e ainda falta entregar mais de 20% do contrato",
   "Overdue: due date passed with bags still to deliver": "Vencido: vencimento passou e ainda há saldo a entregar",
   "Contracts in these dates": "Contratos nessas datas", "By due date. A contract with two brokers appears once for each.":

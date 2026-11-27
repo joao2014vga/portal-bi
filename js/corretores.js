@@ -43,17 +43,22 @@ const hojeIso = () => diaIso(new Date());
 const daquiDias = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return diaIso(d); };
 // atalhos do vencimento: sempre só contratos com saldo a entregar
 const ATALHOS = [["vencidos", "Overdue"], ["30", "Next 30 days"], ["60", "Next 60 days"], ["90", "Next 90 days"]];
-const atalho = (k) => (k === "vencidos" ? { venDe: "", venAte: daquiDias(-1), soAtrasados: true }
+// "Overdue" não limita o vencimento: pega também os remarcados (data Futuro passada, vencimento à frente)
+const atalho = (k) => (k === "vencidos" ? { venDe: "", venAte: "", soAtrasados: true }
   : { venDe: hojeIso(), venAte: daquiDias(Number(k)), soAtrasados: false });
 const atalhoAtivo = () => (estado.soAbertos && !estado.futDe && !estado.futAte
   ? ATALHOS.find(([k]) => { const a = atalho(k); return a.venDe === estado.venDe && a.venAte === estado.venAte && a.soAtrasados === estado.soAtrasados; })?.[0] ?? "" : "");
 const datasAtivas = () => !!(estado.venDe || estado.venAte || estado.futDe || estado.futAte || estado.soAbertos || estado.soAtrasados);
 const entre = (d, de, ate) => (!de && !ate) || (!!d && (!de || d >= de) && (!ate || d <= ate));
-// Atrasado: vencimento passou e ainda falta entregar MAIS de 20% das sacas do contrato. Um saldo
-// pequeno (ex.: 1 saca de 2.000) é quebra do contrato, não atraso.
+// Atrasado: a data mais cedo entre a data Futuro e o vencimento já passou e ainda falta entregar
+// MAIS de 20% das sacas do contrato. Um saldo pequeno (ex.: 1 saca de 2.000) é quebra, não atraso.
+// Data Futuro passada com vencimento ainda à frente = atrasado e REMARCADO: o vencimento é a data
+// nova em que o café vem, e fica em destaque para não ser esquecido.
 const LIMITE_ATRASO = 0.2;
-const vencido = (r) => r._st === "aberto" && !!r.vencimento && r.vencimento < hojeIso()
+const dataAtraso = (r) => [r.futuro, r.vencimento].filter(Boolean).sort()[0] ?? null;
+const vencido = (r) => r._st === "aberto" && !!dataAtraso(r) && dataAtraso(r) < hojeIso()
   && (Number(r.aEntregar) || 0) > LIMITE_ATRASO * (Number(r.sacas) || 0);
+const remarcado = (r) => vencido(r) && !!r.futuro && r.futuro < hojeIso() && !!r.vencimento && r.vencimento >= hojeIso();
 
 const reais = (v) => (v == null ? "—" : `R$ ${fmtN(v, 2)}`);
 const reais0 = (v) => (v == null ? "—" : `R$ ${fmtN(v)}`);
@@ -299,8 +304,8 @@ export async function renderCorretores(link, alvo, ctx) {
         ${comCorretor ? `<td><button type="button" class="link" data-corr="${esc(r.cod)}">${esc(r.nome)}</button></td>` : ""}
         <td>${TIPOS[r.tipo]}${r.modalidade ? `<div class="cor-sub muted">${esc(r.modalidade)}</div>` : ""}</td><td>${esc(r.contraparte ?? "—")}</td><td>${esc(cafeCurto(r.especie))}</td><td>${esc(r.padrao ?? "—")}</td>
         <td>${esc(fmtData(r.emissao))}</td>
-        <td class="nowrap">${esc(fmtData(r.vencimento))}${vencido(r) ? ` <span class="pill pill-alerta" title="Due date passed with more than 20% of the contract still to deliver">Overdue</span>` : ""}${r.saida ? `<div class="cor-sub muted"><span>shipped</span> ${esc(fmtData(r.saida))}</div>` : ""}</td>
-        <td>${esc(fmtData(r.futuro))}</td>
+        <td class="nowrap">${remarcado(r) ? `<strong>${esc(fmtData(r.vencimento))}</strong>` : esc(fmtData(r.vencimento))}${vencido(r) ? ` <span class="pill pill-alerta" title="${remarcado(r) ? "Futuro date passed with more than 20% of the contract still to deliver; the due date is the new date" : "Due date passed with more than 20% of the contract still to deliver"}">Overdue</span>` : ""}${remarcado(r) ? `<div class="cor-sub cor-falta" title="The Futuro date passed: the coffee is late and now expected on the due date">Rescheduled · Futuro ${esc(fmtData(r.futuro))} passed</div>` : ""}${r.saida ? `<div class="cor-sub muted"><span>shipped</span> ${esc(fmtData(r.saida))}</div>` : ""}</td>
+        <td class="${remarcado(r) ? "cor-falta forte" : ""}">${esc(fmtData(r.futuro))}</td>
         <td class="num">${fmtN(r.sacas)}</td><td class="num">${r.cancelado ? "—" : fmtN(r.entregue)}</td>
         <td class="num ${r.aEntregar ? "forte" : ""}">${r.aEntregar ? fmtN(r.aEntregar) : `<span class="zero">–</span>`}</td>
         <td class="num">${pctFmt(r.pct)}</td><td class="num">${r._semPreco ? `<span class="pill pill-alerta" title="Price to be fixed: Digisul has a provisional price (R$ ${fmtN(r.base / r.sacas, 2)}/bag), so the brokerage is not counted yet">To fix</span>` : reais(r.corretagem)}${r.pf ? ` <span class="muted" title="Individual producer: base × 1.01">PF</span>` : ""}</td></tr>`).join("")
