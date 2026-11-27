@@ -3228,6 +3228,15 @@ const contratoPaiCompra = (c) => String(c ?? "").match(/^(BR[CV]-\d+\/\d{2})/)?.
 // passa de ±25 e o menor multiplicado é 33 (= -0,33): de 30 para cima divide por 100.
 // (Nas vendas todos vêm ×100: o Dashboard Sales divide todos.)
 const difConilonCompra = (d) => (d == null ? null : Math.abs(d) >= 30 ? d / 100 : d);
+// Diferencial das vendas internas: 0 = não preenchido (não entra na média). Na Arábica parte vem
+// ×100 a mais (-19500 = -195,00 ¢/lb; nenhum real chega a ±1000); no Conilon vale difConilonCompra e
+// o que nem assim fica abaixo de ±30 é erro de digitação no Digisul (ex.: 20040) e fica fora da média.
+const difVendaInt = (d, esp) => {
+  if (!d) return null;
+  if (esp === "ARABICA") return Math.abs(d) >= 1000 ? d / 100 : d;
+  const x = difConilonCompra(d);
+  return esp === "CONILON" && Math.abs(x) >= 30 ? null : x;
+};
 // Contrato a fixar que ainda não entregou nada vem do Digisul com preço provisório (R$ 0,01 a 0,60
 // por saca): não conta no preço médio. Nenhum preço real de café chega perto de R$ 100/saca.
 const PRECO_MIN_SACA = 100;
@@ -3391,7 +3400,7 @@ async function painelComprasDash(alvo, carga, ctx) {
   // Vencimento da venda como no Dashboard Brokers: 1º vencimento se Normal, senão a previsão de embarque.
   const dadosDom = vendasInt.map((v) => {
     const r = { contrato: v.contrato, fornecedor: v.cliente, emissao: v.emissao, safra: v.safra, sacas: v.sacas, padrao: v.padrao,
-      especie: v.especie, bolsa: v.bolsa, modalidade: v.modalidade, diferencial: v.diferencial, preco: v.preco, valor: v.valor };
+      especie: v.especie, bolsa: v.bolsa, modalidade: v.modalidade, diferencial: difVendaInt(v.diferencial, norm(v.especie)), preco: v.preco, valor: v.valor };
     prepComum(r);
     r._dom = true;
     r._aEnt = v.a_entregar > 0 ? v.a_entregar : 0;
