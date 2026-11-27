@@ -18,34 +18,60 @@ export const ehPainelCorretores = (link) => link === "portal:corretores";
 const TIPOS = { PURCHASE: "Purchase", SALE: "Sale" };
 const STATUS_ESP = { pending: "Statement pending", received: "Received", divergent: "Divergent", checked: "Checked", paid: "Paid" };
 const CLS_ESP = { pending: "pill", received: "pill pill-adm", divergent: "pill pill-alerta", checked: "pill pill-ok", paid: "pill pill-ok" };
-const ORDENS = [["aEntregar", "Most to deliver"], ["sacas", "Most bags"], ["corretagem", "Most brokerage"], ["pago", "Most paid"], ["nome", "Name"]];
-const estado = { tipo: "todos", especie: "todas", ano: "", busca: "", ordem: "aEntregar", sel: null, aba: "aberto" };
+// colunas da tabela de corretores: [chave, título, valor para ordenar, direção inicial (1 = crescente), dica]
+const COLS = [
+  ["nome", "Broker", (c) => c.nome, 1],
+  ["ctrC", "Purchases", (c) => c.m.ctrC.size, -1, "Purchase contracts"],
+  ["ctrV", "Sales", (c) => c.m.ctrV.size, -1, "Sale contracts"],
+  ["sacas", "Bags", (c) => c.m.sacas, -1],
+  ["entregue", "Delivered", (c) => c.m.entregue, -1, "Bags delivered; the bar is the share of the contracts already delivered"],
+  ["aEntregar", "To deliver", (c) => c.m.aEntregar, -1],
+  ["corretagem", "Brokerage (est.) R$", (c) => c.m.corretagem, -1, "Contract value × rate in Digisul"],
+  ["pago", "Paid R$", (c) => c.e.pago, -1, "Statements marked Paid in the Brokerage Statement"],
+  ["pct", "Avg rate", (c) => c.m.pct ?? -1, -1],
+  ["proximo", "Next due", (c) => c.m.proximo?.vencimento ?? "9999", 1, "Earliest due date among the contracts still to deliver"],
+  ["ultimo", "Last contract", (c) => c.m.ultimo?.emissao ?? "", -1, "Issue date of the latest contract"],
+];
+const estado = { tipo: "todos", especie: "todas", ano: "", busca: "", ordem: "aEntregar", dir: -1, sel: null, aba: "aberto" };
 
 const reais = (v) => (v == null ? "—" : `R$ ${fmtN(v, 2)}`);
+const reais0 = (v) => (v == null ? "—" : `R$ ${fmtN(v)}`);
 const pctFmt = (v) => (v == null ? "—" : `${fmtN(v, 2)}%`);
 const soma = (xs, f) => xs.reduce((s, x) => s + (Number(f(x)) || 0), 0);
 const cafeCurto = (e) => (e === "ARABICA" ? "Arabica" : e === "CONILON" ? "Conilon" : e ?? "—");
+// aviso dos contratos a fixar ainda sem preço (fora da corretagem estimada)
+const avisoSemPreco = (m, sep = " · ") => (m.semPreco.size
+  ? `${sep}<span class="cor-falta" title="Contracts to be fixed with a provisional price in Digisul: their brokerage is not counted until the price is fixed">${fmtN(m.semPreco.size)} <span>to fix, not counted</span> (${fmtN(m.sacasSemPreco)} <span>bags</span>)</span>` : "");
+
+// Contrato a fixar que ainda não tem preço vem do Digisul com preço provisório (R$ 0,01 a 0,60 por
+// saca): a corretagem dele ainda não existe. Mesma regra do Dashboard Purchases (PRECO_MIN_SACA):
+// fica "to fix", fora dos totais e da % média. Nenhum preço real de café chega perto de R$ 100/saca.
+const PRECO_MIN_SACA = 100;
 
 // fração entregue do contrato e a corretagem que cabe ao que já foi entregue
+// (_corr = corretagem que conta nos totais: 0 no contrato ainda sem preço)
 function preparar(r) {
   const ent = Math.max(0, Number(r.entregue) || 0), falta = Math.max(0, Number(r.aEntregar) || 0);
   const frac = r.cancelado || falta <= 0 ? 1 : ent + falta > 0 ? ent / (ent + falta) : 0;
+  r._semPreco = !r.cancelado && r.sacas > 0 && (Number(r.base) || 0) / r.sacas < PRECO_MIN_SACA;
+  r._corr = r._semPreco ? 0 : Number(r.corretagem) || 0;
   r._frac = frac;
-  r._corrEnt = (Number(r.corretagem) || 0) * frac;
-  r._corrFalta = (Number(r.corretagem) || 0) - r._corrEnt;
+  r._corrEnt = r._corr * frac;
+  r._corrFalta = r._corr - r._corrEnt;
   r._st = r.cancelado ? "cancelado" : falta > 0 ? "aberto" : "entregue";
   return r;
 }
 
 function agregar(linhas) {
   const m = { ctr: new Set(), ctrC: new Set(), ctrV: new Set(), sacas: 0, entregue: 0, aEntregar: 0, corretagem: 0, corrEnt: 0, corrFalta: 0,
-    pctPeso: 0, base: 0, ultimo: null, proximo: null, abertos: new Set() };
+    pctPeso: 0, base: 0, ultimo: null, proximo: null, abertos: new Set(), semPreco: new Set(), sacasSemPreco: 0 };
   for (const r of linhas) {
     const k = `${r.tipo}|${r.contrato}`;
     m.ctr.add(k); (r.tipo === "PURCHASE" ? m.ctrC : m.ctrV).add(k);
     m.sacas += r.sacas || 0; m.entregue += r.cancelado ? 0 : r.entregue || 0; m.aEntregar += r.aEntregar || 0;
-    m.corretagem += r.corretagem || 0; m.corrEnt += r._corrEnt; m.corrFalta += r._corrFalta;
-    if (!r.cancelado && r.base > 0) { m.pctPeso += r.base * r.pct; m.base += r.base; }
+    m.corretagem += r._corr; m.corrEnt += r._corrEnt; m.corrFalta += r._corrFalta;
+    if (r._semPreco) { m.semPreco.add(k); m.sacasSemPreco += r.sacas || 0; }
+    else if (!r.cancelado && r.base > 0) { m.pctPeso += r.base * r.pct; m.base += r.base; }
     if (r.emissao && (!m.ultimo || r.emissao > m.ultimo.emissao)) m.ultimo = r;
     if (r._st === "aberto") {
       m.abertos.add(k);
@@ -130,7 +156,13 @@ export async function renderCorretores(link, alvo, ctx) {
 
     ligarSegmentos(alvo, "corTipo", (k) => { estado.tipo = k; desenhar(); });
     ligarSegmentos(alvo, "corEsp", (k) => { estado.especie = k; desenhar(); });
-    ligarSegmentos(alvo, "corOrdem", (k) => { estado.ordem = k; desenhar(); });
+    // cabeçalho da tabela: mesma coluna inverte a ordem; outra coluna começa na direção dela
+    $$("[data-ordem]", alvo).forEach((b) => b.addEventListener("click", () => {
+      const k = b.dataset.ordem;
+      estado.dir = estado.ordem === k ? -estado.dir : COLS.find(([c]) => c === k)[3];
+      estado.ordem = k;
+      desenhar();
+    }));
     ligarSegmentos(alvo, "corAba", (k) => { estado.aba = k; desenhar(); });
     $("#corAno", alvo).addEventListener("change", (e) => { estado.ano = e.target.value; desenhar(); });
     const fb = $("#corBusca", alvo);
@@ -158,40 +190,48 @@ export async function renderCorretores(link, alvo, ctx) {
   // ------------------------------------------------------------ todos os corretores
   const visaoGeral = (corrs, linhas) => {
     const m = agregar(linhas), e = somaEspelhos(espelhosDe(null).filter((x) => corrs.some((c) => String(c.cod) === String(x.corretor_cod))));
-    const chaveOrd = { aEntregar: (c) => c.m.aEntregar, sacas: (c) => c.m.sacas, corretagem: (c) => c.m.corretagem, pago: (c) => c.e.pago };
-    const lista = estado.ordem === "nome" ? corrs.sort((a, b) => a.nome.localeCompare(b.nome))
-      : corrs.sort((a, b) => chaveOrd[estado.ordem](b) - chaveOrd[estado.ordem](a) || a.nome.localeCompare(b.nome));
+    const col = COLS.find(([k]) => k === estado.ordem) ?? COLS[5];
+    const val = col[2];
+    const lista = corrs.sort((a, b) => {
+      const x = val(a), y = val(b);
+      return (typeof x === "string" ? x.localeCompare(y) : x - y) * estado.dir || a.nome.localeCompare(b.nome);
+    });
     return `
       <div class="pos-kpis">
         ${kpi("Brokers", fmtN(corrs.length), `<span>${fmtN(m.ctr.size)} contracts</span> · <span>Purchases</span> ${fmtN(m.ctrC.size)} · <span>Sales</span> ${fmtN(m.ctrV.size)}`)}
         ${kpi("Bags delivered", fmtN(m.entregue), `<span>of</span> ${fmtN(m.sacas)} <span>bags</span>${progresso(m)}`)}
         ${kpi("Bags to deliver", fmtN(m.aEntregar), `<span>${fmtN(m.abertos.size)} open contracts</span>`, m.aEntregar ? "cor-kpi-falta" : "")}
-        ${kpi("Brokerage (est.)", reais(m.corretagem), `<span>on delivered</span> ${reais(m.corrEnt)} · <span>to deliver</span> ${reais(m.corrFalta)}`)}
+        ${kpi("Brokerage (est.)", reais(m.corretagem), `<span>on delivered</span> ${reais(m.corrEnt)} · <span>to deliver</span> ${reais(m.corrFalta)}${avisoSemPreco(m)}`)}
         ${kpisPago(e)}
       </div>
-      <p class="muted pos-nota">${icon("info")} <span>Brokerage (est.) = contract value × rate registered in Digisul, as in the Brokerage Statement. A contract with two brokers counts for both. Paid = statements marked “Paid” in the Brokerage Statement (purchases and sales together).</span></p>
-      <div class="pos-card-h-linha cor-barra">
-        <div class="pos-resumo"><span><strong>${fmtN(lista.length)}</strong> ${lista.length === 1 ? "broker" : "brokers"}</span></div>
-        <div class="cor-ordem"><span class="muted">Sort by</span> ${segmentos("corOrdem", ORDENS, estado.ordem)}</div>
-      </div>
-      ${lista.length ? `<div class="cor-grade">${lista.map(cardCorretor).join("")}</div>`
-        : `<div class="vazio">${icon("search")}<h3>No brokers for these filters</h3></div>`}`;
+      <p class="muted pos-nota">${icon("info")} <span>Brokerage (est.) = contract value × rate registered in Digisul, as in the Brokerage Statement. A contract with two brokers counts for both. Contracts to be fixed that still have a provisional price (under R$ 100/bag) are not counted, as in the Dashboard Purchases. Paid = statements marked “Paid” in the Brokerage Statement (purchases and sales together).</span></p>
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Brokers</h2><p class="muted"><span>${fmtN(lista.length)} ${lista.length === 1 ? "broker" : "brokers"}</span> · <span>Click a column to sort and a broker to open it.</span></p></div>
+        ${lista.length ? `<div class="tabela-wrap pos-tabela cor-tabela"><table class="tabela tabela-num">
+          <thead><tr>${COLS.map(([k, rot, , , dica]) => `<th class="${k === "nome" ? "" : "num"}" ${dica ? `title="${esc(dica)}"` : ""} aria-sort="${estado.ordem === k ? (estado.dir > 0 ? "ascending" : "descending") : "none"}">
+            <button type="button" class="ordenar" data-ordem="${k}">${esc(rot)}${estado.ordem === k ? (estado.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("")}</tr></thead>
+          <tbody>${lista.map(linhaCorretor).join("")}</tbody>
+          ${lista.length > 1 ? `<tfoot><tr class="total"><td>Total</td><td class="num">${fmtN(m.ctrC.size)}</td><td class="num">${fmtN(m.ctrV.size)}</td>
+            <td class="num">${fmtN(m.sacas)}</td><td class="num">${celEntregue(m)}</td><td class="num">${fmtN(m.aEntregar)}</td>
+            <td class="num">${reais0(m.corretagem)}</td><td class="num">${e.nPago ? reais0(e.pago) : "—"}</td><td class="num">${pctFmt(m.pct)}</td><td></td><td></td></tr></tfoot>` : ""}
+        </table></div>` : `<p class="vazio-td">No brokers for these filters.</p>`}
+      </section>`;
   };
 
-  const cardCorretor = (c) => {
+  const celEntregue = (m) => {
+    const tot = m.entregue + m.aEntregar, p = tot ? (m.entregue / tot) * 100 : 0;
+    return `<span class="cor-ent" title="${fmtN(p)}% delivered"><span class="cor-prog"><i style="width:${p.toFixed(1)}%"></i></span><span>${fmtN(m.entregue)}</span></span>`;
+  };
+  const linhaCorretor = (c) => {
     const m = c.m;
-    return `<button type="button" class="cor-card" data-corr="${esc(c.cod)}" title="Open ${esc(c.nome)}">
-      <span class="cor-card-h"><strong>${esc(c.nome)}</strong>
-        <span class="cor-tags">${m.ctrC.size ? `<span class="pill">${fmtN(m.ctrC.size)} <span>purchases</span></span>` : ""}${m.ctrV.size ? `<span class="pill">${fmtN(m.ctrV.size)} <span>sales</span></span>` : ""}</span></span>
-      ${progresso(m)}
-      <span class="cor-card-n">
-        <span><small>Delivered</small><b>${fmtN(m.entregue)}</b></span>
-        <span><small>To deliver</small><b class="${m.aEntregar ? "cor-falta" : ""}">${fmtN(m.aEntregar)}</b></span>
-        <span><small>Brokerage (est.)</small><b>${reais(m.corretagem)}</b></span>
-        <span><small>Paid</small><b>${c.e.nPago ? reais(c.e.pago) : "—"}</b></span>
-      </span>
-      <span class="cor-card-r muted"><span>Avg rate</span> ${pctFmt(m.pct)}${m.proximo ? ` · <span>next due</span> ${esc(fmtData(m.proximo.vencimento))}` : ""}${m.ultimo ? ` · <span>last contract</span> ${esc(fmtData(m.ultimo.emissao))}` : ""}</span>
-    </button>`;
+    return `<tr class="pos-clic" data-corr="${esc(c.cod)}">
+      <td><button type="button" class="link cor-nome">${esc(c.nome)}</button>${m.semPreco.size ? `<div class="cor-sub">${avisoSemPreco(m, "")}</div>` : ""}</td>
+      <td class="num">${m.ctrC.size ? fmtN(m.ctrC.size) : `<span class="zero">–</span>`}</td><td class="num">${m.ctrV.size ? fmtN(m.ctrV.size) : `<span class="zero">–</span>`}</td>
+      <td class="num">${fmtN(m.sacas)}</td><td class="num">${celEntregue(m)}</td>
+      <td class="num ${m.aEntregar ? "cor-falta forte" : ""}">${m.aEntregar ? fmtN(m.aEntregar) : `<span class="zero">–</span>`}</td>
+      <td class="num forte">${reais0(m.corretagem)}</td><td class="num">${c.e.nPago ? reais0(c.e.pago) : `<span class="zero">–</span>`}</td>
+      <td class="num">${pctFmt(m.pct)}</td><td class="num">${m.proximo ? esc(fmtData(m.proximo.vencimento)) : `<span class="zero">–</span>`}</td>
+      <td class="num">${m.ultimo ? esc(fmtData(m.ultimo.emissao)) : "—"}</td></tr>`;
   };
 
   // ------------------------------------------------------------ um corretor
@@ -209,7 +249,7 @@ export async function renderCorretores(link, alvo, ctx) {
     for (const r of c.linhas) {
       const k = `${r.tipo}|${r.contraparte ?? "—"}`;
       const o = contra.get(k) ?? contra.set(k, { tipo: r.tipo, nome: r.contraparte ?? "—", ctr: new Set(), sacas: 0, aEntregar: 0, corretagem: 0 }).get(k);
-      o.ctr.add(r.contrato); o.sacas += r.sacas || 0; o.aEntregar += r.aEntregar || 0; o.corretagem += r.corretagem || 0;
+      o.ctr.add(r.contrato); o.sacas += r.sacas || 0; o.aEntregar += r.aEntregar || 0; o.corretagem += r._corr;
     }
     const topContra = [...contra.values()].sort((a, b) => b.sacas - a.sacas).slice(0, 15);
     const linhaTipo = (rot, ls) => { const x = agregar(ls); return `<tr><td>${rot}</td><td class="num">${fmtN(x.ctr.size)}</td><td class="num">${fmtN(x.sacas)}</td>
@@ -225,7 +265,7 @@ export async function renderCorretores(link, alvo, ctx) {
       <div class="pos-kpis">
         ${kpi("Bags delivered", fmtN(m.entregue), `<span>of</span> ${fmtN(m.sacas)} <span>bags</span> · ${fmtN(m.ctr.size)} <span>contracts</span>${progresso(m)}`)}
         ${kpi("Bags to deliver", fmtN(m.aEntregar), `<span>${fmtN(m.abertos.size)} open contracts</span>${m.proximo ? ` · <span>next due</span> ${esc(fmtData(m.proximo.vencimento))}` : ""}`, m.aEntregar ? "cor-kpi-falta" : "")}
-        ${kpi("Brokerage (est.)", reais(m.corretagem), `<span>on delivered</span> ${reais(m.corrEnt)} · <span>to deliver</span> ${reais(m.corrFalta)} · <span>avg rate</span> ${pctFmt(m.pct)}`)}
+        ${kpi("Brokerage (est.)", reais(m.corretagem), `<span>on delivered</span> ${reais(m.corrEnt)} · <span>to deliver</span> ${reais(m.corrFalta)} · <span>avg rate</span> ${pctFmt(m.pct)}${avisoSemPreco(m)}`)}
         ${kpisPago(somaEspelhos(esp))}
       </div>
 
@@ -253,11 +293,11 @@ export async function renderCorretores(link, alvo, ctx) {
             <td>${esc(fmtData(r.emissao))}</td><td>${esc(fmtData(r.vencimento))}</td>
             <td class="num">${fmtN(r.sacas)}</td><td class="num">${r.cancelado ? "—" : fmtN(r.entregue)}</td>
             <td class="num ${r.aEntregar ? "forte" : ""}">${r.aEntregar ? fmtN(r.aEntregar) : `<span class="zero">–</span>`}</td>
-            <td class="num">${pctFmt(r.pct)}</td><td class="num">${reais(r.corretagem)}${r.pf ? ` <span class="muted" title="Individual producer: base × 1.01">PF</span>` : ""}</td></tr>`).join("")
+            <td class="num">${pctFmt(r.pct)}</td><td class="num">${r._semPreco ? `<span class="pill pill-alerta" title="Price to be fixed: Digisul has a provisional price (R$ ${fmtN(r.base / r.sacas, 2)}/bag), so the brokerage is not counted yet">To fix</span>` : reais(r.corretagem)}${r.pf ? ` <span class="muted" title="Individual producer: base × 1.01">PF</span>` : ""}</td></tr>`).join("")
             : `<tr><td colspan="12" class="vazio-td">No contracts here.</td></tr>`}</tbody>
           ${ordenada.length > 1 ? `<tfoot><tr class="total"><td>Total</td><td colspan="6"></td><td class="num">${fmtN(soma(ordenada, (r) => r.sacas))}</td>
             <td class="num">${fmtN(soma(ordenada, (r) => (r.cancelado ? 0 : r.entregue)))}</td><td class="num">${fmtN(soma(ordenada, (r) => r.aEntregar))}</td><td></td>
-            <td class="num">${reais(soma(ordenada, (r) => r.corretagem))}</td></tr></tfoot>` : ""}
+            <td class="num">${reais(soma(ordenada, (r) => r._corr))}</td></tr></tfoot>` : ""}
         </table></div>
       </section>
 

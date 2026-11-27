@@ -274,7 +274,8 @@ export function criarDemo() {
           const entregue = aberto ? Math.round(sacas * (i % 2 ? 0.4 : 0)) : sacas;
           const mes = String(((n * 5) % 12) + 1).padStart(2, "0");
           const ano = 2025 + (i % 2);
-          const preco = venda ? 2300 : 1800 + (n % 7) * 40;
+          // contrato a fixar ainda sem preço: o Digisul traz um preço provisório de centavos por saca
+          const preco = cod === 102 && i === 3 ? 0.3 : venda ? 2300 : 1800 + (n % 7) * 40;
           const base = Math.round(sacas * preco * 100) / 100;
           const pct = cod === 104 ? 0.25 : 0.5;
           linhas.push({

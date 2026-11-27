@@ -1134,23 +1134,14 @@ input:disabled { background: var(--sup-2); color: var(--texto-3); }
 .ctr-acoes-extra .muted { font-size: 12.5px; }
 @media (max-width: 700px) { .ctr-form { grid-template-columns: 1fr; } }
 
-/* Dashboard Brokers: um card por corretor (entregue / a entregar / corretagem / pago) */
-.cor-barra { align-items: center; }
-.cor-ordem { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
-.cor-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-.cor-card {
-  display: flex; flex-direction: column; gap: 10px; text-align: left; padding: 14px 16px; cursor: pointer; min-width: 0;
-  background: var(--sup); border: 1px solid var(--borda); border-radius: 12px; box-shadow: var(--sombra); color: var(--texto); font: inherit;
-}
-.cor-card:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--borda)); box-shadow: var(--sombra-2); }
-.cor-card:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.cor-card-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.cor-card-h strong { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
-.cor-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
-.cor-card-n { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
-.cor-card-n small { display: block; font-size: 11.5px; font-weight: 600; color: var(--texto-3); text-transform: uppercase; letter-spacing: .03em; }
-.cor-card-n b { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.cor-card-r { font-size: 12.5px; }
+/* Dashboard Brokers: tabela ranking (uma linha por corretor) e detalhe do corretor */
+.cor-tabela { max-height: calc(100vh - 240px); min-height: 260px; }
+.cor-tabela .ordenar { text-transform: inherit; }
+.cor-nome { font-weight: 600; text-align: left; white-space: nowrap; }
+.cor-sub { font-size: 12px; margin-top: 2px; white-space: nowrap; }
+.cor-ent { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.cor-ent .cor-prog { width: 64px; margin-top: 0; flex: none; }
+.cor-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 .cor-falta, .cor-kpi-falta .pos-kpi-v { color: var(--alerta); }
 .cor-prog { height: 6px; border-radius: 4px; background: color-mix(in srgb, var(--alerta) 30%, var(--sup-2)); overflow: hidden; margin-top: 6px; }
 .cor-prog i { display: block; height: 100%; background: var(--ok); border-radius: 4px; }

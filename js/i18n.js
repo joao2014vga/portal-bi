@@ -1021,6 +1021,18 @@ const PT = {
   "purchases": "compras", "sales": "vendas", "Purchase": "Compra", "Sale": "Venda", "Both": "Os dois",
   "Brokerage (est.) = contract value × rate registered in Digisul, as in the Brokerage Statement. A contract with two brokers counts for both. Paid = statements marked “Paid” in the Brokerage Statement (purchases and sales together).":
     "Corretagem (est.) = valor do contrato × % cadastrada no Digisul, como no Espelho de Corretagem. Contrato com dois corretores conta para os dois. Paga = espelhos marcados como “Pago” no Espelho de Corretagem (compras e vendas juntas).",
+  "Brokerage (est.) = contract value × rate registered in Digisul, as in the Brokerage Statement. A contract with two brokers counts for both. Contracts to be fixed that still have a provisional price (under R$ 100/bag) are not counted, as in the Dashboard Purchases. Paid = statements marked “Paid” in the Brokerage Statement (purchases and sales together).":
+    "Corretagem (est.) = valor do contrato × % cadastrada no Digisul, como no Espelho de Corretagem. Contrato com dois corretores conta para os dois. Contratos a fixar ainda com preço provisório (abaixo de R$ 100/saca) não entram, como no Dashboard Purchases. Paga = espelhos marcados como “Pago” no Espelho de Corretagem (compras e vendas juntas).",
+  "to fix, not counted": "a fixar, fora da conta", "To fix": "A fixar",
+  "{n} brokers": "{n} corretores", "{n} broker": "{n} corretor", "Click a column to sort and a broker to open it.": "Clique numa coluna para ordenar e num corretor para abri-lo.",
+  "Brokerage (est.) R$": "Corretagem (est.) R$", "Paid R$": "Pago R$", "Next due": "Próximo venc.", "Last contract": "Último contrato",
+  "Purchase contracts": "Contratos de compra", "Sale contracts": "Contratos de venda", "Contract value × rate in Digisul": "Valor do contrato × % do Digisul",
+  "Bags delivered; the bar is the share of the contracts already delivered": "Sacas entregues; a barra é a parte dos contratos já entregue",
+  "Statements marked Paid in the Brokerage Statement": "Espelhos marcados como Pago no Espelho de Corretagem",
+  "Earliest due date among the contracts still to deliver": "Vencimento mais próximo entre os contratos a entregar",
+  "Issue date of the latest contract": "Data de emissão do último contrato",
+  "Contracts to be fixed with a provisional price in Digisul: their brokerage is not counted until the price is fixed":
+    "Contratos a fixar com preço provisório no Digisul: a corretagem deles só entra quando o preço for fixado",
   "broker": "corretor", "brokers": "corretores", "Sort by": "Ordenar por", "Most to deliver": "Mais a entregar", "Most bags": "Mais sacas",
   "Most brokerage": "Mais corretagem", "Most paid": "Mais pago", "Name": "Nome", "No brokers for these filters": "Nenhum corretor com esses filtros",
   "Avg rate": "% média", "next due": "próximo vencimento", "last contract": "último contrato", "All brokers": "Todos os corretores",
