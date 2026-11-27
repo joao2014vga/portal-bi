@@ -1031,6 +1031,17 @@ const PT = {
   "Statements marked Paid in the Brokerage Statement": "Espelhos marcados como Pago no Espelho de Corretagem",
   "Earliest due date among the contracts still to deliver": "Vencimento mais próximo entre os contratos a entregar",
   "Issue date of the latest contract": "Data de emissão do último contrato",
+  "Due date": "Vencimento", "Futuro date": "Data futuro", "Due date from": "Vencimento de", "Due date to": "Vencimento até",
+  "Futuro date from": "Data futuro de", "Futuro date to": "Data futuro até", "Only with bags to deliver": "Só com saldo a entregar",
+  "Overdue": "Vencidos", "Next 30 days": "Próximos 30 dias", "Next 60 days": "Próximos 60 dias", "Next 90 days": "Próximos 90 dias",
+  "Clear dates": "Limpar datas", "overdue": "vencidos", "shipped": "saída",
+  "Purchase: due date in Digisul. Sale: 1st due date (Normal) or estimated shipment (other modalities)":
+    "Compra: vencimento do Digisul. Venda: 1º vencimento (Normal) ou prev. embarque (outras modalidades)",
+  "The Futuro date of the contract in Digisul": "A data Futuro do contrato no Digisul",
+  "Due date passed with bags still to deliver": "Vencimento passou e ainda há saldo a entregar",
+  "Overdue: due date passed with bags still to deliver": "Vencido: vencimento passou e ainda há saldo a entregar",
+  "Contracts in these dates": "Contratos nessas datas", "By due date. A contract with two brokers appears once for each.":
+    "Por vencimento. Contrato com dois corretores aparece uma vez para cada.",
   "Contracts to be fixed with a provisional price in Digisul: their brokerage is not counted until the price is fixed":
     "Contratos a fixar com preço provisório no Digisul: a corretagem deles só entra quando o preço for fixado",
   "broker": "corretor", "brokers": "corretores", "Sort by": "Ordenar por", "Most to deliver": "Mais a entregar", "Most bags": "Mais sacas",

@@ -282,7 +282,11 @@ export function criarDemo() {
             tipo: venda ? "SALE" : "PURCHASE", contrato: `${venda ? "BRV" : "BRC"}-${String(n).padStart(4, "0")}/${String(ano).slice(2)}`, pai: null,
             cod, nome, pct, contraparte: venda ? clientes[n % 2] : fornecedores[n % fornecedores.length],
             especie: n % 5 === 0 ? "CONILON" : "ARABICA", padrao: n % 5 === 0 ? "BC 16" : ["FC", "BS", "SC 17/18"][n % 3], safra: "25/26",
-            emissao: `${ano}-${mes}-10`, vencimento: `${ano + (aberto ? 1 : 0)}-${mes}-28`,
+            emissao: `${ano}-${mes}-10`,
+            // em aberto: vencimentos espalhados de 20 dias atrás a ~100 dias à frente (vencidos e a vencer)
+            vencimento: aberto ? new Date(Date.now() + ((n * 13) % 120 - 20) * 864e5).toISOString().slice(0, 10) : `${ano}-${mes}-28`,
+            futuro: n % 2 ? new Date(Date.now() + ((n * 17) % 150 - 10) * 864e5).toISOString().slice(0, 10) : null,
+            modalidade: n % 2 ? "Futuro" : "Normal",
             sacas, entregue, aEntregar: sacas - entregue, base, corretagem: Math.round(base * pct) / 100, pf: n % 4 === 0,
             ...(i === 5 && cod === 102 ? { cancelado: true, aEntregar: 0, entregue: 0 } : {}),
           });
