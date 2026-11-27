@@ -1039,6 +1039,8 @@ const PT = {
     "Compra: vencimento do Digisul. Venda: 1º vencimento (Normal) ou prev. embarque (outras modalidades)",
   "The Futuro date of the contract in Digisul": "A data Futuro do contrato no Digisul",
   "Due date passed with bags still to deliver": "Vencimento passou e ainda há saldo a entregar",
+  "Due date passed with more than 20% of the contract still to deliver": "Vencimento passou e ainda falta entregar mais de 20% do contrato",
+  "{n} overdue: due date passed with more than 20% of the contract still to deliver": "{n} atrasados: vencimento passou e ainda falta entregar mais de 20% do contrato",
   "Overdue: due date passed with bags still to deliver": "Vencido: vencimento passou e ainda há saldo a entregar",
   "Contracts in these dates": "Contratos nessas datas", "By due date. A contract with two brokers appears once for each.":
     "Por vencimento. Contrato com dois corretores aparece uma vez para cada.",

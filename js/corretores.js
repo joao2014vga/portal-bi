@@ -34,7 +34,8 @@ const COLS = [
 ];
 const estado = { tipo: "todos", especie: "todas", ano: "", busca: "", ordem: "aEntregar", dir: -1, sel: null, aba: "aberto",
   // filtros de data (aaaa-mm-dd): vencimento e data Futuro do Digisul; soAbertos = só com saldo a entregar
-  venDe: "", venAte: "", futDe: "", futAte: "", soAbertos: false };
+  // soAtrasados = só os atrasados de verdade (atalho "Overdue"; ver `vencido`)
+  venDe: "", venAte: "", futDe: "", futAte: "", soAbertos: false, soAtrasados: false };
 
 // datas no fuso do navegador (aaaa-mm-dd)
 const diaIso = (d) => d.toLocaleDateString("sv-SE");
@@ -42,12 +43,17 @@ const hojeIso = () => diaIso(new Date());
 const daquiDias = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return diaIso(d); };
 // atalhos do vencimento: sempre só contratos com saldo a entregar
 const ATALHOS = [["vencidos", "Overdue"], ["30", "Next 30 days"], ["60", "Next 60 days"], ["90", "Next 90 days"]];
-const atalho = (k) => (k === "vencidos" ? { venDe: "", venAte: daquiDias(-1) } : { venDe: hojeIso(), venAte: daquiDias(Number(k)) });
+const atalho = (k) => (k === "vencidos" ? { venDe: "", venAte: daquiDias(-1), soAtrasados: true }
+  : { venDe: hojeIso(), venAte: daquiDias(Number(k)), soAtrasados: false });
 const atalhoAtivo = () => (estado.soAbertos && !estado.futDe && !estado.futAte
-  ? ATALHOS.find(([k]) => { const a = atalho(k); return a.venDe === estado.venDe && a.venAte === estado.venAte; })?.[0] ?? "" : "");
-const datasAtivas = () => !!(estado.venDe || estado.venAte || estado.futDe || estado.futAte || estado.soAbertos);
+  ? ATALHOS.find(([k]) => { const a = atalho(k); return a.venDe === estado.venDe && a.venAte === estado.venAte && a.soAtrasados === estado.soAtrasados; })?.[0] ?? "" : "");
+const datasAtivas = () => !!(estado.venDe || estado.venAte || estado.futDe || estado.futAte || estado.soAbertos || estado.soAtrasados);
 const entre = (d, de, ate) => (!de && !ate) || (!!d && (!de || d >= de) && (!ate || d <= ate));
-const vencido = (r) => r._st === "aberto" && !!r.vencimento && r.vencimento < hojeIso();
+// Atrasado: vencimento passou e ainda falta entregar MAIS de 20% das sacas do contrato. Um saldo
+// pequeno (ex.: 1 saca de 2.000) é quebra do contrato, não atraso.
+const LIMITE_ATRASO = 0.2;
+const vencido = (r) => r._st === "aberto" && !!r.vencimento && r.vencimento < hojeIso()
+  && (Number(r.aEntregar) || 0) > LIMITE_ATRASO * (Number(r.sacas) || 0);
 
 const reais = (v) => (v == null ? "—" : `R$ ${fmtN(v, 2)}`);
 const reais0 = (v) => (v == null ? "—" : `R$ ${fmtN(v)}`);
@@ -79,7 +85,7 @@ function preparar(r) {
 
 function agregar(linhas) {
   const m = { ctr: new Set(), ctrC: new Set(), ctrV: new Set(), sacas: 0, entregue: 0, aEntregar: 0, corretagem: 0, corrEnt: 0, corrFalta: 0,
-    pctPeso: 0, base: 0, ultimo: null, proximo: null, abertos: new Set(), semPreco: new Set(), sacasSemPreco: 0 };
+    pctPeso: 0, base: 0, ultimo: null, proximo: null, abertos: new Set(), semPreco: new Set(), sacasSemPreco: 0, atrasados: new Set() };
   for (const r of linhas) {
     const k = `${r.tipo}|${r.contrato}`;
     m.ctr.add(k); (r.tipo === "PURCHASE" ? m.ctrC : m.ctrV).add(k);
@@ -88,6 +94,7 @@ function agregar(linhas) {
     if (r._semPreco) { m.semPreco.add(k); m.sacasSemPreco += r.sacas || 0; }
     else if (!r.cancelado && r.base > 0) { m.pctPeso += r.base * r.pct; m.base += r.base; }
     if (r.emissao && (!m.ultimo || r.emissao > m.ultimo.emissao)) m.ultimo = r;
+    if (vencido(r)) m.atrasados.add(k);
     if (r._st === "aberto") {
       m.abertos.add(k);
       if (r.vencimento && (!m.proximo || r.vencimento < m.proximo.vencimento)) m.proximo = r;
@@ -134,7 +141,7 @@ export async function renderCorretores(link, alvo, ctx) {
       && (estado.especie === "todas" || r.especie === estado.especie)
       && (!estado.ano || r.emissao?.startsWith(estado.ano))
       && entre(r.vencimento, estado.venDe, estado.venAte) && entre(r.futuro, estado.futDe, estado.futAte)
-      && (!estado.soAbertos || r._st === "aberto")
+      && (!estado.soAbertos || r._st === "aberto") && (!estado.soAtrasados || vencido(r))
       && (!t || [r.nome, r.contrato, r.contraparte].some((v) => String(v ?? "").toLowerCase().includes(t))));
   };
   // espelhos valem para o corretor inteiro (compra e venda juntos): só o café filtra
@@ -195,14 +202,15 @@ export async function renderCorretores(link, alvo, ctx) {
     }));
     ligarSegmentos(alvo, "corAba", (k) => { estado.aba = k; desenhar(); });
     $("#corAno", alvo).addEventListener("change", (e) => { estado.ano = e.target.value; desenhar(); });
-    $$("[data-data]", alvo).forEach((i) => i.addEventListener("change", () => { estado[i.dataset.data] = i.value; desenhar(); }));
-    $("#corSoAbertos", alvo).addEventListener("change", (e) => { estado.soAbertos = e.target.checked; desenhar(); });
+    // mexer numa data ou no "só com saldo" à mão tira o "só atrasados" do atalho Overdue
+    $$("[data-data]", alvo).forEach((i) => i.addEventListener("change", () => { estado[i.dataset.data] = i.value; estado.soAtrasados = false; desenhar(); }));
+    $("#corSoAbertos", alvo).addEventListener("change", (e) => { estado.soAbertos = e.target.checked; estado.soAtrasados = false; desenhar(); });
     ligarSegmentos(alvo, "corAtalho", (k) => {
       Object.assign(estado, atalho(k), { futDe: "", futAte: "", soAbertos: true });
       if (estado.sel == null) { estado.ordem = "aEntregar"; estado.dir = -1; } else estado.aba = "aberto";
       desenhar();
     });
-    $("#corLimparDatas", alvo)?.addEventListener("click", () => { Object.assign(estado, { venDe: "", venAte: "", futDe: "", futAte: "", soAbertos: false }); desenhar(); });
+    $("#corLimparDatas", alvo)?.addEventListener("click", () => { Object.assign(estado, { venDe: "", venAte: "", futDe: "", futAte: "", soAbertos: false, soAtrasados: false }); desenhar(); });
     const fb = $("#corBusca", alvo);
     fb.addEventListener("input", () => { estado.busca = fb.value; desenhar(); const n = $("#corBusca", alvo); n.focus(); n.setSelectionRange(estado.busca.length, estado.busca.length); });
     $$("[data-corr]", alvo).forEach((b) => b.addEventListener("click", () => { estado.sel = b.dataset.corr; estado.aba = "aberto"; desenhar(); alvo.scrollIntoView?.({ block: "start" }); }));
@@ -275,7 +283,7 @@ export async function renderCorretores(link, alvo, ctx) {
       <td class="num">${fmtN(m.sacas)}</td><td class="num">${celEntregue(m)}</td>
       <td class="num ${m.aEntregar ? "cor-falta forte" : ""}">${m.aEntregar ? fmtN(m.aEntregar) : `<span class="zero">–</span>`}</td>
       <td class="num forte">${reais0(m.corretagem)}</td><td class="num">${c.e.nPago ? reais0(c.e.pago) : `<span class="zero">–</span>`}</td>
-      <td class="num">${pctFmt(m.pct)}</td><td class="num ${m.proximo && vencido(m.proximo) ? "cor-falta forte" : ""}" ${m.proximo && vencido(m.proximo) ? `title="Overdue: due date passed with bags still to deliver"` : ""}>${m.proximo ? esc(fmtData(m.proximo.vencimento)) : `<span class="zero">–</span>`}</td>
+      <td class="num">${pctFmt(m.pct)}</td><td class="num ${m.atrasados.size ? "cor-falta forte" : ""}" ${m.atrasados.size ? `title="${fmtN(m.atrasados.size)} overdue: due date passed with more than 20% of the contract still to deliver"` : ""}>${m.proximo ? esc(fmtData(m.proximo.vencimento)) : `<span class="zero">–</span>`}</td>
       <td class="num">${m.ultimo ? esc(fmtData(m.ultimo.emissao)) : "—"}</td></tr>`;
   };
 
@@ -291,7 +299,7 @@ export async function renderCorretores(link, alvo, ctx) {
         ${comCorretor ? `<td><button type="button" class="link" data-corr="${esc(r.cod)}">${esc(r.nome)}</button></td>` : ""}
         <td>${TIPOS[r.tipo]}${r.modalidade ? `<div class="cor-sub muted">${esc(r.modalidade)}</div>` : ""}</td><td>${esc(r.contraparte ?? "—")}</td><td>${esc(cafeCurto(r.especie))}</td><td>${esc(r.padrao ?? "—")}</td>
         <td>${esc(fmtData(r.emissao))}</td>
-        <td class="nowrap">${esc(fmtData(r.vencimento))}${vencido(r) ? ` <span class="pill pill-alerta" title="Due date passed with bags still to deliver">Overdue</span>` : ""}${r.saida ? `<div class="cor-sub muted"><span>shipped</span> ${esc(fmtData(r.saida))}</div>` : ""}</td>
+        <td class="nowrap">${esc(fmtData(r.vencimento))}${vencido(r) ? ` <span class="pill pill-alerta" title="Due date passed with more than 20% of the contract still to deliver">Overdue</span>` : ""}${r.saida ? `<div class="cor-sub muted"><span>shipped</span> ${esc(fmtData(r.saida))}</div>` : ""}</td>
         <td>${esc(fmtData(r.futuro))}</td>
         <td class="num">${fmtN(r.sacas)}</td><td class="num">${r.cancelado ? "—" : fmtN(r.entregue)}</td>
         <td class="num ${r.aEntregar ? "forte" : ""}">${r.aEntregar ? fmtN(r.aEntregar) : `<span class="zero">–</span>`}</td>

@@ -289,6 +289,8 @@ export function criarDemo() {
             modalidade: n % 2 ? "Futuro" : "Normal",
             sacas, entregue, aEntregar: sacas - entregue, base, corretagem: Math.round(base * pct) / 100, pf: n % 4 === 0,
             ...(i === 5 && cod === 102 ? { cancelado: true, aEntregar: 0, entregue: 0 } : {}),
+            // vencido com 1 saca pendente: quebra do contrato, não atraso
+            ...(i === 0 && cod === 101 ? { entregue: sacas - 1, aEntregar: 1, vencimento: new Date(Date.now() - 10 * 864e5).toISOString().slice(0, 10) } : {}),
           });
         }
       }
