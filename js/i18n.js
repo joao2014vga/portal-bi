@@ -280,7 +280,10 @@ const PT = {
   "all months": "todos os meses", "No contracts.": "Nenhum contrato.",
   "Purchases to fix minus sales to fix (sales count as negative).": "Compras a fixar menos vendas a fixar (as vendas entram negativas).",
   // Dashboard Purchases
-  "Dashboard Purchases": "Dashboard de Compras", "Purchases Overview": "Visão geral das compras", "Fixations": "Fixações",
+  "Dashboard Purchases": "Dashboard de Compras", "Dashboard Purchases & Domestic Sales": "Dashboard de Compras e Vendas Internas",
+  "Purchases and domestic sales: bags by month, suppliers and clients, brokers, average diffs per quality, bags to receive and to deliver, and fixations.":
+    "Compras e vendas internas: sacas por mês, fornecedores e clientes, corretores, diferencial médio por qualidade, sacas a receber e a entregar, e fixações.",
+  "Purchases Overview": "Visão geral das compras", "Fixations": "Fixações",
   "Open purchase contracts, any issue date": "Contratos de compra em aberto, de qualquer data de emissão",
   "Fix by = First Notice Day (FND) of the exchange month: 7 business days before the month in NY, 4 in London (holidays not counted).":
     "Fixar até = First Notice Day (FND) do mês da bolsa: 7 dias úteis antes do mês em NY, 4 em Londres (sem contar feriados).",

@@ -2283,3 +2283,12 @@ create policy bi_position_detalhe_select on public.bi_position_detalhe for selec
   or (tipo <> all (array['vendas', 'compras', 'fisica_itens', 'termm_itens', 'comercial', 'vendas_internas']) and tipo not like 'cert\_%'
       and public.bi_ve_painel('portal:position-contracts')));
 notify pgrst, 'reload schema';
+
+-- =====================================================================
+-- 40. DASHBOARD PURCHASES PASSA A SE CHAMAR "Dashboard Purchases & Domestic Sales"
+-- Mesmo painel (link portal:position-purchasing), agora com a aba Domestic Sales. Pode rodar de novo.
+-- =====================================================================
+update public.bi_dashboards
+set titulo = 'Dashboard Purchases & Domestic Sales',
+    descricao = 'Purchases and domestic sales: bags by month, suppliers and clients, brokers, average diffs per quality, bags to receive and to deliver, and fixations.'
+where link = 'portal:position-purchasing';

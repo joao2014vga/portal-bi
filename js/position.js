@@ -3205,7 +3205,7 @@ async function painelComercial(alvo, carga, ctx) {
 const SEM_CORRETOR = "(no broker)";
 // textos da aba Overview: compras (Purchases Overview) ou vendas internas (Domestic Sales)
 const ROT_CP = {
-  titulo: "Dashboard Purchases", forn: "Supplier", fornQS: "Supplier / quality / screen", aRec: "To receive", kpiRec: "Bags to receive", dif: "Diff bica",
+  titulo: "Purchases", forn: "Supplier", fornQS: "Supplier / quality / screen", aRec: "To receive", kpiRec: "Bags to receive", dif: "Diff bica",
   nota: "Purchases by contract issue date. Click a month, a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.",
   porMes: "Purchases by month", semDados: "No purchases for these filters.", top: "Top suppliers",
   porMesSub: "Bags by contract issue month, Arabica and Conilon, with the running total of the period. Click a month to see only its purchases on the whole page.",
