@@ -1,0 +1,286 @@
+// Dashboard Brokers: página nativa do portal (card portal:corretores).
+//
+// Tudo de cada corretor, compra e venda:
+//   - contratos, sacas, o que já foi entregue e o que falta entregar, a % e a corretagem
+//     estimada: ao vivo do Digisul pelo brascof-api (/api/corretores), com as mesmas regras do
+//     Espelho de Corretagem (base × % cadastrada; produtor pessoa física × 1,01; cancelado com
+//     comissão entra com a comissão do Digisul);
+//   - o valor PAGO de corretagem: os espelhos marcados como "Paid" no Espelho de Corretagem
+//     (Supabase, bi_corretagem_conf). Quem não tem acesso ao card do Espelho não vê os espelhos.
+// Corretagem "sobre o entregue" = corretagem do contrato × sacas entregues / (entregues + a entregar).
+// A página abre com um card por corretor; clicar num card abre o corretor (contratos, espelhos,
+// fornecedores/clientes).
+import { esc, $, $$, icon, toast, tempoRelativo, cabecalho as cabecalhoPagina } from "./ui.js";
+import { fmtN, fmtData, fmtMes, segmentos, ligarSegmentos } from "./position.js";
+
+export const ehPainelCorretores = (link) => link === "portal:corretores";
+
+const TIPOS = { PURCHASE: "Purchase", SALE: "Sale" };
+const STATUS_ESP = { pending: "Statement pending", received: "Received", divergent: "Divergent", checked: "Checked", paid: "Paid" };
+const CLS_ESP = { pending: "pill", received: "pill pill-adm", divergent: "pill pill-alerta", checked: "pill pill-ok", paid: "pill pill-ok" };
+const ORDENS = [["aEntregar", "Most to deliver"], ["sacas", "Most bags"], ["corretagem", "Most brokerage"], ["pago", "Most paid"], ["nome", "Name"]];
+const estado = { tipo: "todos", especie: "todas", ano: "", busca: "", ordem: "aEntregar", sel: null, aba: "aberto" };
+
+const reais = (v) => (v == null ? "—" : `R$ ${fmtN(v, 2)}`);
+const pctFmt = (v) => (v == null ? "—" : `${fmtN(v, 2)}%`);
+const soma = (xs, f) => xs.reduce((s, x) => s + (Number(f(x)) || 0), 0);
+const cafeCurto = (e) => (e === "ARABICA" ? "Arabica" : e === "CONILON" ? "Conilon" : e ?? "—");
+
+// fração entregue do contrato e a corretagem que cabe ao que já foi entregue
+function preparar(r) {
+  const ent = Math.max(0, Number(r.entregue) || 0), falta = Math.max(0, Number(r.aEntregar) || 0);
+  const frac = r.cancelado || falta <= 0 ? 1 : ent + falta > 0 ? ent / (ent + falta) : 0;
+  r._frac = frac;
+  r._corrEnt = (Number(r.corretagem) || 0) * frac;
+  r._corrFalta = (Number(r.corretagem) || 0) - r._corrEnt;
+  r._st = r.cancelado ? "cancelado" : falta > 0 ? "aberto" : "entregue";
+  return r;
+}
+
+function agregar(linhas) {
+  const m = { ctr: new Set(), ctrC: new Set(), ctrV: new Set(), sacas: 0, entregue: 0, aEntregar: 0, corretagem: 0, corrEnt: 0, corrFalta: 0,
+    pctPeso: 0, base: 0, ultimo: null, proximo: null, abertos: new Set() };
+  for (const r of linhas) {
+    const k = `${r.tipo}|${r.contrato}`;
+    m.ctr.add(k); (r.tipo === "PURCHASE" ? m.ctrC : m.ctrV).add(k);
+    m.sacas += r.sacas || 0; m.entregue += r.cancelado ? 0 : r.entregue || 0; m.aEntregar += r.aEntregar || 0;
+    m.corretagem += r.corretagem || 0; m.corrEnt += r._corrEnt; m.corrFalta += r._corrFalta;
+    if (!r.cancelado && r.base > 0) { m.pctPeso += r.base * r.pct; m.base += r.base; }
+    if (r.emissao && (!m.ultimo || r.emissao > m.ultimo.emissao)) m.ultimo = r;
+    if (r._st === "aberto") {
+      m.abertos.add(k);
+      if (r.vencimento && (!m.proximo || r.vencimento < m.proximo.vencimento)) m.proximo = r;
+    }
+  }
+  m.pct = m.base ? m.pctPeso / m.base : null;
+  return m;
+}
+
+// espelhos do Espelho de Corretagem: pago = status 'paid'; a pagar = recebido/conferido/divergente
+function somaEspelhos(espelhos) {
+  const pagos = espelhos.filter((e) => e.status === "paid");
+  const aPagar = espelhos.filter((e) => ["received", "checked", "divergent"].includes(e.status));
+  return {
+    pago: soma(pagos, (e) => e.espelho_valor), nPago: pagos.length, semValor: pagos.filter((e) => e.espelho_valor == null).length,
+    aPagar: soma(aPagar, (e) => e.espelho_valor), nAPagar: aPagar.length,
+    desde: espelhos.reduce((d, e) => (!d || e.mes < d ? e.mes : d), null),
+  };
+}
+
+export async function renderCorretores(link, alvo, ctx) {
+  alvo.innerHTML = `<div class="pos-carregando"><span class="spinner"></span> Loading brokers from Digisul…</div>`;
+  let digisul, espelhos = [], espelhosErro = null;
+  const carregar = async (fresco = false) => {
+    const [d, e] = await Promise.allSettled([ctx.api.corretoresDigisul(fresco), ctx.api.corretagemEspelhos()]);
+    if (d.status === "rejected") throw d.reason;
+    digisul = d.value;
+    for (const r of digisul.linhas) preparar(r);
+    if (e.status === "fulfilled") { espelhos = e.value ?? []; espelhosErro = null; } else { espelhos = []; espelhosErro = e.reason.message; }
+  };
+  try {
+    await carregar();
+  } catch (e) {
+    alvo.innerHTML = `<div class="vazio">${icon("alert")}<h3>Brokers are not available</h3><p>${esc(e.message)}</p>
+      <button class="btn" id="corTentar">${icon("refresh")}<span>Try again</span></button></div>`;
+    $("#corTentar", alvo)?.addEventListener("click", () => renderCorretores(link, alvo, ctx));
+    return;
+  }
+
+  const anos = () => [...new Set(digisul.linhas.map((r) => r.emissao?.slice(0, 4)).filter(Boolean))].sort().reverse();
+  const filtradas = () => {
+    const t = estado.busca.trim().toLowerCase();
+    return digisul.linhas.filter((r) => (estado.tipo === "todos" || r.tipo === estado.tipo)
+      && (estado.especie === "todas" || r.especie === estado.especie)
+      && (!estado.ano || r.emissao?.startsWith(estado.ano))
+      && (!t || [r.nome, r.contrato, r.contraparte].some((v) => String(v ?? "").toLowerCase().includes(t))));
+  };
+  // espelhos valem para o corretor inteiro (compra e venda juntos): só o café filtra
+  const espelhosDe = (cod) => espelhos.filter((e) => (cod == null || String(e.corretor_cod) === String(cod))
+    && (estado.especie === "todas" || e.especie === estado.especie));
+
+  const desenhar = () => {
+    const linhas = filtradas();
+    const porCorr = new Map();
+    for (const r of linhas) {
+      const o = porCorr.get(r.cod) ?? porCorr.set(r.cod, { cod: r.cod, nome: r.nome, linhas: [] }).get(r.cod);
+      o.linhas.push(r);
+    }
+    const corrs = [...porCorr.values()].map((o) => ({ ...o, m: agregar(o.linhas), e: somaEspelhos(espelhosDe(o.cod)) }));
+    const sel = estado.sel != null ? corrs.find((c) => String(c.cod) === String(estado.sel)) : null;
+    if (estado.sel != null && !sel) estado.sel = null;
+
+    const filtros = `<div class="pos-filtros">
+      ${segmentos("corTipo", [["todos", "Purchases and sales"], ["PURCHASE", "Purchases"], ["SALE", "Sales"]], estado.tipo)}
+      ${segmentos("corEsp", [["todas", "All coffees"], ["ARABICA", "Arabica"], ["CONILON", "Conilon"]], estado.especie)}
+      <label class="pos-mes"><span>Issued in</span><select id="corAno" aria-label="Issue year">
+        <option value="">All years</option>${anos().map((a) => `<option value="${a}" ${a === estado.ano ? "selected" : ""}>${a}</option>`).join("")}</select></label>
+      <label class="busca sm">${icon("search")}<input type="search" id="corBusca" placeholder="Search broker, contract, supplier or client…" value="${esc(estado.busca)}"></label>
+    </div>`;
+
+    alvo.innerHTML = `<div class="pos">
+      ${cabecalhoPagina({
+        titulo: ctx.titulo || "Dashboard Brokers",
+        sub: `<span>Digisul data</span> <strong>${esc(tempoRelativo(digisul.consultadoEm))}</strong> · <span>contracts issued from 2020</span>`,
+        acoes: `<button class="btn" id="corSync" title="Fetch Digisul now">${icon("refresh")}<span>Update now</span></button>`,
+      })}
+      ${filtros}
+      ${espelhosErro ? `<p class="muted pos-nota">${icon("alert")} <span>Brokerage statements could not be loaded:</span> <span>${esc(espelhosErro)}</span></p>` : ""}
+      ${sel ? detalhe(sel) : visaoGeral(corrs, linhas)}
+    </div>`;
+
+    ligarSegmentos(alvo, "corTipo", (k) => { estado.tipo = k; desenhar(); });
+    ligarSegmentos(alvo, "corEsp", (k) => { estado.especie = k; desenhar(); });
+    ligarSegmentos(alvo, "corOrdem", (k) => { estado.ordem = k; desenhar(); });
+    ligarSegmentos(alvo, "corAba", (k) => { estado.aba = k; desenhar(); });
+    $("#corAno", alvo).addEventListener("change", (e) => { estado.ano = e.target.value; desenhar(); });
+    const fb = $("#corBusca", alvo);
+    fb.addEventListener("input", () => { estado.busca = fb.value; desenhar(); const n = $("#corBusca", alvo); n.focus(); n.setSelectionRange(estado.busca.length, estado.busca.length); });
+    $$("[data-corr]", alvo).forEach((b) => b.addEventListener("click", () => { estado.sel = b.dataset.corr; estado.aba = "aberto"; desenhar(); alvo.scrollIntoView?.({ block: "start" }); }));
+    $("#corVoltar", alvo)?.addEventListener("click", () => { estado.sel = null; desenhar(); });
+    $("#corSync", alvo).addEventListener("click", async (e) => {
+      const b = e.currentTarget; b.disabled = true; b.classList.add("loading");
+      try { await carregar(true); desenhar(); toast("Brokers updated from Digisul."); }
+      catch (err) { toast(err.message, "erro"); b.disabled = false; b.classList.remove("loading"); }
+    });
+  };
+
+  const kpi = (titulo, valor, sub = "", cls = "") => `<div class="pos-kpi pos-kpi-est ${cls}"><span class="pos-kpi-t">${esc(titulo)}</span>
+    <span class="pos-kpi-v">${valor}</span>${sub ? `<span class="pos-kpi-s">${sub}</span>` : ""}</div>`;
+  const progresso = (m) => {
+    const tot = m.entregue + m.aEntregar, p = tot ? (m.entregue / tot) * 100 : 0;
+    return `<div class="cor-prog" role="img" aria-label="${fmtN(p)}% delivered"><i style="width:${p.toFixed(1)}%"></i></div>`;
+  };
+  const kpisPago = (e) => kpi("Brokerage paid", reais(e.pago),
+    e.nPago ? `<span>${fmtN(e.nPago)} paid statements</span>${e.desde ? ` · <span>since</span> ${esc(fmtMes(`${e.desde}-01`))}` : ""}${e.semValor ? ` · <span>${fmtN(e.semValor)} without amount</span>` : ""}`
+      : espelhosErro ? "statements unavailable" : "no paid statement yet")
+    + kpi("Awaiting payment", reais(e.aPagar), `<span>${fmtN(e.nAPagar)} statements received, not paid</span>`);
+
+  // ------------------------------------------------------------ todos os corretores
+  const visaoGeral = (corrs, linhas) => {
+    const m = agregar(linhas), e = somaEspelhos(espelhosDe(null).filter((x) => corrs.some((c) => String(c.cod) === String(x.corretor_cod))));
+    const chaveOrd = { aEntregar: (c) => c.m.aEntregar, sacas: (c) => c.m.sacas, corretagem: (c) => c.m.corretagem, pago: (c) => c.e.pago };
+    const lista = estado.ordem === "nome" ? corrs.sort((a, b) => a.nome.localeCompare(b.nome))
+      : corrs.sort((a, b) => chaveOrd[estado.ordem](b) - chaveOrd[estado.ordem](a) || a.nome.localeCompare(b.nome));
+    return `
+      <div class="pos-kpis">
+        ${kpi("Brokers", fmtN(corrs.length), `<span>${fmtN(m.ctr.size)} contracts</span> · <span>Purchases</span> ${fmtN(m.ctrC.size)} · <span>Sales</span> ${fmtN(m.ctrV.size)}`)}
+        ${kpi("Bags delivered", fmtN(m.entregue), `<span>of</span> ${fmtN(m.sacas)} <span>bags</span>${progresso(m)}`)}
+        ${kpi("Bags to deliver", fmtN(m.aEntregar), `<span>${fmtN(m.abertos.size)} open contracts</span>`, m.aEntregar ? "cor-kpi-falta" : "")}
+        ${kpi("Brokerage (est.)", reais(m.corretagem), `<span>on delivered</span> ${reais(m.corrEnt)} · <span>to deliver</span> ${reais(m.corrFalta)}`)}
+        ${kpisPago(e)}
+      </div>
+      <p class="muted pos-nota">${icon("info")} <span>Brokerage (est.) = contract value × rate registered in Digisul, as in the Brokerage Statement. A contract with two brokers counts for both. Paid = statements marked “Paid” in the Brokerage Statement (purchases and sales together).</span></p>
+      <div class="pos-card-h-linha cor-barra">
+        <div class="pos-resumo"><span><strong>${fmtN(lista.length)}</strong> ${lista.length === 1 ? "broker" : "brokers"}</span></div>
+        <div class="cor-ordem"><span class="muted">Sort by</span> ${segmentos("corOrdem", ORDENS, estado.ordem)}</div>
+      </div>
+      ${lista.length ? `<div class="cor-grade">${lista.map(cardCorretor).join("")}</div>`
+        : `<div class="vazio">${icon("search")}<h3>No brokers for these filters</h3></div>`}`;
+  };
+
+  const cardCorretor = (c) => {
+    const m = c.m;
+    return `<button type="button" class="cor-card" data-corr="${esc(c.cod)}" title="Open ${esc(c.nome)}">
+      <span class="cor-card-h"><strong>${esc(c.nome)}</strong>
+        <span class="cor-tags">${m.ctrC.size ? `<span class="pill">${fmtN(m.ctrC.size)} <span>purchases</span></span>` : ""}${m.ctrV.size ? `<span class="pill">${fmtN(m.ctrV.size)} <span>sales</span></span>` : ""}</span></span>
+      ${progresso(m)}
+      <span class="cor-card-n">
+        <span><small>Delivered</small><b>${fmtN(m.entregue)}</b></span>
+        <span><small>To deliver</small><b class="${m.aEntregar ? "cor-falta" : ""}">${fmtN(m.aEntregar)}</b></span>
+        <span><small>Brokerage (est.)</small><b>${reais(m.corretagem)}</b></span>
+        <span><small>Paid</small><b>${c.e.nPago ? reais(c.e.pago) : "—"}</b></span>
+      </span>
+      <span class="cor-card-r muted"><span>Avg rate</span> ${pctFmt(m.pct)}${m.proximo ? ` · <span>next due</span> ${esc(fmtData(m.proximo.vencimento))}` : ""}${m.ultimo ? ` · <span>last contract</span> ${esc(fmtData(m.ultimo.emissao))}` : ""}</span>
+    </button>`;
+  };
+
+  // ------------------------------------------------------------ um corretor
+  const detalhe = (c) => {
+    const m = c.m, esp = espelhosDe(c.cod).sort((a, b) => b.mes.localeCompare(a.mes) || String(a.especie).localeCompare(String(b.especie)));
+    const porTipo = ["PURCHASE", "SALE"].map((t) => [t, c.linhas.filter((r) => r.tipo === t)]).filter(([, ls]) => ls.length);
+    const grupos = { aberto: [], entregue: [], cancelado: [] };
+    for (const r of c.linhas) grupos[r._st].push(r);
+    const lista = estado.aba === "todos" ? c.linhas : grupos[estado.aba];
+    const ordenada = [...lista].sort(estado.aba === "aberto"
+      ? (a, b) => (a.vencimento ?? "9999").localeCompare(b.vencimento ?? "9999") || a.contrato.localeCompare(b.contrato)
+      : (a, b) => (b.emissao ?? "").localeCompare(a.emissao ?? "") || a.contrato.localeCompare(b.contrato));
+    // fornecedores / clientes do corretor
+    const contra = new Map();
+    for (const r of c.linhas) {
+      const k = `${r.tipo}|${r.contraparte ?? "—"}`;
+      const o = contra.get(k) ?? contra.set(k, { tipo: r.tipo, nome: r.contraparte ?? "—", ctr: new Set(), sacas: 0, aEntregar: 0, corretagem: 0 }).get(k);
+      o.ctr.add(r.contrato); o.sacas += r.sacas || 0; o.aEntregar += r.aEntregar || 0; o.corretagem += r.corretagem || 0;
+    }
+    const topContra = [...contra.values()].sort((a, b) => b.sacas - a.sacas).slice(0, 15);
+    const linhaTipo = (rot, ls) => { const x = agregar(ls); return `<tr><td>${rot}</td><td class="num">${fmtN(x.ctr.size)}</td><td class="num">${fmtN(x.sacas)}</td>
+      <td class="num">${fmtN(x.entregue)}</td><td class="num">${fmtN(x.aEntregar)}</td><td class="num">${pctFmt(x.pct)}</td><td class="num">${reais(x.corretagem)}</td>
+      <td class="num">${reais(x.corrEnt)}</td><td class="num">${reais(x.corrFalta)}</td></tr>`; };
+
+    return `
+      <div class="cor-det-h">
+        <button type="button" class="btn" id="corVoltar">${icon("back")}<span>All brokers</span></button>
+        <h2>${esc(c.nome)}</h2>
+        <span class="cor-tags">${m.ctrC.size ? `<span class="pill">${fmtN(m.ctrC.size)} <span>purchases</span></span>` : ""}${m.ctrV.size ? `<span class="pill">${fmtN(m.ctrV.size)} <span>sales</span></span>` : ""}</span>
+      </div>
+      <div class="pos-kpis">
+        ${kpi("Bags delivered", fmtN(m.entregue), `<span>of</span> ${fmtN(m.sacas)} <span>bags</span> · ${fmtN(m.ctr.size)} <span>contracts</span>${progresso(m)}`)}
+        ${kpi("Bags to deliver", fmtN(m.aEntregar), `<span>${fmtN(m.abertos.size)} open contracts</span>${m.proximo ? ` · <span>next due</span> ${esc(fmtData(m.proximo.vencimento))}` : ""}`, m.aEntregar ? "cor-kpi-falta" : "")}
+        ${kpi("Brokerage (est.)", reais(m.corretagem), `<span>on delivered</span> ${reais(m.corrEnt)} · <span>to deliver</span> ${reais(m.corrFalta)} · <span>avg rate</span> ${pctFmt(m.pct)}`)}
+        ${kpisPago(somaEspelhos(esp))}
+      </div>
+
+      <section class="pos-card">
+        <div class="pos-card-h"><h2>Purchases and sales</h2></div>
+        <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+          <thead><tr><th></th><th class="num">Contracts</th><th class="num">Bags</th><th class="num">Delivered</th><th class="num">To deliver</th><th class="num">Avg rate</th>
+            <th class="num">Brokerage R$</th><th class="num">On delivered</th><th class="num">On to deliver</th></tr></thead>
+          <tbody>${porTipo.map(([t, ls]) => linhaTipo(t === "PURCHASE" ? "Purchases" : "Sales", ls)).join("")}</tbody>
+          ${porTipo.length > 1 ? `<tfoot>${linhaTipo("Total", c.linhas).replace("<tr>", `<tr class="total">`)}</tfoot>` : ""}
+        </table></div>
+      </section>
+
+      <section class="pos-card">
+        <div class="pos-card-h pos-card-h-linha"><div><h2>Contracts</h2>
+          <p class="muted">${estado.aba === "aberto" ? "Still to deliver, by due date." : "Most recent first."} Brokerage = value × rate in Digisul (individual producer: value × 1.01).</p></div>
+          ${segmentos("corAba", [["aberto", `To deliver (${fmtN(grupos.aberto.length)})`], ["entregue", `Delivered (${fmtN(grupos.entregue.length)})`],
+            ...(grupos.cancelado.length ? [["cancelado", `Cancelled (${fmtN(grupos.cancelado.length)})`]] : []), ["todos", `All (${fmtN(c.linhas.length)})`]], estado.aba)}</div>
+        <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num pos-contratos-cor">
+          <thead><tr><th>Contract</th><th>Type</th><th>Supplier / client</th><th>Coffee</th><th>Quality</th><th>Issued</th><th>Due / shipped</th>
+            <th class="num">Bags</th><th class="num">Delivered</th><th class="num">To deliver</th><th class="num">Rate</th><th class="num">Brokerage R$</th></tr></thead>
+          <tbody>${ordenada.length ? ordenada.map((r) => `<tr>
+            <td class="nowrap">${esc(r.contrato)}${r.cancelado ? ` <span class="pill pill-alerta" title="Cancelled in Digisul with commission (e.g. washout): brokerage = commission registered in Digisul">Cancelled</span>` : ""}${r.herdado ? ` <span class="pill" title="Split contract: broker taken from ${esc(r.pai)}">Split</span>` : ""}</td>
+            <td>${TIPOS[r.tipo]}</td><td>${esc(r.contraparte ?? "—")}</td><td>${esc(cafeCurto(r.especie))}</td><td>${esc(r.padrao ?? "—")}</td>
+            <td>${esc(fmtData(r.emissao))}</td><td>${esc(fmtData(r.vencimento))}</td>
+            <td class="num">${fmtN(r.sacas)}</td><td class="num">${r.cancelado ? "—" : fmtN(r.entregue)}</td>
+            <td class="num ${r.aEntregar ? "forte" : ""}">${r.aEntregar ? fmtN(r.aEntregar) : `<span class="zero">–</span>`}</td>
+            <td class="num">${pctFmt(r.pct)}</td><td class="num">${reais(r.corretagem)}${r.pf ? ` <span class="muted" title="Individual producer: base × 1.01">PF</span>` : ""}</td></tr>`).join("")
+            : `<tr><td colspan="12" class="vazio-td">No contracts here.</td></tr>`}</tbody>
+          ${ordenada.length > 1 ? `<tfoot><tr class="total"><td>Total</td><td colspan="6"></td><td class="num">${fmtN(soma(ordenada, (r) => r.sacas))}</td>
+            <td class="num">${fmtN(soma(ordenada, (r) => (r.cancelado ? 0 : r.entregue)))}</td><td class="num">${fmtN(soma(ordenada, (r) => r.aEntregar))}</td><td></td>
+            <td class="num">${reais(soma(ordenada, (r) => r.corretagem))}</td></tr></tfoot>` : ""}
+        </table></div>
+      </section>
+
+      <div class="pos-duas">
+        <section class="pos-card">
+          <div class="pos-card-h"><h2>Brokerage statements</h2><p class="muted">From the Brokerage Statement: one per month and coffee. Purchases and sales together.</p></div>
+          ${esp.length ? `<div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+            <thead><tr><th>Month</th><th>Coffee</th><th>Status</th><th>Statement no.</th><th class="num">Amount R$</th></tr></thead>
+            <tbody>${esp.map((x) => `<tr><td>${esc(fmtMes(`${x.mes}-01`))}</td><td>${esc(x.especie === "TODOS" ? "Both" : cafeCurto(x.especie))}</td>
+              <td><span class="${CLS_ESP[x.status] ?? "pill"}">${esc(STATUS_ESP[x.status] ?? x.status)}</span></td><td>${esc(x.espelho_numero || "—")}</td>
+              <td class="num">${reais(x.espelho_valor)}</td></tr>`).join("")}</tbody>
+          </table></div>` : `<p class="vazio-td">${espelhosErro ? "Statements unavailable." : "No statements for this broker yet."}</p>`}
+        </section>
+        <section class="pos-card">
+          <div class="pos-card-h"><h2>Suppliers and clients</h2><p class="muted">Who this broker brought, by bags.</p></div>
+          <div class="tabela-wrap pos-tabela"><table class="tabela tabela-num">
+            <thead><tr><th>Supplier / client</th><th>Type</th><th class="num">Contracts</th><th class="num">Bags</th><th class="num">To deliver</th><th class="num">Brokerage R$</th></tr></thead>
+            <tbody>${topContra.map((o) => `<tr><td>${esc(o.nome)}</td><td>${TIPOS[o.tipo]}</td><td class="num">${fmtN(o.ctr.size)}</td><td class="num">${fmtN(o.sacas)}</td>
+              <td class="num">${o.aEntregar ? fmtN(o.aEntregar) : `<span class="zero">–</span>`}</td><td class="num">${reais(o.corretagem)}</td></tr>`).join("")}</tbody>
+          </table></div>
+        </section>
+      </div>`;
+  };
+
+  desenhar();
+}

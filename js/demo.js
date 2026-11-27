@@ -35,6 +35,7 @@ function seed() {
       { id: 45, categoria_id: 4, titulo: "Purchases", descricao: "Purchased volume, value and purchase diff, crop over crop, by supplier and quality.", link: "portal:position-purchases", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 5 },
       { id: 46, categoria_id: 4, titulo: "Dashboard Sales", descricao: "Export sales: contracts, bags, average diffs, bags per client, a per-client view by quality and screen, and what is left to ship.", link: "portal:position-commercial", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 7 },
       { id: 49, categoria_id: 4, titulo: "Dashboard Purchases", descricao: "Purchases: bags by month, suppliers, brokers, average diffs per quality and bags to be delivered.", link: "portal:position-purchasing", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 8 },
+      { id: 50, categoria_id: 4, titulo: "Dashboard Brokers", descricao: "Each broker: purchases and sales, bags delivered and still to deliver, estimated brokerage and what was paid.", link: "portal:corretores", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 9 },
       { id: 47, categoria_id: 4, titulo: "Price List", descricao: "Diffs by client, edited here and shared as an image or PDF on WhatsApp, e-mail or Teams.", link: "portal:precos-europe", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "manual", ativo: true, ordem: 8 },
       { id: 48, categoria_id: 4, titulo: "Buyer Bids", descricao: "Diffs offered by buyers by quality and screen cleaning, who pays best, and the deals closed.", link: "portal:compradores", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "diaria", ativo: true, ordem: 9 },
       { id: 32, categoria_id: 3, titulo: "Logística de Entregas", descricao: "OTIF, prazo médio e ocorrências por transportadora.", link: "demo:logistica", nota: null, nota_tipo: "info", atualizado_em: null, frequencia: "semanal", ativo: true, ordem: 2 },
@@ -258,6 +259,43 @@ export function criarDemo() {
     async sincronizarPosition() { throw new Error("The Digisul update is not available in demo mode."); },
     async qualidade() { throw new Error("The Quality views read Digisul live and are not available in demo mode."); },
     async comprasCorretores() { throw new Error("Brokers come live from Digisul and are not available in demo mode."); },
+    // Dashboard Brokers: corretores e contratos fictícios (no portal real vêm do Digisul)
+    async corretoresDigisul() {
+      const nomes = [[101, "AGRO CORRETORA"], [102, "COSTA CAFÉ"], [103, "FINE BROKERS"], [104, "VB CORRETAGEM"]];
+      const fornecedores = ["FAZENDA BOA VISTA", "SITIO SÃO JOSÉ", "COOPERATIVA SUL", "JOÃO DA SILVA", "MARIA OLIVEIRA", "FAZENDA PEDRA BRANCA"];
+      const clientes = ["TORREFADORA ALFA", "CAFÉ BETA LTDA"];
+      const linhas = [];
+      let n = 1;
+      for (const [cod, nome] of nomes) {
+        for (let i = 0; i < 7 + cod % 5; i++, n++) {
+          const venda = cod === 101 || cod === 103 ? i % 4 === 3 : false;
+          const sacas = 100 + ((n * 37) % 9) * 50;
+          const aberto = i % 3 === 0;
+          const entregue = aberto ? Math.round(sacas * (i % 2 ? 0.4 : 0)) : sacas;
+          const mes = String(((n * 5) % 12) + 1).padStart(2, "0");
+          const ano = 2025 + (i % 2);
+          const preco = venda ? 2300 : 1800 + (n % 7) * 40;
+          const base = Math.round(sacas * preco * 100) / 100;
+          const pct = cod === 104 ? 0.25 : 0.5;
+          linhas.push({
+            tipo: venda ? "SALE" : "PURCHASE", contrato: `${venda ? "BRV" : "BRC"}-${String(n).padStart(4, "0")}/${String(ano).slice(2)}`, pai: null,
+            cod, nome, pct, contraparte: venda ? clientes[n % 2] : fornecedores[n % fornecedores.length],
+            especie: n % 5 === 0 ? "CONILON" : "ARABICA", padrao: n % 5 === 0 ? "BC 16" : ["FC", "BS", "SC 17/18"][n % 3], safra: "25/26",
+            emissao: `${ano}-${mes}-10`, vencimento: `${ano + (aberto ? 1 : 0)}-${mes}-28`,
+            sacas, entregue, aEntregar: sacas - entregue, base, corretagem: Math.round(base * pct) / 100, pf: n % 4 === 0,
+            ...(i === 5 && cod === 102 ? { cancelado: true, aEntregar: 0, entregue: 0 } : {}),
+          });
+        }
+      }
+      return { consultadoEm: new Date().toISOString(), linhas, corretores: nomes.map(([cod, nome]) => ({ cod, nome })) };
+    },
+    async corretagemEspelhos() {
+      const meses = ["2026-08", "2026-09", "2026-10"];
+      return [101, 102, 103, 104].flatMap((cod) => meses.map((mes, i) => ({
+        mes, corretor_cod: cod, especie: "ARABICA", status: i < 2 ? "paid" : cod % 2 ? "received" : "pending",
+        espelho_numero: i < 2 || cod % 2 ? `${cod}-${i + 1}` : null, espelho_valor: i < 2 || cod % 2 ? 1500 + cod * 10 + i * 230 : null,
+      })));
+    },
     async publicarPosition({ data_ref, nome_arquivo, resumo, detalhes, alerta = null }) {
       exigeArquivos();
       db.position ??= { cargas: [], detalhe: {} };

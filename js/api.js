@@ -601,6 +601,28 @@ async function criarApiSupabase() {
     pararNotificacoes() { sb.removeAllChannels(); },
 
     // ----------------------------------------------------------- contratos futuros (seção 36)
+    // Dashboard Brokers: tudo de cada corretor (compra e venda), ao vivo do Digisul pelo brascof-api
+    async corretoresDigisul(fresco = false) {
+      const { data: { session } } = await sb.auth.getSession();
+      let res;
+      try {
+        res = await fetch(`${CONFIG.API_BRASCOF}/api/corretores${fresco ? "?fresh=1" : ""}`,
+          { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } });
+      } catch {
+        throw new Error("Unable to reach the Digisul service. Please try again.");
+      }
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Brokers could not be loaded (${res.status}).`);
+      return j;
+    },
+    // espelhos do Espelho de Corretagem (status e valor por mês, corretor e café): o RLS só
+    // devolve linhas para quem tem acesso ao card do Espelho
+    async corretagemEspelhos() {
+      const { data, error } = await sb.from("bi_corretagem_conf")
+        .select("mes, corretor_cod, corretor_nome, especie, status, espelho_numero, espelho_valor, updated_at");
+      if (error) throw new Error(error.message);
+      return data;
+    },
     // contratos "Futuro" ao vivo do Digisul pelo brascof-api (fresco = sem o cache de 2 min)
     async contratosFuturosDigisul(fresco = false) {
       const { data: { session } } = await sb.auth.getSession();

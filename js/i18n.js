@@ -1006,6 +1006,37 @@ const PT = {
   "Your user cannot change the shipment schedule. Ask the administrator for access to it.": "Seu usuário não pode alterar a programação de embarque. Peça acesso ao administrador.",
   "Export contracts to ship, with the service order, notes and warehouse filled in by the team and checked against Digisul.":
     "Contratos de exportação a embarcar, com guia, obs e local preenchidos pelo time e conferidos com o Digisul.",
+  // ---------------------------------------------------------------- Dashboard Brokers (js/corretores.js)
+  "Dashboard Brokers": "Dashboard Corretores", "Brokers": "Corretores", "Loading brokers from Digisul…": "Carregando os corretores do Digisul…",
+  "Brokers are not available": "Corretores indisponíveis", "Brokers updated from Digisul.": "Corretores atualizados pelo Digisul.",
+  "Digisul data": "Dados do Digisul", "contracts issued from 2020": "contratos emitidos desde 2020", "Fetch Digisul now": "Buscar no Digisul agora",
+  "Issued in": "Emitidos em", "All years": "Todos os anos", "Issue year": "Ano de emissão",
+  "Search broker, contract, supplier or client…": "Buscar corretor, contrato, fornecedor ou cliente…",
+  "Bags delivered": "Sacas entregues", "Bags to deliver": "Sacas a entregar", "Brokerage (est.)": "Corretagem (est.)",
+  "Brokerage paid": "Corretagem paga", "Awaiting payment": "Aguardando pagamento", "paid statements": "espelhos pagos",
+  "{n} paid statements": "{n} espelhos pagos", "{n} without amount": "{n} sem valor", "since": "desde",
+  "{n} statements received, not paid": "{n} espelhos recebidos, não pagos", "statements unavailable": "espelhos indisponíveis",
+  "no paid statement yet": "nenhum espelho pago ainda", "{n} open contracts": "{n} contratos em aberto", "{n} contracts": "{n} contratos",
+  "on delivered": "sobre o entregue", "to deliver": "a entregar", "of": "de", "bags": "sacas", "contracts": "contratos",
+  "purchases": "compras", "sales": "vendas", "Purchase": "Compra", "Sale": "Venda", "Both": "Os dois",
+  "Brokerage (est.) = contract value × rate registered in Digisul, as in the Brokerage Statement. A contract with two brokers counts for both. Paid = statements marked “Paid” in the Brokerage Statement (purchases and sales together).":
+    "Corretagem (est.) = valor do contrato × % cadastrada no Digisul, como no Espelho de Corretagem. Contrato com dois corretores conta para os dois. Paga = espelhos marcados como “Pago” no Espelho de Corretagem (compras e vendas juntas).",
+  "broker": "corretor", "brokers": "corretores", "Sort by": "Ordenar por", "Most to deliver": "Mais a entregar", "Most bags": "Mais sacas",
+  "Most brokerage": "Mais corretagem", "Most paid": "Mais pago", "Name": "Nome", "No brokers for these filters": "Nenhum corretor com esses filtros",
+  "Avg rate": "% média", "next due": "próximo vencimento", "last contract": "último contrato", "All brokers": "Todos os corretores",
+  "Brokerage R$": "Corretagem R$", "On delivered": "Sobre o entregue", "On to deliver": "Sobre o a entregar",
+  "Still to deliver, by due date.": "Ainda a entregar, por vencimento.", "Most recent first.": "Mais recentes primeiro.",
+  "Brokerage = value × rate in Digisul (individual producer: value × 1.01).": "Corretagem = valor × % do Digisul (produtor pessoa física: valor × 1,01).",
+  "To deliver ({n})": "A entregar ({n})", "Delivered ({n})": "Entregues ({n})", "Cancelled ({n})": "Cancelados ({n})", "All ({n})": "Todos ({n})",
+  "Cancelled": "Cancelado", "Split": "Desdobrado", "Supplier / client": "Fornecedor / cliente", "Due / shipped": "Venc. / saída",
+  "Brokerage statements": "Espelhos de corretagem", "From the Brokerage Statement: one per month and coffee. Purchases and sales together.":
+    "Do Espelho de Corretagem: um por mês e café. Compras e vendas juntas.",
+  "Statement no.": "Nº do espelho", "Amount R$": "Valor R$", "Statements unavailable.": "Espelhos indisponíveis.",
+  "No statements for this broker yet.": "Nenhum espelho deste corretor ainda.", "Suppliers and clients": "Fornecedores e clientes",
+  "Who this broker brought, by bags.": "Quem este corretor trouxe, por sacas.", "Brokerage statements could not be loaded:": "Não foi possível carregar os espelhos de corretagem:",
+  "Purchases and sales": "Compras e vendas", "Total": "Total",
+  "Each broker: purchases and sales, bags delivered and still to deliver, estimated brokerage and what was paid.":
+    "Cada corretor: compras e vendas, sacas entregues e a entregar, corretagem estimada e o que foi pago.",
 };
 
 // Tempo relativo produzido por ui.tempoRelativo

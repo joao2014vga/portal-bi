@@ -11,6 +11,7 @@ import { ehPainelPrecos, renderPrecos } from "./precos.js";
 import { ehPainelShipment, renderShipment } from "./shipment.js";
 import { ehPainelCompradores, renderCompradores } from "./compradores.js";
 import { ehPainelContratos, renderContratos } from "./contratos.js";
+import { ehPainelCorretores, renderCorretores } from "./corretores.js";
 import { IDIOMA, ligarTraducao } from "./i18n.js";
 
 const app = $("#app");
@@ -423,7 +424,7 @@ async function telaInicio() {
     .map((c) => ({ ...c, itens: visiveis.filter((d) => (d.categoria_id ?? null) === c.id) }))
     .filter((g) => g.itens.length);
 
-  const atrasados = visiveis.filter((d) => !ehSistema(d) && !ehPainelQualidade(d.link) && !ehPainelShipment(d.link) && !ehPainelContratos(d.link) && statusAtualizacao(d).cls === "atrasado").length;
+  const atrasados = visiveis.filter((d) => !ehSistema(d) && !ehPainelQualidade(d.link) && !ehPainelShipment(d.link) && !ehPainelContratos(d.link) && !ehPainelCorretores(d.link) && statusAtualizacao(d).cls === "atrasado").length;
 
   await shell(`
     <section class="ola">
@@ -471,7 +472,7 @@ async function telaInicio() {
 
 function cardDashboard(d) {
   const sistema = ehSistema(d);
-  const st = sistema ? { cls: "neutro", texto: "Integrated system" } : ehPainelContratos(d.link) ? { cls: "ok", texto: "Digisul · live" } : ehPainelQualidade(d.link) || ehPainelShipment(d.link) ? { cls: "ok", texto: "Digisul · updated daily" } : statusAtualizacao(d);
+  const st = sistema ? { cls: "neutro", texto: "Integrated system" } : ehPainelContratos(d.link) || ehPainelCorretores(d.link) ? { cls: "ok", texto: "Digisul · live" } : ehPainelQualidade(d.link) || ehPainelShipment(d.link) ? { cls: "ok", texto: "Digisul · updated daily" } : statusAtualizacao(d);
   return `
   <a class="card-dash ${d.ativo ? "" : "inativo"}" href="#/d/${d.id}" data-busca="${esc((d.titulo + " " + (d.descricao ?? "")).toLowerCase())}">
     <div class="card-dash-topo">
@@ -558,11 +559,11 @@ async function telaDashboard(id) {
   const demo = d.link.startsWith("demo:");
   const sistema = ehSistema(d);
   // painel desenhado pelo próprio portal (Position, Certificados, Qualidade, Price list, Shipment)
-  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link) || ehPainelQualidade(d.link) || ehPainelPrecos(d.link) || ehPainelShipment(d.link) || ehPainelCompradores(d.link) || ehPainelContratos(d.link);
+  const nativo = ehPainelPosition(d.link) || ehPainelCert(d.link) || ehPainelQualidade(d.link) || ehPainelPrecos(d.link) || ehPainelShipment(d.link) || ehPainelCompradores(d.link) || ehPainelContratos(d.link) || ehPainelCorretores(d.link);
   // o certificado e a Price list desenham o próprio cabeçalho (com as abas e os botões deles)
-  const cabProprio = ehPainelCert(d.link) || ehPainelPrecos(d.link) || ehPainelContratos(d.link);
+  const cabProprio = ehPainelCert(d.link) || ehPainelPrecos(d.link) || ehPainelContratos(d.link) || ehPainelCorretores(d.link);
   // Qualidade e Shipment leem o Digisul: a data de atualização aparece no próprio painel
-  const aoVivo = sistema || ehPainelQualidade(d.link) || ehPainelShipment(d.link) || ehPainelContratos(d.link);
+  const aoVivo = sistema || ehPainelQualidade(d.link) || ehPainelShipment(d.link) || ehPainelContratos(d.link) || ehPainelCorretores(d.link);
   await shell(`
     <div class="visor">
       ${cabProprio ? "" : cabecalho({
@@ -585,7 +586,7 @@ async function telaDashboard(id) {
     (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   });
   if (nativo) {
-    const render = ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : ehPainelPrecos(d.link) ? renderPrecos : ehPainelShipment(d.link) ? renderShipment : ehPainelCompradores(d.link) ? renderCompradores : ehPainelContratos(d.link) ? renderContratos : renderPosition;
+    const render = ehPainelCert(d.link) ? renderCert : ehPainelQualidade(d.link) ? renderQualidade : ehPainelPrecos(d.link) ? renderPrecos : ehPainelShipment(d.link) ? renderShipment : ehPainelCompradores(d.link) ? renderCompradores : ehPainelContratos(d.link) ? renderContratos : ehPainelCorretores(d.link) ? renderCorretores : renderPosition;
     // Position e Certificado: publicar, importar e ajustar é só do admin (o File manager só cuida do Files)
     const admin = !!estado.perfil?.is_admin;
     // revisor ("Position publisher"): vê a Position como o admin e publica o dia, sem os envios
@@ -752,7 +753,7 @@ async function formDashboard(d, cats) {
       const titulo = f.titulo.value.trim();
       const link = f.link.value.trim();
       if (!titulo) throw new Error("Please enter a title.");
-      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link) && !ehPainelCert(link) && !ehPainelQualidade(link) && !ehPainelPrecos(link) && !ehPainelShipment(link) && !ehPainelCompradores(link) && !ehPainelContratos(link)) throw new Error("The link must start with https://");
+      if (!/^https:\/\//i.test(link) && !link.startsWith("demo:") && !ehPainelPosition(link) && !ehPainelCert(link) && !ehPainelQualidade(link) && !ehPainelPrecos(link) && !ehPainelShipment(link) && !ehPainelCompradores(link) && !ehPainelContratos(link) && !ehPainelCorretores(link)) throw new Error("The link must start with https://");
       const dados = {
         titulo, link,
         id: d.id,
