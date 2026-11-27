@@ -324,6 +324,17 @@ const PT = {
   "Only contracts already fully delivered. A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).":
     "Só contratos já entregues por inteiro. Contrato com dois corretores conta para os dois. Corretagem = valor final × % cadastrada no Digisul (estimativa).",
   "Not counted (still to be delivered):": "Fora da conta (ainda a entregar):",
+  // Dashboard Purchases, aba Domestic Sales (vendas internas)
+  "Domestic Sales": "Vendas internas", "Top clients": "Top clientes", "Client / quality / screen": "Cliente / qualidade / peneira",
+  "Domestic sales by month": "Vendas internas por mês", "No domestic sales for these filters.": "Nenhuma venda interna com esses filtros.",
+  "Bags per client · month by month": "Sacas por cliente · mês a mês", "Bags sold in each month.": "Sacas vendidas em cada mês.",
+  "Domestic sales by contract issue date. Click a month, a client, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.":
+    "Vendas internas pela data de emissão do contrato. Clique num mês, num cliente, numa qualidade, num corretor ou numa barra de qualidade para filtrar a página; Ctrl+clique para escolher mais de um.",
+  "Bags by contract issue month, Arabica and Conilon, with the running total of the period. Click a month to see only its sales on the whole page.":
+    "Sacas pelo mês de emissão do contrato, Arábica e Conilon, com o acumulado do período. Clique num mês para ver só as vendas dele na página inteira.",
+  "The domestic sales history is not available yet: update the Position from Digisul (Update now) to build this tab.":
+    "O histórico das vendas internas ainda não está disponível: atualize o Position pelo Digisul (Atualizar agora) para montar esta aba.",
+  "Domestic sales brokers are not available from Digisul yet.": "Os corretores das vendas internas ainda não vêm do Digisul.",
   "The largest contracts of the period.": "Os maiores contratos do período.",
   "Bags per supplier · month by month": "Sacas por fornecedor · mês a mês",
   "Running total since the first month of the period.": "Acumulado desde o primeiro mês do período.", "Bags purchased in each month.": "Sacas compradas em cada mês.",

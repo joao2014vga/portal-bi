@@ -3203,6 +3203,21 @@ async function painelComercial(alvo, carga, ctx) {
 // Corretagem estimada = valor final (R$) × % cadastrada no Digisul.
 // =====================================================================
 const SEM_CORRETOR = "(no broker)";
+// textos da aba Overview: compras (Purchases Overview) ou vendas internas (Domestic Sales)
+const ROT_CP = {
+  titulo: "Dashboard Purchases", forn: "Supplier", fornQS: "Supplier / quality / screen", aRec: "To receive", kpiRec: "Bags to receive", dif: "Diff bica",
+  nota: "Purchases by contract issue date. Click a month, a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.",
+  porMes: "Purchases by month", semDados: "No purchases for these filters.", top: "Top suppliers",
+  porMesSub: "Bags by contract issue month, Arabica and Conilon, with the running total of the period. Click a month to see only its purchases on the whole page.",
+  matriz: "Bags per supplier · month by month", matrizMes: "Bags purchased in each month.",
+};
+const ROT_DOM = {
+  titulo: "Domestic Sales", forn: "Client", fornQS: "Client / quality / screen", aRec: "To deliver", kpiRec: "Bags to deliver", dif: "Diff",
+  nota: "Domestic sales by contract issue date. Click a month, a client, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.",
+  porMes: "Domestic sales by month", semDados: "No domestic sales for these filters.", top: "Top clients",
+  porMesSub: "Bags by contract issue month, Arabica and Conilon, with the running total of the period. Click a month to see only its sales on the whole page.",
+  matriz: "Bags per client · month by month", matrizMes: "Bags sold in each month.",
+};
 const CHAVE_ABA_CP = "bi-compras-aba"; // aba aberta do Dashboard Purchases (nesta sessão do navegador)
 // "Diferencial por Categoria de Peneiras" do contrato de compra (o Diferencial do Position é o
 // Diferencial Bica). Cada coluna só aparece quando algum contrato da tabela tem o valor.
@@ -3350,18 +3365,19 @@ async function graficoDifQualidade(canvas, itens, unidade, aoClicar, selecao) {
 
 async function painelComprasDash(alvo, carga, ctx) {
   alvo.classList.add("pos-comercial"); // séries no verde da marca, Conilon em dourado (css)
-  let dados = null, abertos = [];
+  let dados = null, abertos = [], vendasInt = [];
   try {
-    const d = await ctx.api.positionDetalhe(["compras", "purchases"]);
+    const d = await ctx.api.positionDetalhe(["compras", "purchases", "vendas_internas"]);
     dados = d.compras ?? null;
     abertos = d.purchases ?? [];
+    vendasInt = d.vendas_internas ?? [];
   } catch { /* cai no aviso abaixo */ }
   if (!dados) {
     alvo.innerHTML = `<p class="muted pos-nota pos-nota-bloco">${icon("info")} Upload the Position again (or update from Digisul) to build this view — it needs every purchase contract.</p>`;
     return;
   }
   const porContrato = new Map(abertos.map((r) => [r.contrato, r]));
-  for (const r of dados) {
+  const prepComum = (r) => {
     r._esp = norm(r.especie);
     const bolsa = norm(r.bolsa);
     // diferencial só conta na bolsa da espécie (um contrato de Conilon na BMF tem outra unidade)
@@ -3370,6 +3386,23 @@ async function painelComprasDash(alvo, carga, ctx) {
     r._dif = r._esp === "CONILON" ? difConilonCompra(r.diferencial) : r.diferencial;
     r._mes = mesIso(r.emissao);
     r._tipo = tipoPadrao(r.padrao);
+  };
+  // aba Domestic Sales: as vendas internas no mesmo formato das compras (cliente no lugar do fornecedor).
+  // Vencimento da venda como no Dashboard Brokers: 1º vencimento se Normal, senão a previsão de embarque.
+  const dadosDom = vendasInt.map((v) => {
+    const r = { contrato: v.contrato, fornecedor: v.cliente, emissao: v.emissao, safra: v.safra, sacas: v.sacas, padrao: v.padrao,
+      especie: v.especie, bolsa: v.bolsa, modalidade: v.modalidade, diferencial: v.diferencial, preco: v.preco, valor: v.valor };
+    prepComum(r);
+    r._dom = true;
+    r._aEnt = v.a_entregar > 0 ? v.a_entregar : 0;
+    r._pen = v.peneira ?? null;
+    r._venc = (norm(v.modalidade) === "NORMAL" ? v.vencimento : v.prev_embarque) ?? v.vencimento ?? v.prev_embarque ?? null;
+    r._difs = {}; r._corr = null; r._ab = null; r._dolar = null; r._vfix = null;
+    return r;
+  });
+  const dadosCp = dados;
+  for (const r of dados) {
+    prepComum(r);
     const aberto = porContrato.get(r.contrato);
     // a receber: saldo dos contratos de compra em aberto (o café que ainda vamos receber)
     r._aEnt = aberto?.a_entregar > 0 ? aberto.a_entregar : 0;
@@ -3383,12 +3416,19 @@ async function painelComprasDash(alvo, carga, ctx) {
 
   // corretores, peneira e diferenciais por componente: ao vivo do Digisul (brascof-api);
   // sem eles o resto do painel funciona normalmente
-  let corretoresErro = null, corretoresEm = null, difsAviso = null;
+  let corretoresErro = null, corretoresEm = null, difsAviso = null, corrDomErro = null;
   const carregarCorretores = async () => {
     try {
       const j = await ctx.api.comprasCorretores();
+      // corretores das vendas internas (aba Domestic Sales): vêm na mesma resposta, em `vendas`
+      const mapaV = j.vendas ?? null;
+      corrDomErro = mapaV ? null : j.erroVendas || "Domestic sales brokers are not available from Digisul yet.";
+      for (const r of dadosDom) {
+        const lista = mapaV?.[r.contrato] ?? mapaV?.[contratoPaiCompra(r.contrato)] ?? null;
+        r._corr = lista?.length ? lista : null;
+      }
       const mapa = j.contratos ?? {}, compras = j.compras ?? null;
-      for (const r of dados) {
+      for (const r of dadosCp) {
         const lista = mapa[r.contrato] ?? mapa[contratoPaiCompra(r.contrato)] ?? null;
         r._corr = lista?.length ? lista : null;
         const c = compras?.[r.contrato];
@@ -3400,7 +3440,7 @@ async function painelComprasDash(alvo, carga, ctx) {
         r._difs = Object.fromEntries(Object.entries(c.dif ?? {}).map(([k, v]) => [k, r._esp === "CONILON" ? difConilonCompra(v) : v]));
       }
       // diferencial por categoria de peneira: depende da consulta brascof_pesq_diferencial_peneira no Digisul
-      const temDifs = dados.some((r) => Object.keys(r._difs).length);
+      const temDifs = dadosCp.some((r) => Object.keys(r._difs).length);
       difsAviso = temDifs ? null : j.erroDifPeneira
         ? "Diffs by screen category (GTLB, MTGB, LG) are not available from Digisul yet: the query brascof_pesq_diferencial_peneira must be created there."
         : null;
@@ -3458,15 +3498,34 @@ async function painelComprasDash(alvo, carga, ctx) {
   // vencimento do contrato: já passou em vermelho, ainda vai vencer (a receber) em verde
   const hojeDia = hojeIso();
   const vencimento = (r) => {
-    if (!corretoresEm) return "…";
+    if (!corretoresEm && !r._dom) return "…"; // o da venda interna já vem do Position
     if (!r._venc) return "—";
     const passou = r._venc < hojeDia;
     return `<span style="color:var(${passou ? "--critico" : "--ok"});font-weight:600" title="${esc(tr(passou ? "Past due date" : "Due ahead"))}">${esc(fmtData(r._venc))}</span>`;
   };
 
   // abas no cabeçalho verde da página: visão geral das compras e fixações
-  const ABAS_CP = [["geral", "Purchases Overview", "chart"], ["fix", "Fixations", "clock"]];
-  let aba = (() => { try { return sessionStorage.getItem(CHAVE_ABA_CP) === "fix" ? "fix" : "geral"; } catch { return "geral"; } })();
+  const ABAS_CP = [["geral", "Purchases Overview", "chart"], ["fix", "Fixations", "clock"], ["dom", "Domestic Sales", "users"]];
+  let aba = (() => { try { const s = sessionStorage.getItem(CHAVE_ABA_CP); return s === "fix" || s === "dom" ? s : "geral"; } catch { return "geral"; } })();
+  // Domestic Sales usa a mesma tela do Purchases Overview com os seus próprios dados e filtros:
+  // ao trocar de grupo (compras ⇄ vendas internas) guarda os filtros de um e volta os do outro
+  const grupoDe = (k) => (k === "dom" ? "dom" : "cp");
+  const estados = {};
+  const estadoAtual = () => ({
+    dados, filtro: Object.fromEntries(Object.entries(filtro).map(([k, s]) => [k, new Set(s)])), de, ate, busca, espDif, espForn, visaoMatriz,
+    mesSel: new Set(mesSel), abertosForn: new Set(abertosForn),
+  });
+  const estadoInicial = (g) => ({
+    dados: g === "dom" ? dadosDom : dadosCp, filtro: Object.fromEntries(FILTROS.map(([k]) => [k, new Set()])),
+    de: `${hoje.slice(0, 4)}-01`, ate: hoje, busca: "", espDif: "ARABICA", espForn: "ARABICA", visaoMatriz: "mes", mesSel: new Set(), abertosForn: new Set(),
+  });
+  const aplicarEstado = (s) => {
+    ({ dados, de, ate, busca, espDif, espForn, visaoMatriz } = s);
+    for (const [k] of FILTROS) filtro[k] = s.filtro[k];
+    mesSel.clear(); s.mesSel.forEach((x) => mesSel.add(x));
+    abertosForn.clear(); s.abertosForn.forEach((x) => abertosForn.add(x));
+  };
+  if (grupoDe(aba) === "dom") aplicarEstado(estadoInicial("dom"));
   const montarAbas = () => {
     const cab = alvo.closest(".visor")?.querySelector("header.cab");
     if (!cab) return false;
@@ -3480,6 +3539,10 @@ async function painelComprasDash(alvo, carga, ctx) {
   };
   const trocarAba = (k) => {
     if (k === aba) return;
+    if (grupoDe(k) !== grupoDe(aba)) {
+      estados[grupoDe(aba)] = estadoAtual();
+      aplicarEstado(estados[grupoDe(k)] ?? estadoInicial(grupoDe(k)));
+    }
     aba = k;
     try { sessionStorage.setItem(CHAVE_ABA_CP, k); } catch { /* fica só nesta tela */ }
     estadoLista.aberta = null;
@@ -3620,6 +3683,16 @@ async function painelComprasDash(alvo, carga, ctx) {
   // ------------------------------------------------------------- aba Purchases Overview
   const desenharGeral = async () => {
     limparGraficos();
+    const dom = grupoDe(aba) === "dom";
+    if (dom && !dadosDom.length) {
+      alvo.innerHTML = `${abasNoPainel()}<p class="muted pos-nota pos-nota-bloco">${icon("info")} <span>The domestic sales history is not available yet: update the Position from Digisul (Update now) to build this tab.</span></p>`;
+      ligarAbasNoPainel();
+      return;
+    }
+    const L = dom ? ROT_DOM : ROT_CP;
+    // corretores: na aba Domestic Sales também falham se a API não trouxe os das vendas
+    const corrErro = dom ? corretoresErro || corrDomErro : corretoresErro;
+    const corrOk = !!corretoresEm && !corrErro;
     // linhasPer: o período inteiro (o gráfico por mês mostra todos os meses); linhas: só os meses clicados nele
     const linhasPer = dados.filter((r) => noPeriodo(r) && passa(r));
     const linhas = linhasPer.filter(noMes);
@@ -3629,7 +3702,7 @@ async function painelComprasDash(alvo, carga, ctx) {
     const abertosRec = dados.filter((r) => r._aEnt > 0 && passa(r) && noMes(r));
     const mAb = medidasCompra(abertosRec);
     const vencsRec = abertosRec.map((r) => r._venc).filter(Boolean).sort();
-    const periodoRec = !corretoresEm ? "Due dates: …"
+    const periodoRec = !corretoresEm && !dom ? "Due dates: …"
       : vencsRec.length ? `Due ${fmtMes(vencsRec[0])} → ${fmtMes(vencsRec.at(-1))} · any issue date` : "any issue date";
     const semFiltro = (k) => dados.filter((r) => noPeriodo(r) && noMes(r) && passa(r, k));
     const opcoes = (k, val, ordem) => [...new Set([...semFiltro(k).flatMap(val).filter(Boolean), ...filtro[k]])].sort(ordem);
@@ -3748,10 +3821,10 @@ async function painelComprasDash(alvo, carga, ctx) {
 
     const algumFiltro = FILTROS.some(([k]) => filtro[k].size) || mesSel.size > 0;
     const nomesMeses = [...mesSel].sort().map(rotMes).join(", ");
-    const corrNota = corretoresErro
-      ? `<p class="muted pos-nota">${icon("alert")} <span>Brokers could not be loaded from Digisul:</span> <span>${esc(corretoresErro)}</span> <button type="button" class="link" id="cpCorrRetry">Try again</button></p>`
+    const corrNota = corrErro
+      ? `<p class="muted pos-nota">${icon("alert")} <span>Brokers could not be loaded from Digisul:</span> <span>${esc(corrErro)}</span> <button type="button" class="link" id="cpCorrRetry">Try again</button></p>`
       : !corretoresEm ? `<p class="muted pos-nota">${icon("clock")} <span>Loading brokers from Digisul…</span></p>` : "";
-    const titulo = filtro.fornecedor.size === 1 ? [...filtro.fornecedor][0] : filtro.corretor.size === 1 ? [...filtro.corretor][0] : tr("Dashboard Purchases");
+    const titulo = filtro.fornecedor.size === 1 ? [...filtro.fornecedor][0] : filtro.corretor.size === 1 ? [...filtro.corretor][0] : tr(L.titulo);
 
     alvo.innerHTML = `
     ${abasNoPainel()}
@@ -3762,28 +3835,28 @@ async function painelComprasDash(alvo, carga, ctx) {
     <div class="pos-filtros">
       <label class="pos-mes"><span>From</span><input type="month" id="cpDe" value="${de}"></label>
       <label class="pos-mes"><span>To</span><input type="month" id="cpAte" value="${ate}"></label>
-      ${FILTROS.map(([k, rot, val, ordem]) => listaMulti({ k, rot, ops: opcoes(k, val, ordem), sel: filtro[k], aberta: estadoLista.aberta === k })).join("")}
+      ${FILTROS.map(([k, rot, val, ordem]) => listaMulti({ k, rot: k === "fornecedor" ? L.forn : rot, ops: opcoes(k, val, ordem), sel: filtro[k], aberta: estadoLista.aberta === k })).join("")}
       <label class="pos-mes"><span>Contract</span><span class="busca sm">${icon("search")}<input type="search" id="cpContrato" placeholder="${esc(tr("Search contract…"))}" value="${esc(busca)}" aria-label="${esc(tr("Search contract…"))}"></span></label>
       ${mesSel.size ? `<button type="button" class="btn pos-mes-sel" id="cpLimparMes" title="${esc(tr("Show the whole period"))}">${icon("x")}<span>${esc(tr("Month"))}: ${esc(nomesMeses)}</span></button>` : ""}
       ${algumFiltro || busca ? `<button type="button" class="btn" id="cpLimpar">${icon("x")}<span>Clear filters</span></button>` : ""}
     </div>
-    <p class="muted pos-nota">${icon("info")} <span>Purchases by contract issue date. Click a month, a supplier, a quality, a broker or a quality bar to filter the page; Ctrl+click to pick more than one.</span></p>
+    <p class="muted pos-nota">${icon("info")} <span>${esc(L.nota)}</span></p>
     ${corrNota}
     <div class="pos-kpis">
       ${kpi("Total contracts", fmtN(m.contratos))}
       ${kpi("Total bags", fmtN(m.sacas), `Arabica ${fmtN(m.sacasA)} · Conilon ${fmtN(m.sacasC)}`)}
       ${kpi("Avg diff Arabica", fmtDif(m.difA), "¢/lb · NY · weighted by bags")}
       ${kpi("Avg diff Conilon", fmtDif(m.difC), "London · weighted by bags")}
-      ${kpi("Bags to receive", fmtN(mAb.aEnt), `Arabica ${fmtN(mAb.aEntA)} · Conilon ${fmtN(mAb.aEntC)} · ${fmtN(mAb.contratos)} open contracts<br><strong>${esc(periodoRec)}</strong>`)}
+      ${kpi(L.kpiRec, fmtN(mAb.aEnt), `Arabica ${fmtN(mAb.aEntA)} · Conilon ${fmtN(mAb.aEntC)} · ${fmtN(mAb.contratos)} open contracts<br><strong>${esc(periodoRec)}</strong>`)}
       ${kpi("Avg price Arabica · R$/bag", m.precoA == null ? "—" : fmtN(m.precoA, 2), `Conilon R$ ${m.precoC == null ? "—" : fmtN(m.precoC, 2)}/bag`)}
-      ${kpi("Avg brokerage", corretoresEm ? pctFmt(corrBase ? corrPctPeso / corrBase : null) : corretoresErro ? "—" : "…",
-        corretoresEm ? `${fmtDin(corrValor, "R$")} est. · R$ ${corrSacas ? fmtN(corrValor / corrSacas, 2) : "—"}/bag` : "")}
+      ${kpi("Avg brokerage", corrOk ? pctFmt(corrBase ? corrPctPeso / corrBase : null) : corrErro ? "—" : "…",
+        corrOk ? `${fmtDin(corrValor, "R$")} est. · R$ ${corrSacas ? fmtN(corrValor / corrSacas, 2) : "—"}/bag` : "")}
       ${kpi("Top contract", maior ? esc(maior.contrato) : "—", maior ? `${fmtN(maior.sacas)} bags · ${esc(maior.fornecedor ?? "—")}` : "")}
     </div>
 
     <section class="pos-card">
-      <div class="pos-card-h"><h2>Purchases by month</h2><p class="muted">Bags by contract issue month, Arabica and Conilon, with the running total of the period. Click a month to see only its purchases on the whole page.</p></div>
-      ${linhasPer.length ? `<div class="pos-grafico"><canvas id="gCpMes" role="img" aria-label="Purchased bags by month with accumulated total"></canvas></div>` : `<p class="vazio-td">No purchases for these filters.</p>`}
+      <div class="pos-card-h"><h2>${esc(L.porMes)}</h2><p class="muted">${esc(L.porMesSub)}</p></div>
+      ${linhasPer.length ? `<div class="pos-grafico"><canvas id="gCpMes" role="img" aria-label="${esc(tr(L.porMes))}"></canvas></div>` : `<p class="vazio-td">${esc(L.semDados)}</p>`}
     </section>
 
     <div class="pos-duas">
@@ -3795,25 +3868,25 @@ async function painelComprasDash(alvo, carga, ctx) {
       <section class="pos-card">
         <div class="pos-card-h"><h2>Top brokers</h2><p class="muted"><span>Only contracts already fully delivered. A contract with two brokers counts for both. Brokerage = final value × rate registered in Digisul (estimate).</span>
           ${corrFora ? ` <span>Not counted (still to be delivered):</span> <span>${fmtN(corrFora)}</span> <span>bags</span>` : ""}</p></div>
-        ${corretoresEm ? `<div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
+        ${corrOk ? `<div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
           <thead><tr><th>Broker</th><th class="num">Bags</th><th class="num">Contracts</th><th class="num">Avg rate</th><th class="num">Brokerage R$</th></tr></thead>
           <tbody>${rankCorretores.length ? rankCorretores.map(([nome, o]) => `<tr class="pos-clic${marca("corretor", nome)}" data-corr="${esc(nome)}"><td>${esc(nome)}</td>
             <td class="num">${barra(o.sacas, maxCorr)}</td><td class="num">${fmtN(o.ctr.size)}</td><td class="num">${pctFmt(o.base ? o.pctPeso / o.base : null)}</td>
             <td class="num">${fmtDin(o.corretagem, "R$")}</td></tr>`).join("")
             : `<tr><td colspan="5" class="vazio-td">No brokers for these filters.</td></tr>`}</tbody>
           ${semCorr ? `<tfoot><tr class="pos-clic${marca("corretor", SEM_CORRETOR)}" data-corr="${esc(SEM_CORRETOR)}"><td>Direct (no broker)</td><td class="num">${fmtN(semCorr.sacas)}</td><td class="num">${fmtN(semCorr.ctr.size)}</td><td class="num">—</td><td class="num">—</td></tr></tfoot>` : ""}
-        </table></div>` : `<p class="vazio-td">${corretoresErro ? "Brokers unavailable." : "Loading brokers…"}</p>`}
+        </table></div>` : `<p class="vazio-td">${corrErro ? "Brokers unavailable." : "Loading brokers…"}</p>`}
       </section>
     </div>
 
     <section class="pos-card">
-      <div class="pos-card-h pos-card-h-linha"><div><h2>Top suppliers</h2>
+      <div class="pos-card-h pos-card-h-linha"><div><h2>${esc(L.top)}</h2>
         <p class="muted">⊞ opens the qualities and, inside each one, the screens. Diffs weighted by bags (${espForn === "ARABICA" ? "¢/lb, NY" : "London"}).</p></div>
         ${segmentos("cpEspForn", [["ARABICA", "Arabica"], ["CONILON", "Conilon"]], espForn)}</div>
-      ${difsAviso ? `<p class="muted pos-nota">${icon("info")} <span>${esc(difsAviso)}</span></p>` : ""}
+      ${difsAviso && !dom ? `<p class="muted pos-nota">${icon("info")} <span>${esc(difsAviso)}</span></p>` : ""}
       <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num pos-com-arvore">
-        <thead><tr><th>Supplier / quality / screen</th><th class="num">Bags</th><th class="num">%</th><th class="num">Contracts</th><th class="num">Diff bica</th>
-          ${compsVisiveis.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th></tr></thead>
+        <thead><tr><th>${esc(L.fornQS)}</th><th class="num">Bags</th><th class="num">%</th><th class="num">Contracts</th><th class="num">${esc(L.dif)}</th>
+          ${compsVisiveis.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">${esc(L.aRec)}</th></tr></thead>
         <tbody>${linhasForn.join("") || `<tr><td colspan="${6 + compsVisiveis.length}" class="vazio-td">No data for these filters.</td></tr>`}</tbody>
         ${linhasForn.length ? `<tfoot><tr class="total"><th scope="row">Total</th>${celNum(totEsp.sacas, { forte: true })}<td class="num">100%</td><td class="num forte">${fmtN(totEsp.ctr.size)}</td>
           <td class="num forte">${fmtDif(totEsp.dif)}</td>${compsVisiveis.map(([c]) => `<td class="num forte">${corretoresEm ? fmtDif(totEsp.difs[c]) : "…"}</td>`).join("")}${celNum(totEsp.aRec, { forte: true })}</tr></tfoot>` : ""}
@@ -3823,8 +3896,8 @@ async function painelComprasDash(alvo, carga, ctx) {
     <section class="pos-card">
       <div class="pos-card-h"><h2>Top contracts</h2><p class="muted">The largest contracts of the period.</p></div>
       <div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
-        <thead><tr><th>Contract</th><th>Supplier</th><th>Quality</th><th>Screen</th><th class="num">Bags</th><th class="num">Diff bica</th>
-          ${compsContratos.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">To receive</th><th>Due date</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
+        <thead><tr><th>Contract</th><th>${esc(L.forn)}</th><th>Quality</th><th>Screen</th><th class="num">Bags</th><th class="num">${esc(L.dif)}</th>
+          ${compsContratos.map(([, rot]) => `<th class="num">${esc(rot)}</th>`).join("")}<th class="num">${esc(L.aRec)}</th><th>Due date</th><th class="num">R$/bag</th><th>Broker</th></tr></thead>
         <tbody>${topContratos.length ? topContratos.map((r) => `<tr><td>${esc(r.contrato)}<div class="muted">${esc(fmtData(r.emissao))}</div></td><td>${esc(r.fornecedor ?? "—")}</td>
           <td>${esc(r.padrao ?? "—")}</td><td>${esc(fmtPeneira(r._pen))}</td>${celNum(r.sacas)}<td class="num">${fmtDif(r._dif)}</td>
           ${compsContratos.map(([c]) => `<td class="num">${corretoresEm ? fmtDif(r._difs[c]) : "…"}</td>`).join("")}${celNum(r._aEnt)}<td>${vencimento(r)}</td>
@@ -3834,11 +3907,11 @@ async function painelComprasDash(alvo, carga, ctx) {
     </section>
 
     <section class="pos-card">
-      <div class="pos-card-h pos-card-h-linha"><div><h2>Bags per supplier · month by month</h2>
-        <p class="muted">${visaoMatriz === "acc" ? "Running total since the first month of the period." : "Bags purchased in each month."}</p></div>
+      <div class="pos-card-h pos-card-h-linha"><div><h2>${esc(L.matriz)}</h2>
+        <p class="muted">${esc(visaoMatriz === "acc" ? "Running total since the first month of the period." : L.matrizMes)}</p></div>
         ${segmentos("cpMatriz", [["mes", "Monthly"], ["acc", "Accumulated"]], visaoMatriz)}</div>
       ${matriz.length ? `<div class="tabela-wrap pos-tabela pos-com-alto"><table class="tabela tabela-num">
-        <thead><tr><th>Supplier</th>${mesesComDados.map((mes) => `<th class="num">${esc(rotMes(mes))}</th>`).join("")}<th class="num">Total</th></tr></thead>
+        <thead><tr><th>${esc(L.forn)}</th>${mesesComDados.map((mes) => `<th class="num">${esc(rotMes(mes))}</th>`).join("")}<th class="num">Total</th></tr></thead>
         <tbody>${matriz.map((f) => `<tr class="pos-clic${marca("fornecedor", f.nome)}" data-forn="${esc(f.nome)}"><td>${esc(f.nome)}</td>${f.cel.map((v) => celNum(v)).join("")}${celNum(f.total, { forte: true })}</tr>`).join("")}</tbody>
         <tfoot><tr class="total"><th scope="row">Total</th>${totMes.map((v) => celNum(v, { forte: true })).join("")}${celNum(m.sacas, { forte: true })}</tr></tfoot>
       </table></div>` : `<p class="vazio-td">No data for these filters.</p>`}

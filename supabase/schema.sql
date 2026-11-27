@@ -2263,3 +2263,23 @@ as $$
   select coalesce((select (p.is_admin or p.publica_position) and p.ativo from public.bi_perfis p where p.id = auth.uid()), false);
 $$;
 -- e bi_position_publicar_dia (seção 37) passa a checar public.bi_publica_position() em vez de bi_is_admin()
+
+-- =====================================================================
+-- 39. DASHBOARD PURCHASES, ABA DOMESTIC SALES (todas as vendas internas)
+-- A sincronização grava o tipo 'vendas_internas' (a IntSales inteira, não só as em aberto).
+-- Quem vê o Dashboard Purchases lê esse tipo; ele sai da regra "o resto" do Open Contracts.
+-- Mesma política da seção 33 com as duas linhas mudadas. Pode rodar de novo.
+-- =====================================================================
+drop policy if exists bi_position_detalhe_select on public.bi_position_detalhe;
+create policy bi_position_detalhe_select on public.bi_position_detalhe for select to authenticated using (
+  public.bi_is_admin()
+  or (tipo = 'vendas' and (public.bi_ve_painel('portal:position-sales') or public.bi_ve_painel('portal:position-diffs')))
+  or (tipo = 'compras' and public.bi_ve_painel('portal:position-purchases'))
+  or (tipo in ('compras', 'purchases', 'vendas_internas') and public.bi_ve_painel('portal:position-purchasing'))
+  or (tipo like 'cert\_%' and public.bi_ve_painel('portal:cert-'))
+  or (tipo = 'fisica_itens' and public.bi_ve_painel('portal:position-physical'))
+  or (tipo = 'termm_itens' and public.bi_ve_painel('portal:position-overview'))
+  or (tipo = 'comercial' and public.bi_ve_painel('portal:position-commercial'))
+  or (tipo <> all (array['vendas', 'compras', 'fisica_itens', 'termm_itens', 'comercial', 'vendas_internas']) and tipo not like 'cert\_%'
+      and public.bi_ve_painel('portal:position-contracts')));
+notify pgrst, 'reload schema';

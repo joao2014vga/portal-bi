@@ -332,6 +332,17 @@ export const DETALHES = {
       ["qualidade", "Qualidade"]],
     aberto: () => true,
   },
+  // Dashboard Purchases, aba Domestic Sales: todas as vendas internas (a IntSales inteira,
+  // não só as em aberto como em "intsales")
+  vendas_internas: {
+    aba: ABAS.intsales,
+    cols: [["contrato", "Contrato"], ["cliente", "Cliente"], ["emissao", "Emissão", "d"], ["safra", "Safra"], ["sacas", "Sacas Total", "n"],
+      ["a_entregar", "A Entregar(Sc)", "n"], ["padrao", "Padrão"], ["peneira", "Peneira"], ["especie", "Espécie"], ["bolsa", "Bolsa"],
+      ["modalidade", "Modalidade CTR"], ["preco", "Unitário R$", "n"], ["valor", "Total Venda R$", "n"], ["diferencial", "Diferencial", "n"],
+      ["vencimento", "1° Vencimento", "d"], ["prev_embarque", "Prev. Embarque", "d"]],
+    opcionais: ["valor", "diferencial", "vencimento"],
+    aberto: (r) => r.sacas > 0,
+  },
   compras: {
     aba: ABAS.purchases,
     cols: [["contrato", "Contrato"], ["fornecedor", "Fornecedor"], ["emissao", "Emissão", "d"], ["safra", "Safra"], ["sacas", "Sacas Total", "n"],
@@ -352,7 +363,8 @@ export function lerDetalhe(g, def) {
   const cab = (g[0] ?? []).map(norm);
   const idx = def.cols.map(([k, titulo, tipo]) => {
     const i = cab.indexOf(norm(titulo));
-    if (i < 0) throw new Error(`"${def.aba}": column "${titulo}" not found.`);
+    // coluna opcional ausente (ex.: planilha antiga): o campo fica vazio em vez de barrar o upload
+    if (i < 0 && !def.opcionais?.includes(k)) throw new Error(`"${def.aba}": column "${titulo}" not found.`);
     return [k, i, tipo];
   });
   const linhas = [];
